@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -18,6 +19,7 @@ use crate::tiff::parse_tiff_from_reader;
 use crate::xmp::parse_xmp;
 
 const XMP_PREFIX: &[u8] = b"http://ns.adobe.com/xap/1.0/\0";
+const ICC_PREFIX: &[u8] = b"ICC_PROFILE\0";
 
 /// The first rewrite surface is intentionally narrow: JPEG COM segments are
 /// self-contained, bounded, and can be changed without re-encoding pixels.
@@ -31,6 +33,15 @@ pub enum JpegEdit {
     DeleteIptc { name: String },
 }
 
+#[derive(Debug, Default)]
+struct IccAssembler {
+    total: Option<u8>,
+    fragments: BTreeMap<u8, Vec<u8>>,
+    bytes: usize,
+    first_data_offset: Option<u64>,
+    oversized: bool,
+}
+
 pub fn read_jpeg<R: Read + Seek>(
     reader: &mut R,
     file_info: FileInfo,
@@ -38,6 +49,7 @@ pub fn read_jpeg<R: Read + Seek>(
 ) -> Result<Metadata> {
     let path = file_info.path.clone();
     let mut metadata = Metadata::new(file_info);
+    let mut icc = IccAssembler::default();
     let mut soi = [0_u8; 2];
     read_exact(reader, &mut soi, &path)?;
     if soi != [0xFF, 0xD8] {
@@ -128,9 +140,10 @@ pub fn read_jpeg<R: Read + Seek>(
                 context: "JPEG segment end".to_owned(),
                 offset: data_offset,
             })?;
-        process_segment(marker, &data, data_offset, &mut metadata, limits)?;
+        process_segment(marker, &data, data_offset, &mut metadata, limits, &mut icc)?;
         segments += 1;
     }
+    icc.finish(&mut metadata, limits);
     metadata.sort_tags();
     Ok(metadata)
 }
@@ -610,12 +623,152 @@ fn read_marker<R: Read>(reader: &mut R, offset: &mut u64, path: &Path) -> Result
     Ok(Some(byte[0]))
 }
 
+impl IccAssembler {
+    fn add(&mut self, data: &[u8], data_offset: u64, metadata: &mut Metadata, limits: ParseLimits) {
+        let Some(sequence_offset) = ICC_PREFIX.len().checked_add(1) else {
+            return;
+        };
+        if data.len() < sequence_offset + 1 {
+            metadata.add_warning(
+                Warning::new("truncated-icc", "ICC APP2 header is truncated").at(data_offset),
+            );
+            return;
+        }
+        let sequence = data[sequence_offset - 1];
+        let total = data[sequence_offset];
+        if total == 0 {
+            metadata.add_warning(
+                Warning::new("invalid-icc-fragment", "ICC profile fragment count is zero")
+                    .at(data_offset),
+            );
+            return;
+        }
+        if sequence == 0 || sequence > total {
+            metadata.add_warning(
+                Warning::new(
+                    "invalid-icc-fragment",
+                    format!("ICC profile sequence {sequence} is outside 1..={total}"),
+                )
+                .at(data_offset),
+            );
+            return;
+        }
+        if let Some(expected_total) = self.total {
+            if expected_total != total {
+                metadata.add_warning(
+                    Warning::new(
+                        "icc-fragment-count",
+                        format!(
+                            "ICC profile fragment {sequence} declares {total} parts; expected {expected_total}"
+                        ),
+                    )
+                    .at(data_offset),
+                );
+                return;
+            }
+        } else {
+            self.total = Some(total);
+        }
+        if self.fragments.contains_key(&sequence) {
+            metadata.add_warning(
+                Warning::new(
+                    "duplicate-icc-fragment",
+                    format!("ICC profile fragment {sequence} was repeated"),
+                )
+                .at(data_offset),
+            );
+            return;
+        }
+
+        let payload = &data[sequence_offset + 1..];
+        let Some(new_size) = self.bytes.checked_add(payload.len()) else {
+            self.oversized = true;
+            metadata.add_warning(
+                Warning::new(
+                    "icc-profile-limit",
+                    "ICC profile size overflowed the read budget",
+                )
+                .at(data_offset),
+            );
+            return;
+        };
+        if new_size > limits.max_value_bytes {
+            self.oversized = true;
+            metadata.add_warning(
+                Warning::new(
+                    "icc-profile-limit",
+                    format!(
+                        "ICC profile exceeds the {}-byte value budget",
+                        limits.max_value_bytes
+                    ),
+                )
+                .at(data_offset),
+            );
+            return;
+        }
+        self.bytes = new_size;
+        self.first_data_offset.get_or_insert(
+            data_offset.saturating_add(u64::try_from(sequence_offset + 1).unwrap_or(u64::MAX)),
+        );
+        self.fragments.insert(sequence, payload.to_vec());
+    }
+
+    fn finish(&self, metadata: &mut Metadata, limits: ParseLimits) {
+        let Some(total) = self.total else {
+            return;
+        };
+        if self.oversized {
+            return;
+        }
+        let expected = usize::from(total);
+        if self.fragments.len() != expected {
+            metadata.add_warning(
+                Warning::new(
+                    "missing-icc-fragment",
+                    format!(
+                        "ICC profile contains {} of {expected} fragments",
+                        self.fragments.len()
+                    ),
+                )
+                .at(self.first_data_offset.unwrap_or_default()),
+            );
+            return;
+        }
+        let mut profile = Vec::with_capacity(self.bytes);
+        for sequence in 1..=total {
+            let Some(fragment) = self.fragments.get(&sequence) else {
+                metadata.add_warning(
+                    Warning::new(
+                        "missing-icc-fragment",
+                        format!("ICC profile is missing fragment {sequence} of {total}"),
+                    )
+                    .at(self.first_data_offset.unwrap_or_default()),
+                );
+                return;
+            };
+            profile.extend_from_slice(fragment);
+        }
+        if let Err(error) = parse_icc_profile(
+            &profile,
+            self.first_data_offset.unwrap_or_default(),
+            metadata,
+            limits,
+        ) {
+            metadata.add_warning(
+                Warning::new("invalid-icc", error.to_string())
+                    .at(self.first_data_offset.unwrap_or_default()),
+            );
+        }
+    }
+}
+
 fn process_segment(
     marker: u8,
     data: &[u8],
     data_offset: u64,
     metadata: &mut Metadata,
     limits: ParseLimits,
+    icc: &mut IccAssembler,
 ) -> Result<()> {
     match marker {
         0xE1 if data.starts_with(b"Exif\0\0") => {
@@ -654,37 +807,7 @@ fn process_segment(
                     .add_warning(Warning::new("invalid-xmp", error.to_string()).at(data_offset));
             }
         }
-        0xE2 if data.starts_with(b"ICC_PROFILE\0") => {
-            let prefix_len = b"ICC_PROFILE\0".len();
-            if data.len() < prefix_len + 2 {
-                metadata.add_warning(
-                    Warning::new("truncated-icc", "ICC APP2 header is truncated").at(data_offset),
-                );
-            } else {
-                let sequence = data[prefix_len];
-                let total = data[prefix_len + 1];
-                if total != 1 || sequence != 1 {
-                    metadata.add_warning(
-                        Warning::new(
-                            "icc-fragment",
-                            format!(
-                                "ICC profile fragment {sequence} of {total} is not reassembled yet"
-                            ),
-                        )
-                        .at(data_offset),
-                    );
-                } else if let Err(error) = parse_icc_profile(
-                    &data[prefix_len + 2..],
-                    data_offset + u64::try_from(prefix_len + 2).unwrap_or(u64::MAX),
-                    metadata,
-                    limits,
-                ) {
-                    metadata.add_warning(
-                        Warning::new("invalid-icc", error.to_string()).at(data_offset),
-                    );
-                }
-            }
-        }
+        0xE2 if data.starts_with(ICC_PREFIX) => icc.add(data, data_offset, metadata, limits),
         0xED if data.starts_with(b"Photoshop 3.0\0") => {
             if let Err(error) = parse_photoshop_resources(data, data_offset, metadata, limits) {
                 metadata.add_warning(
@@ -901,6 +1024,36 @@ mod tests {
         bytes
     }
 
+    fn jpeg_with_fragmented_icc() -> Vec<u8> {
+        let mut profile = [0_u8; 132];
+        let profile_size = profile.len() as u32;
+        profile[0..4].copy_from_slice(&profile_size.to_be_bytes());
+        profile[8] = 4;
+        profile[9] = 0x30;
+        profile[12..16].copy_from_slice(b"mntr");
+        profile[16..20].copy_from_slice(b"RGB ");
+        profile[20..24].copy_from_slice(b"XYZ ");
+        profile[36..40].copy_from_slice(b"acsp");
+        profile[40..44].copy_from_slice(b"APPL");
+        profile[48..52].copy_from_slice(b"TEST");
+        profile[52..56].copy_from_slice(b"MODL");
+        profile[64..68].copy_from_slice(&1_u32.to_be_bytes());
+
+        let split = 60;
+        let mut bytes = vec![0xFF, 0xD8];
+        for (sequence, fragment) in [(1_u8, &profile[..split]), (2_u8, &profile[split..])] {
+            let mut app2 = ICC_PREFIX.to_vec();
+            app2.extend_from_slice(&[sequence, 2]);
+            app2.extend_from_slice(fragment);
+            let length = u16::try_from(app2.len() + 2).unwrap();
+            bytes.extend_from_slice(&[0xFF, 0xE2]);
+            bytes.extend_from_slice(&length.to_be_bytes());
+            bytes.extend_from_slice(&app2);
+        }
+        bytes.extend_from_slice(&[0xFF, 0xD9]);
+        bytes
+    }
+
     #[test]
     fn reads_jpeg_comment_without_decoding_pixels() {
         let bytes = jpeg_with_comment();
@@ -927,6 +1080,31 @@ mod tests {
         assert_eq!(
             metadata.find("XMP:dc:format").unwrap().display_value(),
             "image/jpeg"
+        );
+    }
+
+    #[test]
+    fn reassembles_fragmented_icc_profiles() {
+        let bytes = jpeg_with_fragmented_icc();
+        let metadata = read_jpeg(
+            &mut Cursor::new(bytes),
+            FileInfo::new("fragmented.icc.jpg".into(), 0, FileFormat::Jpeg),
+            ParseLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            metadata.find("ICC:DeviceClass").unwrap().display_value(),
+            "mntr"
+        );
+        assert_eq!(
+            metadata.find("ICC:ColorSpace").unwrap().display_value(),
+            "RGB"
+        );
+        assert!(
+            !metadata
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "icc-fragment")
         );
     }
 
