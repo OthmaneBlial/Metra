@@ -47,6 +47,7 @@ struct Arguments {
             "create_tiff",
             "create_png",
             "create_xmp",
+            "create_wav",
             "compare"
         ]
     )]
@@ -89,6 +90,7 @@ struct Arguments {
             "copy",
             "create_png",
             "create_xmp",
+            "create_wav",
             "json",
             "jsonl",
             "csv",
@@ -111,6 +113,7 @@ struct Arguments {
             "copy",
             "create_tiff",
             "create_xmp",
+            "create_wav",
             "json",
             "jsonl",
             "csv",
@@ -132,6 +135,7 @@ struct Arguments {
             "copy",
             "create_tiff",
             "create_png",
+            "create_wav",
             "json",
             "jsonl",
             "csv",
@@ -143,6 +147,30 @@ struct Arguments {
         ]
     )]
     create_xmp: Option<String>,
+
+    /// Create a new minimal PCM WAV with one or more LIST/INFO fields.
+    #[arg(
+        long = "create-wav",
+        value_name = "KEY=VALUE",
+        action = clap::ArgAction::Append,
+        conflicts_with_all = [
+            "set",
+            "delete",
+            "copy",
+            "create_tiff",
+            "create_png",
+            "create_xmp",
+            "json",
+            "jsonl",
+            "csv",
+            "toml",
+            "yaml",
+            "tag",
+            "validate",
+            "compare"
+        ]
+    )]
+    create_wav: Vec<String>,
 
     /// Validate inputs and return a failure when any warning is produced.
     #[arg(long, conflicts_with_all = ["set", "delete", "copy"])]
@@ -242,6 +270,29 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
         return match metra::create_xmp_path(&arguments.files[0], packet, limits) {
+            Ok(()) => {
+                println!("created: {}", arguments.files[0].display());
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", arguments.files[0].display());
+                ExitCode::from(1)
+            }
+        };
+    }
+    if !arguments.create_wav.is_empty() {
+        if arguments.files.len() != 1 {
+            eprintln!("metra: --create-wav requires exactly one destination path");
+            return ExitCode::from(2);
+        }
+        let options = match parse_wav_create(&arguments.create_wav) {
+            Ok(options) => options,
+            Err(message) => {
+                eprintln!("metra: {message}");
+                return ExitCode::from(2);
+            }
+        };
+        return match metra::create_wav_path(&arguments.files[0], &options, limits) {
             Ok(()) => {
                 println!("created: {}", arguments.files[0].display());
                 ExitCode::SUCCESS
@@ -432,6 +483,20 @@ fn parse_png_create(entries: &[String]) -> Result<metra::PngCreateOptions, Strin
             return Err("--create-png requires a non-empty KEY".to_owned());
         }
         options.push_text(keyword, value);
+    }
+    Ok(options)
+}
+
+fn parse_wav_create(entries: &[String]) -> Result<metra::WavCreateOptions, String> {
+    let mut options = metra::WavCreateOptions::new();
+    for assignment in entries {
+        let (key, value) = assignment
+            .split_once('=')
+            .ok_or_else(|| "--create-wav expects KEY=VALUE".to_owned())?;
+        if key.is_empty() {
+            return Err("--create-wav requires a non-empty KEY".to_owned());
+        }
+        options.push_info(key, value);
     }
     Ok(options)
 }

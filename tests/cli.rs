@@ -991,6 +991,42 @@ fn cli_can_create_minimal_png_seed_without_overwrite() {
 }
 
 #[test]
+fn cli_can_create_minimal_wav_seed_without_overwrite() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.path.join("created.wav");
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--create-wav",
+            "Title=Metra",
+            "--create-wav",
+            "Artist=Othmane",
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let metadata = metra::read(&path).expect("created WAV should remain readable");
+    assert_eq!(metadata.file_info.format, metra::FileFormat::Wav);
+    assert_eq!(metadata.find("WAV:Title").unwrap().display_value(), "Metra");
+    assert_eq!(
+        metadata.find("WAV:Artist").unwrap().display_value(),
+        "Othmane"
+    );
+
+    let second = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--create-wav",
+            "Title=Other",
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(!second.status.success());
+    assert!(String::from_utf8_lossy(&second.stderr).contains("refusing to overwrite"));
+}
+
+#[test]
 fn cli_can_create_standalone_xmp_without_overwrite() {
     let directory = TemporaryDirectory::new();
     let path = directory.path.join("created.xmp");
