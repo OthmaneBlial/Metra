@@ -97,6 +97,36 @@ fn minimal_png(comment: &str) -> Vec<u8> {
     bytes
 }
 
+fn wav_chunk(kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
+    let mut chunk = kind.to_vec();
+    chunk.extend_from_slice(&(data.len() as u32).to_le_bytes());
+    chunk.extend_from_slice(data);
+    if !data.len().is_multiple_of(2) {
+        chunk.push(0);
+    }
+    chunk
+}
+
+fn minimal_wav(title: &str) -> Vec<u8> {
+    let mut fmt = Vec::new();
+    fmt.extend_from_slice(&1_u16.to_le_bytes());
+    fmt.extend_from_slice(&1_u16.to_le_bytes());
+    fmt.extend_from_slice(&8_000_u32.to_le_bytes());
+    fmt.extend_from_slice(&8_000_u32.to_le_bytes());
+    fmt.extend_from_slice(&1_u16.to_le_bytes());
+    fmt.extend_from_slice(&8_u16.to_le_bytes());
+    let mut list = b"INFO".to_vec();
+    list.extend_from_slice(&wav_chunk(b"INAM", format!("{title}\0").as_bytes()));
+    let mut body = wav_chunk(b"fmt ", &fmt);
+    body.extend_from_slice(&wav_chunk(b"LIST", &list));
+    body.extend_from_slice(&wav_chunk(b"data", &[9, 8, 7, 6]));
+    let mut bytes = b"RIFF".to_vec();
+    bytes.extend_from_slice(&((4 + body.len()) as u32).to_le_bytes());
+    bytes.extend_from_slice(b"WAVE");
+    bytes.extend_from_slice(&body);
+    bytes
+}
+
 fn run(args: &[&Path]) -> std::process::Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_metra"));
     for path in args {
@@ -366,5 +396,59 @@ fn cli_can_edit_and_copy_a_png_text_chunk() {
             .unwrap()
             .display_value(),
         "source value"
+    );
+}
+
+#[test]
+fn cli_can_edit_and_copy_wav_info() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.file("source.wav", &minimal_wav("source title"));
+    let target = directory.file("target.wav", &minimal_wav("target title"));
+
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "WAV:Title=edited title",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("WAV:Title")
+            .unwrap()
+            .display_value(),
+        "edited title"
+    );
+
+    let delete = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--delete",
+            "WAV:Title",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(delete.status.success(), "stderr: {:?}", delete.stderr);
+    assert!(metra::read(&target).unwrap().find("WAV:Title").is_none());
+
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            &format!("WAV:Title={}", source.to_str().expect("UTF-8 test path")),
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("WAV:Title")
+            .unwrap()
+            .display_value(),
+        "source title"
     );
 }

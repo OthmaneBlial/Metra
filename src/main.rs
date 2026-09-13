@@ -139,6 +139,7 @@ fn main() -> ExitCode {
 enum EditRequest {
     DirectJpeg(Vec<metra::JpegEdit>),
     DirectPng(Vec<metra::PngEdit>),
+    DirectWav(Vec<metra::WavEdit>),
     Copy { key: CopyKey, source: PathBuf },
 }
 
@@ -146,6 +147,7 @@ enum EditRequest {
 enum CopyKey {
     JpegComment,
     PngText(String),
+    WavInfo(String),
 }
 
 fn parse_edits(
@@ -166,6 +168,14 @@ fn parse_edits(
                     },
                 ])));
             }
+            if let Some(name) = wav_info_name(key) {
+                return Ok(Some(EditRequest::DirectWav(vec![
+                    metra::WavEdit::SetInfo {
+                        name: name.to_owned(),
+                        value: value.to_owned(),
+                    },
+                ])));
+            }
             return Err(unsupported_edit_message(key));
         }
         return Ok(Some(EditRequest::DirectJpeg(vec![
@@ -178,6 +188,13 @@ fn parse_edits(
                 return Ok(Some(EditRequest::DirectPng(vec![
                     metra::PngEdit::DeleteText {
                         keyword: keyword.to_owned(),
+                    },
+                ])));
+            }
+            if let Some(name) = wav_info_name(key) {
+                return Ok(Some(EditRequest::DirectWav(vec![
+                    metra::WavEdit::DeleteInfo {
+                        name: name.to_owned(),
                     },
                 ])));
             }
@@ -198,6 +215,8 @@ fn parse_edits(
             CopyKey::JpegComment
         } else if let Some(keyword) = png_text_keyword(key) {
             CopyKey::PngText(keyword.to_owned())
+        } else if let Some(name) = wav_info_name(key) {
+            CopyKey::WavInfo(name.to_owned())
         } else {
             return Err(unsupported_edit_message(key));
         };
@@ -215,13 +234,36 @@ fn png_text_keyword(key: &str) -> Option<&str> {
 }
 
 fn unsupported_edit_message(key: &str) -> String {
-    format!("unsupported metadata key {key}; writable keys are JPEG:Comment or PNG:Text:<keyword>")
+    format!(
+        "unsupported metadata key {key}; writable keys are JPEG:Comment, PNG:Text:<keyword>, or WAV:<INFO field>"
+    )
+}
+
+fn wav_info_name(key: &str) -> Option<&str> {
+    let name = key.strip_prefix("WAV:")?;
+    matches!(
+        name,
+        "Title"
+            | "Artist"
+            | "Product"
+            | "Comment"
+            | "CreationDate"
+            | "Genre"
+            | "Engineer"
+            | "Software"
+            | "Copyright"
+            | "Technician"
+            | "Subject"
+            | "Source"
+    )
+    .then_some(name)
 }
 
 fn apply_request(paths: &[PathBuf], request: EditRequest) -> ExitCode {
     match request {
         EditRequest::DirectJpeg(edits) => apply_jpeg_edits(paths, &edits),
         EditRequest::DirectPng(edits) => apply_png_edits(paths, &edits),
+        EditRequest::DirectWav(edits) => apply_wav_edits(paths, &edits),
         EditRequest::Copy { key, source } => apply_copy(paths, key, &source),
     }
 }
@@ -348,6 +390,63 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path) -> ExitCode {
             }];
             apply_png_edits(paths, &edits)
         }
+        CopyKey::WavInfo(name) => {
+            if source_metadata.file_info.format != metra::FileFormat::Wav {
+                eprintln!(
+                    "metra: {}: source format {} is not WAV",
+                    source.display(),
+                    source_metadata.file_info.format
+                );
+                return ExitCode::from(1);
+            }
+            let key = format!("WAV:{name}");
+            let Some(text) = source_metadata.find(&key) else {
+                eprintln!("metra: {}: source does not contain {key}", source.display());
+                return ExitCode::from(1);
+            };
+            let metra::TagValue::String(text) = &text.value else {
+                eprintln!("metra: {}: {key} is not a string", source.display());
+                return ExitCode::from(1);
+            };
+            let edits = [metra::WavEdit::SetInfo {
+                name,
+                value: text.clone(),
+            }];
+            apply_wav_edits(paths, &edits)
+        }
+    }
+}
+
+fn apply_wav_edits(paths: &[PathBuf], edits: &[metra::WavEdit]) -> ExitCode {
+    let mut failures = 0_usize;
+    for path in paths {
+        match metra::read(path) {
+            Ok(metadata) if metadata.file_info.format == metra::FileFormat::Wav => {
+                if let Err(error) = metra::rewrite_wav_path(path, ParseLimits::default(), edits) {
+                    eprintln!("metra: {}: {error}", path.display());
+                    failures += 1;
+                } else {
+                    println!("updated: {}", path.display());
+                }
+            }
+            Ok(metadata) => {
+                eprintln!(
+                    "metra: {}: {} edits are supported only for WAV files",
+                    path.display(),
+                    metadata.file_info.format
+                );
+                failures += 1;
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", path.display());
+                failures += 1;
+            }
+        }
+    }
+    if failures == 0 {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
     }
 }
 
