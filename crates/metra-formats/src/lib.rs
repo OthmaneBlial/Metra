@@ -36,6 +36,7 @@ mod ogg_writer;
 mod pdf;
 mod pdf_writer;
 mod png;
+mod png_create;
 mod png_writer;
 mod psd;
 mod psd_writer;
@@ -79,6 +80,7 @@ pub use ogg_writer::{OggEdit, rewrite_ogg, rewrite_ogg_path, rewrite_ogg_to_vec}
 pub use pdf::read_pdf;
 pub use pdf_writer::{PdfEdit, rewrite_pdf, rewrite_pdf_path, rewrite_pdf_to_vec};
 pub use png::read_png;
+pub use png_create::{PngCreateEntry, PngCreateOptions, create_png_path, create_png_to_vec};
 pub use png_writer::{PngEdit, rewrite_png, rewrite_png_path, rewrite_png_to_vec};
 pub use psd::read_psd;
 pub use psd_writer::{PsdEdit, rewrite_psd, rewrite_psd_path, rewrite_psd_to_vec};
