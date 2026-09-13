@@ -64,6 +64,7 @@ Initial read-first foundation with narrow validated rewrites:
 - added bounded ICC text and XYZ table-tag inspection with stable 4CC IDs;
 - preserved numeric IPTC-IIM dataset identifiers in parsed tags and stable lookup;
 - decoded EXIF `UserComment` ASCII and Unicode payloads while preserving raw bytes;
+- expanded canonical EXIF names for common image, exposure, color, and lens tags;
 - exposed repeated canonical and numeric tag lookup through the public API;
 - expanded GPS derived values with validated decimal coordinates, signed
   altitude, image direction, seconds-since-midnight time, and SI speed;
