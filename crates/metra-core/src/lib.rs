@@ -349,19 +349,19 @@ const FORMAT_CAPABILITIES: &[FormatCapabilities] = &[
     FormatCapabilities {
         format: FileFormat::Mkv,
         read: CapabilityStatus::Partial,
-        write: CapabilityStatus::Planned,
+        write: CapabilityStatus::Partial,
         create: CapabilityStatus::Planned,
         delete: CapabilityStatus::Planned,
-        lossless_rewrite: CapabilityStatus::Planned,
+        lossless_rewrite: CapabilityStatus::Partial,
         streaming: CapabilityStatus::Partial,
     },
     FormatCapabilities {
         format: FileFormat::Webm,
         read: CapabilityStatus::Partial,
-        write: CapabilityStatus::Planned,
+        write: CapabilityStatus::Partial,
         create: CapabilityStatus::Planned,
         delete: CapabilityStatus::Planned,
-        lossless_rewrite: CapabilityStatus::Planned,
+        lossless_rewrite: CapabilityStatus::Partial,
         streaming: CapabilityStatus::Partial,
     },
     FormatCapabilities {
