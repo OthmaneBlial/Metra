@@ -67,6 +67,8 @@ Initial read-first foundation with narrow validated rewrites:
 - added bounded Nikon Type 2 MakerNote IFD parsing for known camera fields with
   typed values, stable numeric identifiers, source offsets, and ParseLimits;
   other detected vendors remain header-only;
+- catalogued the bounded Nikon MakerNote identifiers centrally and covered the
+  EXIF integration path with absolute source-offset assertions;
 - preserved numeric IPTC-IIM dataset identifiers in parsed tags and stable lookup;
 - decoded EXIF `UserComment` ASCII and Unicode payloads while preserving raw bytes;
 - expanded canonical EXIF names for common image, exposure, color, and lens tags;
