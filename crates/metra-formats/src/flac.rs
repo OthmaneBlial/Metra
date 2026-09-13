@@ -128,13 +128,10 @@ pub fn read_flac<R: Read + Seek>(
                 )
                 .at(data_offset),
             ),
-            5 => metadata.add_warning(
-                Warning::new(
-                    "flac-cuesheet",
-                    "FLAC CUESHEET is present but cue points are not decoded",
-                )
-                .at(data_offset),
-            ),
+            5 => {
+                let data = read_at(reader, data_offset, length, &path, "FLAC CUESHEET")?;
+                parse_cuesheet(&data, data_offset, limits, &mut metadata);
+            }
             7..=126 => metadata.add_warning(
                 Warning::new(
                     "flac-application",
@@ -355,6 +352,202 @@ fn parse_seektable(data: &[u8], offset: u64, limits: ParseLimits, metadata: &mut
         "SEEKTABLE",
         offset,
         (materialized_count * SEEKPOINT_LENGTH) as u64,
+    );
+}
+
+fn parse_cuesheet(data: &[u8], offset: u64, limits: ParseLimits, metadata: &mut Metadata) {
+    const CUESHEET_HEADER_LENGTH: usize = 396;
+    const CUESHEET_TRACK_HEADER_LENGTH: usize = 36;
+    const CUESHEET_INDEX_LENGTH: usize = 9;
+
+    if data.len() < CUESHEET_HEADER_LENGTH {
+        metadata.add_warning(
+            Warning::new(
+                "invalid-flac-cuesheet",
+                format!(
+                    "CUESHEET is {} bytes, expected at least {CUESHEET_HEADER_LENGTH}",
+                    data.len()
+                ),
+            )
+            .at(offset),
+        );
+        return;
+    }
+
+    let catalog = String::from_utf8_lossy(&data[..128])
+        .trim_end_matches('\0')
+        .trim()
+        .to_owned();
+    if !catalog.is_empty() {
+        add_tag(
+            metadata,
+            "MediaCatalogNumber",
+            TagValue::String(catalog),
+            ValueType::String,
+            "CUESHEET",
+            offset,
+            128,
+        );
+    }
+    add_tag(
+        metadata,
+        "LeadInSamples",
+        TagValue::Unsigned(u64::from_be_bytes(
+            data[128..136]
+                .try_into()
+                .expect("FLAC CUESHEET lead-in samples"),
+        )),
+        ValueType::UnsignedInteger,
+        "CUESHEET",
+        offset + 128,
+        8,
+    );
+    add_tag(
+        metadata,
+        "IsCd",
+        TagValue::Unsigned(u64::from(data[136] & 1)),
+        ValueType::UnsignedInteger,
+        "CUESHEET",
+        offset + 136,
+        1,
+    );
+
+    let track_count = usize::from(data[395]);
+    add_tag(
+        metadata,
+        "TrackCount",
+        TagValue::Unsigned(track_count as u64),
+        ValueType::UnsignedInteger,
+        "CUESHEET",
+        offset + 395,
+        1,
+    );
+
+    let materialized_tracks = track_count.min(limits.max_jpeg_segments);
+    if materialized_tracks < track_count {
+        metadata.add_warning(
+            Warning::new(
+                "flac-cuesheet-track-limit",
+                format!(
+                    "stopped after {} FLAC CUESHEET tracks",
+                    limits.max_jpeg_segments
+                ),
+            )
+            .at(offset + CUESHEET_HEADER_LENGTH as u64),
+        );
+    }
+
+    let mut cursor = CUESHEET_HEADER_LENGTH;
+    let mut tracks = Vec::new();
+    for track_index in 0..track_count {
+        let Some(track_end) = cursor.checked_add(CUESHEET_TRACK_HEADER_LENGTH) else {
+            metadata.add_warning(
+                Warning::new("invalid-flac-cuesheet", "track header offset overflows")
+                    .at(offset + cursor as u64),
+            );
+            break;
+        };
+        if track_end > data.len() {
+            metadata.add_warning(
+                Warning::new("invalid-flac-cuesheet", "track header exceeds the block")
+                    .at(offset + cursor as u64),
+            );
+            break;
+        }
+        let track_offset = u64::from_be_bytes(
+            data[cursor..cursor + 8]
+                .try_into()
+                .expect("FLAC CUESHEET track offset"),
+        );
+        let track_number = u64::from(data[cursor + 8]);
+        let isrc_bytes = &data[cursor + 9..cursor + 21];
+        let isrc = String::from_utf8_lossy(isrc_bytes)
+            .trim_end_matches('\0')
+            .trim()
+            .to_owned();
+        let flags = data[cursor + 21];
+        let index_count = usize::from(data[cursor + 35]);
+        cursor = track_end;
+
+        let Some(index_bytes) = index_count.checked_mul(CUESHEET_INDEX_LENGTH) else {
+            metadata.add_warning(
+                Warning::new("invalid-flac-cuesheet", "index count overflows")
+                    .at(offset + cursor as u64),
+            );
+            break;
+        };
+        let Some(index_end) = cursor.checked_add(index_bytes) else {
+            metadata.add_warning(
+                Warning::new("invalid-flac-cuesheet", "index offset overflows")
+                    .at(offset + cursor as u64),
+            );
+            break;
+        };
+        if index_end > data.len() {
+            metadata.add_warning(
+                Warning::new("invalid-flac-cuesheet", "index entries exceed the block")
+                    .at(offset + cursor as u64),
+            );
+            break;
+        }
+
+        if track_index < materialized_tracks {
+            let mut track = BTreeMap::new();
+            track.insert("Offset".to_owned(), TagValue::Unsigned(track_offset));
+            track.insert("Number".to_owned(), TagValue::Unsigned(track_number));
+            if !isrc.is_empty() {
+                track.insert("ISRC".to_owned(), TagValue::String(isrc));
+            }
+            track.insert(
+                "PreEmphasis".to_owned(),
+                TagValue::Unsigned(u64::from(flags & 1)),
+            );
+            track.insert(
+                "IndexCount".to_owned(),
+                TagValue::Unsigned(index_count as u64),
+            );
+
+            let materialized_indexes = index_count.min(limits.max_jpeg_segments);
+            if materialized_indexes < index_count {
+                metadata.add_warning(
+                    Warning::new(
+                        "flac-cuesheet-index-limit",
+                        format!(
+                            "stopped after {} indexes for FLAC CUESHEET track {track_number}",
+                            limits.max_jpeg_segments
+                        ),
+                    )
+                    .at(offset + cursor as u64),
+                );
+            }
+            let indexes = data[cursor..cursor + materialized_indexes * CUESHEET_INDEX_LENGTH]
+                .chunks_exact(CUESHEET_INDEX_LENGTH)
+                .map(|index| {
+                    TagValue::Structure(BTreeMap::from([
+                        (
+                            "Offset".to_owned(),
+                            TagValue::Unsigned(u64::from_be_bytes(
+                                index[..8].try_into().expect("FLAC CUESHEET index offset"),
+                            )),
+                        ),
+                        ("Number".to_owned(), TagValue::Unsigned(u64::from(index[8]))),
+                    ]))
+                })
+                .collect::<Vec<_>>();
+            track.insert("Indexes".to_owned(), TagValue::Array(indexes));
+            tracks.push(TagValue::Structure(track));
+        }
+        cursor = index_end;
+    }
+
+    add_tag(
+        metadata,
+        "Tracks",
+        TagValue::Array(tracks),
+        ValueType::Array,
+        "CUESHEET",
+        offset + CUESHEET_HEADER_LENGTH as u64,
+        cursor.saturating_sub(CUESHEET_HEADER_LENGTH) as u64,
     );
 }
 
@@ -752,6 +945,23 @@ mod tests {
         data
     }
 
+    fn cuesheet() -> Vec<u8> {
+        let mut data = vec![0_u8; 396];
+        data[..12].copy_from_slice(b"CATALOG-0001");
+        data[128..136].copy_from_slice(&88_200_u64.to_be_bytes());
+        data[136] = 1;
+        data[395] = 1;
+        data.extend_from_slice(&0_u64.to_be_bytes());
+        data.push(1);
+        data.extend_from_slice(b"USABC9900001");
+        data.push(1);
+        data.extend_from_slice(&[0_u8; 13]);
+        data.push(1);
+        data.extend_from_slice(&588_u64.to_be_bytes());
+        data.push(0);
+        data
+    }
+
     #[test]
     fn reads_streaminfo_and_vorbis_comments() {
         let mut bytes = b"fLaC".to_vec();
@@ -808,6 +1018,62 @@ mod tests {
                 .warnings()
                 .iter()
                 .all(|warning| warning.code != "flac-seektable")
+        );
+    }
+
+    #[test]
+    fn reads_cuesheet_tracks_and_indexes_as_bounded_structures() {
+        let mut bytes = b"fLaC".to_vec();
+        bytes.extend(block(false, 0, &streaminfo()));
+        bytes.extend(block(true, 5, &cuesheet()));
+        let info = FileInfo::new("cuesheet.flac".into(), bytes.len() as u64, FileFormat::Flac);
+        let metadata = read_flac(&mut Cursor::new(bytes), info, ParseLimits::default())
+            .expect("FLAC cuesheet fixture should parse");
+
+        assert_eq!(
+            metadata
+                .find("FLAC:MediaCatalogNumber")
+                .unwrap()
+                .display_value(),
+            "CATALOG-0001"
+        );
+        assert_eq!(
+            metadata.find("FLAC:LeadInSamples").unwrap().value,
+            TagValue::Unsigned(88_200)
+        );
+        assert_eq!(
+            metadata.find("FLAC:TrackCount").unwrap().value,
+            TagValue::Unsigned(1)
+        );
+        let tracks = match &metadata.find("FLAC:Tracks").unwrap().value {
+            TagValue::Array(tracks) => tracks,
+            value => panic!("expected track array, got {value:?}"),
+        };
+        let track = match &tracks[0] {
+            TagValue::Structure(track) => track,
+            value => panic!("expected track structure, got {value:?}"),
+        };
+        assert_eq!(
+            track.get("ISRC"),
+            Some(&TagValue::String("USABC9900001".to_owned()))
+        );
+        assert_eq!(track.get("IndexCount"), Some(&TagValue::Unsigned(1)));
+        let indexes = match track.get("Indexes").unwrap() {
+            TagValue::Array(indexes) => indexes,
+            value => panic!("expected index array, got {value:?}"),
+        };
+        assert_eq!(
+            indexes[0],
+            TagValue::Structure(BTreeMap::from([
+                ("Number".to_owned(), TagValue::Unsigned(0)),
+                ("Offset".to_owned(), TagValue::Unsigned(588)),
+            ]))
+        );
+        assert!(
+            metadata
+                .warnings()
+                .iter()
+                .all(|warning| warning.code != "flac-cuesheet")
         );
     }
 
