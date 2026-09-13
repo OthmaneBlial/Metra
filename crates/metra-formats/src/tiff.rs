@@ -725,7 +725,8 @@ impl<R: Read + Seek> TiffParser<'_, R> {
                 TiffVariant::Big => self.endian.u64(&next),
             };
             if next != 0 {
-                self.parse_ifd(next, namespace, "IFD-next", depth, metadata)?;
+                let next_group = next_ifd_group(namespace, group);
+                self.parse_ifd(next, namespace, &next_group, depth, metadata)?;
             }
         }
         Ok(())
@@ -1146,6 +1147,17 @@ fn value_type(value: &TagValue) -> ValueType {
     }
 }
 
+fn next_ifd_group(namespace: &str, group: &str) -> String {
+    if namespace == "EXIF"
+        && let Some(index) = group
+            .strip_prefix("IFD")
+            .and_then(|value| value.parse::<u32>().ok())
+    {
+        return format!("IFD{}", index.saturating_add(1));
+    }
+    "IFD-next".to_owned()
+}
+
 fn validate_thumbnail_reference(metadata: &mut Metadata, length: u64, absolute_start: u64) {
     let offset = metadata
         .tags
@@ -1525,6 +1537,39 @@ mod tests {
         );
         assert_eq!(tag_definition("EXIF", 0x0100).name, "ImageWidth");
         assert_eq!(tag_definition("EXIF", 0xA434).name, "LensModel");
+    }
+
+    #[test]
+    fn parses_thumbnail_ifd_chain_without_decoding_thumbnail_pixels() {
+        let mut bytes = vec![
+            b'I', b'I', 42, 0, 8, 0, 0, 0, // classic TIFF header, IFD0 at 8
+            0, 0, // IFD0 has no entries
+            14, 0, 0, 0, // next IFD is IFD1
+            2, 0, // IFD1 has width and height
+            0x00, 0x01, 4, 0, 1, 0, 0, 0, 160, 0, 0, 0, // ImageWidth = 160
+            0x01, 0x01, 4, 0, 1, 0, 0, 0, 120, 0, 0, 0, // ImageLength = 120
+            0, 0, 0, 0, // no further IFD
+        ];
+        bytes.extend_from_slice(&[0xFF, 0xD8, 0xFF, 0xD9]);
+
+        let info = FileInfo::new("thumbnail.tif".into(), bytes.len() as u64, FileFormat::Tiff);
+        let metadata = read_tiff(&mut Cursor::new(bytes), info, ParseLimits::default())
+            .expect("thumbnail IFD should parse");
+        let width = metadata
+            .tags
+            .iter()
+            .find(|tag| tag.group == "IFD1" && tag.name == "ImageWidth")
+            .expect("IFD1 width should be present");
+        assert_eq!(width.value, TagValue::Unsigned(160));
+        assert_eq!(
+            metadata
+                .tags
+                .iter()
+                .find(|tag| tag.group == "IFD1" && tag.name == "ImageLength")
+                .unwrap()
+                .value,
+            TagValue::Unsigned(120)
+        );
     }
 
     #[test]
