@@ -185,7 +185,7 @@ and `streaming` statuses instead of implying full support from detection alone.
 ```text
 src/main.rs                 CLI argument and output layer
 src/lib.rs                  public `metra` facade
-crates/metra-core           model, limits, and structured errors
+crates/metra-core           model, generated tag catalog, limits, and structured errors
 crates/metra-formats        signature detection and format readers
 ```
 
@@ -195,10 +195,12 @@ The TIFF reader uses checked arithmetic and random access, so a large container
 does not need to be copied wholesale into memory. The JPEG, PNG, and WebP
 readers only materialize bounded metadata chunks.
 
-The next architectural boundaries are deliberately deferred until behavior
-requires them: a generated tag database, additional manufacturer-specific
-MakerNote readers, deeper media metadata support, and a generalized rewrite
-capability layer. The current
+The tag catalog is maintained as tab-separated source data in
+`crates/metra-core/data/tag-definitions.tsv`; `metra-core/build.rs` validates
+its fields and identifiers, then generates the compact Rust lookup table at
+build time. Additional manufacturer-specific MakerNote readers, deeper media
+metadata support, and a generalized rewrite capability layer remain deferred.
+The current
 format-specific writers remain intentionally narrow and independently tested.
 
 ## Validation
@@ -254,10 +256,10 @@ test Metra and benchmark numbers remain machine-specific.
 ## Roadmap
 
 Avancement global vérifié : **88 %**. Ce chiffre est une moyenne indicative des
-huit axes ci-dessous, arrondie à partir de 87,6 %, calculée uniquement sur le code
+huit axes ci-dessous, arrondie à partir de 87,8 %, calculée uniquement sur le code
 et les tests présents ; il ne représente pas un pourcentage de compatibilité ExifTool.
 
-1. **98 %** — Étendre le modèle de lecture et les définitions de tags sans perdre les données brutes ; le parseur TIFF couvre maintenant les en-têtes classic et BigTIFF, les offsets/compteurs 64 bits et les valeurs LONG8/SLONG8/IFD8, les offsets multiples `SubIFDs` et les chaînes IFD1/IFD2 de thumbnails restent groupés explicitement sans décoder les pixels, tandis que les dérivés GPS valident les références, les plages et les conversions altitude/direction/temps/vitesse, les datasets IPTC-IIM lus conservent leur identifiant numérique stable, `EXIF:UserComment` décode les préfixes ASCII/Unicode sans perdre les octets bruts, les tags TIFF/EXIF d’image, de sensibilité, de capture et d’objectif ont des noms canoniques, les champs Nikon bornés sont résolus par le catalogue partagé, les profils ICC/XMP autonomes réutilisent le modèle typé, Ogg expose des commentaires Vorbis/Opus et des champs FLAC `STREAMINFO` typés sous namespace explicite, PNG expose son `IHDR` sous forme de tags typés bornés, et WAV expose maintenant les feuilles iXML et les tags ID3 embarqués sous limites strictes.
+1. **99 %** — Étendre le modèle de lecture et les définitions de tags sans perdre les données brutes ; le parseur TIFF couvre maintenant les en-têtes classic et BigTIFF, les offsets/compteurs 64 bits et les valeurs LONG8/SLONG8/IFD8, les offsets multiples `SubIFDs` et les chaînes IFD1/IFD2 de thumbnails restent groupés explicitement sans décoder les pixels, tandis que les dérivés GPS valident les références, les plages et les conversions altitude/direction/temps/vitesse, les datasets IPTC-IIM lus conservent leur identifiant numérique stable, `EXIF:UserComment` décode les préfixes ASCII/Unicode sans perdre les octets bruts, les tags TIFF/EXIF d’image, de sensibilité, de capture et d’objectif ont des noms canoniques, les champs Nikon bornés sont résolus par le catalogue partagé, les profils ICC/XMP autonomes réutilisent le modèle typé, Ogg expose des commentaires Vorbis/Opus et des champs FLAC `STREAMINFO` typés sous namespace explicite, PNG expose son `IHDR` sous forme de tags typés bornés, WAV expose les feuilles iXML et les tags ID3 embarqués sous limites strictes, et le catalogue de tags est généré à la compilation depuis une source versionnée avec contrôle des doublons.
 2. **52 %** — Ajouter des corpus réels et des tests différentiels JPEG/TIFF/PNG/WebP/Ogg ; le harnais opt-in a été exécuté sur un corpus local de 194 fichiers sans panic, avec 89 fichiers reconnus, 2 916 tags Metra, 1 837 clés et 1 416 valeurs typées alignées, mais 105 fichiers restent hors surface et aucune preuve n’est embarquée dans le dépôt.
 3. **99 %** — Approfondir HEIF/AVIF et les conteneurs média, puis couvrir les lecteurs restants ; les lecteurs ISO-BMFF exposent maintenant les propriétés image bornées courantes en plus des marques, WebP lit les dimensions des bitstreams VP8X, VP8 et VP8L sans décoder les pixels, les lecteurs XMP/ICC autonomes et Ogg/Vorbis/Opus sont disponibles avec détection de signature bornée, Ogg-FLAC expose `STREAMINFO`, WAV décode maintenant les feuilles iXML et délègue les chunks ID3v2 au parseur borné sans activer les entités externes, les conteneurs Matroska/WebM exposent maintenant chapitres, cues et descripteurs de pièces jointes sans charger leurs payloads, les conteneurs RAW hérités CRW/MRW/X3F sont identifiés explicitement, tandis que les lecteurs PSD/PSB, RAW et AVI couvrent leurs en-têtes et métadonnées courantes sans décoder les pixels ou les flux vidéo.
 4. **98 %** — Étendre XMP/IPTC/ICC/ID3 et isoler les espaces MakerNote ; XMP est maintenant réécrit de façon bornée pour JPEG APP1, WebP et PNG, les datasets IPTC-IIM connus peuvent être réécrits dans les ressources Photoshop APP13, les profils ICC fragmentés JPEG, PNG `iCCP` et WebP `ICCP` sont inspectés sous limites avec descriptions texte et valeurs XYZ courantes, les références XML sûres sont décodées sans entités personnalisées, les textes PNG compressés sont déployés sous budget, les champs texte/commentaires ID3v2 courants restent sous limites explicites, et les conteneurs MakerNote courants sont identifiés ; des IFD Nikon Type 2 et Canon bornés exposent maintenant leurs champs connus et conservent les valeurs inconnues décodables, avec offsets de source absolus testés.
