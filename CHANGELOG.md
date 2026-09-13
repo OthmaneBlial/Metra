@@ -52,6 +52,8 @@ Initial read-first foundation with narrow validated rewrites:
   metadata readers;
 - added bounded SVG XML inspection for root geometry, document text, and safe
   comment extraction without rendering;
+- added bounded extraction of embedded SVG `xmpmeta` packets through the shared
+  XMP reader, preserving packet source offsets and warning on invalid packets;
 - added shared safe XML character-reference handling for SVG and XMP while
   rejecting custom entities and DOCTYPE declarations;
 - added validated, lossless JPEG COM replacement/deletion with same-directory
