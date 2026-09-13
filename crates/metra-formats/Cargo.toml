@@ -7,6 +7,7 @@ license.workspace = true
 description = "Metadata format detection and defensive JPEG/TIFF/EXIF readers"
 
 [dependencies]
+flate2.workspace = true
 metra-core = { path = "../metra-core" }
 quick-xml.workspace = true
 thiserror.workspace = true
