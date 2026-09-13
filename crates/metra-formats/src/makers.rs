@@ -1,4 +1,4 @@
-use metra_core::{Metadata, Source, Tag, TagValue, ValueType};
+use metra_core::{Metadata, ParseLimits, Source, Tag, TagValue, ValueType, Warning};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct MakerNoteIdentity {
@@ -6,7 +6,12 @@ struct MakerNoteIdentity {
     format: &'static str,
 }
 
-pub(crate) fn inspect_maker_note(bytes: &[u8], data_offset: u64, metadata: &mut Metadata) {
+pub(crate) fn inspect_maker_note(
+    bytes: &[u8],
+    data_offset: u64,
+    metadata: &mut Metadata,
+    limits: ParseLimits,
+) {
     let Some(identity) = identify(bytes) else {
         return;
     };
@@ -24,6 +29,336 @@ pub(crate) fn inspect_maker_note(bytes: &[u8], data_offset: u64, metadata: &mut 
         data_offset,
         bytes.len() as u64,
     );
+    if identity.format == "Nikon Type 2" {
+        parse_nikon_type2(bytes, data_offset, metadata, limits);
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Endian {
+    Little,
+    Big,
+}
+
+fn parse_nikon_type2(bytes: &[u8], data_offset: u64, metadata: &mut Metadata, limits: ParseLimits) {
+    let Some(tiff) = bytes.get(10..) else {
+        metadata.add_warning(
+            Warning::new(
+                "truncated-nikon-makernote",
+                "Nikon Type 2 TIFF header is missing",
+            )
+            .at(data_offset),
+        );
+        return;
+    };
+    if tiff.len() < 8 {
+        metadata.add_warning(
+            Warning::new(
+                "truncated-nikon-makernote",
+                "Nikon Type 2 TIFF header is truncated",
+            )
+            .at(data_offset + 10),
+        );
+        return;
+    }
+    let endian = match &tiff[..2] {
+        b"II" => Endian::Little,
+        b"MM" => Endian::Big,
+        _ => {
+            metadata.add_warning(
+                Warning::new(
+                    "invalid-nikon-makernote",
+                    "Nikon Type 2 MakerNote has an invalid byte order",
+                )
+                .at(data_offset + 10),
+            );
+            return;
+        }
+    };
+    if read_u16(tiff, 2, endian) != Some(42) {
+        metadata.add_warning(
+            Warning::new(
+                "invalid-nikon-makernote",
+                "Nikon Type 2 MakerNote does not contain TIFF magic 42",
+            )
+            .at(data_offset + 12),
+        );
+        return;
+    }
+    let Some(first_ifd) = read_u32(tiff, 4, endian) else {
+        return;
+    };
+    parse_nikon_ifd(tiff, first_ifd, endian, data_offset + 10, metadata, limits);
+}
+
+fn parse_nikon_ifd(
+    bytes: &[u8],
+    offset: u32,
+    endian: Endian,
+    source_base: u64,
+    metadata: &mut Metadata,
+    limits: ParseLimits,
+) {
+    let Some(offset) = usize::try_from(offset).ok() else {
+        return;
+    };
+    let Some(count) = read_u16(bytes, offset, endian).map(usize::from) else {
+        metadata.add_warning(
+            Warning::new(
+                "truncated-nikon-makernote",
+                "Nikon MakerNote IFD count is missing",
+            )
+            .at(source_base + offset as u64),
+        );
+        return;
+    };
+    let count_to_read = count.min(limits.max_ifd_entries);
+    if count > count_to_read {
+        metadata.add_warning(
+            Warning::new(
+                "nikon-makernote-entry-limit",
+                format!("Nikon MakerNote declares {count} entries; reading only {count_to_read}"),
+            )
+            .at(source_base + offset as u64),
+        );
+    }
+    let Some(entries_start) = offset.checked_add(2) else {
+        return;
+    };
+    for index in 0..count_to_read {
+        let Some(entry_offset) = entries_start.checked_add(index.saturating_mul(12)) else {
+            return;
+        };
+        let Some(entry) = bytes.get(entry_offset..entry_offset.saturating_add(12)) else {
+            metadata.add_warning(
+                Warning::new(
+                    "truncated-nikon-makernote",
+                    "Nikon MakerNote entry extends beyond its payload",
+                )
+                .at(source_base + entry_offset as u64),
+            );
+            return;
+        };
+        parse_nikon_entry(
+            entry,
+            entry_offset,
+            endian,
+            source_base,
+            bytes,
+            metadata,
+            limits,
+        );
+    }
+}
+
+fn parse_nikon_entry(
+    entry: &[u8],
+    entry_offset: usize,
+    endian: Endian,
+    source_base: u64,
+    bytes: &[u8],
+    metadata: &mut Metadata,
+    limits: ParseLimits,
+) {
+    let Some(id) = read_u16(entry, 0, endian) else {
+        return;
+    };
+    let Some(type_id) = read_u16(entry, 2, endian) else {
+        return;
+    };
+    let Some(count) = read_u32(entry, 4, endian) else {
+        return;
+    };
+    let Some(item_size) = type_size(type_id) else {
+        return;
+    };
+    let Some(total_size) = usize::try_from(count)
+        .ok()
+        .and_then(|count| count.checked_mul(item_size))
+    else {
+        metadata.add_warning(
+            Warning::new(
+                "invalid-nikon-makernote-size",
+                "Nikon MakerNote value size overflows",
+            )
+            .at(source_base + entry_offset as u64),
+        );
+        return;
+    };
+    if total_size > limits.max_value_bytes {
+        metadata.add_warning(
+            Warning::new(
+                "nikon-makernote-value-limit",
+                format!("Nikon MakerNote tag 0x{id:04X} exceeds the value budget"),
+            )
+            .at(source_base + entry_offset as u64),
+        );
+        return;
+    }
+    let (value_bytes, value_offset) = if total_size <= 4 {
+        let Some(value_bytes) = entry.get(8..8 + total_size) else {
+            return;
+        };
+        (value_bytes, entry_offset + 8)
+    } else {
+        let Some(value_start) =
+            read_u32(entry, 8, endian).and_then(|value| usize::try_from(value).ok())
+        else {
+            return;
+        };
+        let Some(value_bytes) = bytes.get(value_start..value_start.saturating_add(total_size))
+        else {
+            metadata.add_warning(
+                Warning::new(
+                    "invalid-nikon-makernote-offset",
+                    format!("Nikon MakerNote tag 0x{id:04X} is outside its payload"),
+                )
+                .at(source_base + value_start as u64),
+            );
+            return;
+        };
+        (value_bytes, value_start)
+    };
+    let Some(name) = nikon_tag_name(id) else {
+        return;
+    };
+    let Some(value) = decode_value(type_id, count, value_bytes, endian) else {
+        return;
+    };
+    let value_type = value_type(&value);
+    metadata.add_tag(Tag {
+        namespace: "MakerNotes".to_owned(),
+        group: "Nikon".to_owned(),
+        id: Some(u32::from(id)),
+        name: format!("Nikon:{name}"),
+        description: Some("Nikon MakerNote property".to_owned()),
+        raw_value: Some(value_bytes.to_vec()),
+        value,
+        value_type,
+        source: Source::new(
+            "EXIF/MakerNote/Nikon",
+            Some(source_base + value_offset as u64),
+            Some(total_size as u64),
+        ),
+        writable: false,
+    });
+}
+
+fn read_u16(bytes: &[u8], offset: usize, endian: Endian) -> Option<u16> {
+    let bytes = bytes.get(offset..offset.checked_add(2)?)?;
+    Some(match endian {
+        Endian::Little => u16::from_le_bytes(bytes.try_into().ok()?),
+        Endian::Big => u16::from_be_bytes(bytes.try_into().ok()?),
+    })
+}
+
+fn read_u32(bytes: &[u8], offset: usize, endian: Endian) -> Option<u32> {
+    let bytes = bytes.get(offset..offset.checked_add(4)?)?;
+    Some(match endian {
+        Endian::Little => u32::from_le_bytes(bytes.try_into().ok()?),
+        Endian::Big => u32::from_be_bytes(bytes.try_into().ok()?),
+    })
+}
+
+fn type_size(type_id: u16) -> Option<usize> {
+    match type_id {
+        1 | 2 | 6 | 7 => Some(1),
+        3 | 8 => Some(2),
+        4 | 9 | 11 | 13 => Some(4),
+        5 | 10 | 12 => Some(8),
+        _ => None,
+    }
+}
+
+fn decode_value(type_id: u16, count: u32, bytes: &[u8], endian: Endian) -> Option<TagValue> {
+    if type_id == 2 {
+        return Some(TagValue::String(
+            String::from_utf8_lossy(bytes)
+                .trim_end_matches('\0')
+                .to_owned(),
+        ));
+    }
+    let values = match type_id {
+        1 | 7 => Some(
+            bytes
+                .iter()
+                .map(|byte| TagValue::Unsigned(u64::from(*byte)))
+                .collect::<Vec<_>>(),
+        ),
+        3 => bytes
+            .chunks_exact(2)
+            .map(|chunk| {
+                read_u16(chunk, 0, endian).map(|value| TagValue::Unsigned(u64::from(value)))
+            })
+            .collect::<Option<Vec<_>>>(),
+        4 | 13 => bytes
+            .chunks_exact(4)
+            .map(|chunk| {
+                read_u32(chunk, 0, endian).map(|value| TagValue::Unsigned(u64::from(value)))
+            })
+            .collect::<Option<Vec<_>>>(),
+        5 => bytes
+            .chunks_exact(8)
+            .map(|chunk| {
+                Some(TagValue::UnsignedRational {
+                    numerator: u64::from(read_u32(chunk, 0, endian)?),
+                    denominator: u64::from(read_u32(chunk, 4, endian)?),
+                })
+            })
+            .collect::<Option<Vec<_>>>(),
+        _ => None,
+    }?;
+    (values.len() == usize::try_from(count).ok()?).then(|| {
+        if values.len() == 1 {
+            values.into_iter().next().expect("length checked")
+        } else {
+            TagValue::Array(values)
+        }
+    })
+}
+
+fn value_type(value: &TagValue) -> ValueType {
+    match value {
+        TagValue::String(_) => ValueType::String,
+        TagValue::Unsigned(_) => ValueType::UnsignedInteger,
+        TagValue::Signed(_) => ValueType::SignedInteger,
+        TagValue::Float(_) => ValueType::Float,
+        TagValue::Rational { .. } => ValueType::Rational,
+        TagValue::UnsignedRational { .. } => ValueType::UnsignedRational,
+        TagValue::Bytes(_) => ValueType::Bytes,
+        TagValue::Array(_) => ValueType::Array,
+        TagValue::Structure(_) => ValueType::Structure,
+        TagValue::Unknown { .. } => ValueType::Unknown,
+    }
+}
+
+fn nikon_tag_name(id: u16) -> Option<&'static str> {
+    Some(match id {
+        0x0001 => "Version",
+        0x0002 => "ISO",
+        0x0004 => "Quality",
+        0x0005 => "WhiteBalance",
+        0x0006 => "Sharpness",
+        0x0007 => "FocusMode",
+        0x0008 => "FlashSetting",
+        0x0009 => "FlashType",
+        0x000B => "WhiteBalanceFineTune",
+        0x000C => "ColorMode",
+        0x0080 => "ImageAdjustment",
+        0x0081 => "ToneCompensation",
+        0x0082 => "Adapter",
+        0x0083 => "LensType",
+        0x0084 => "Lens",
+        0x0085 => "ManualFocusDistance",
+        0x0086 => "DigitalZoom",
+        0x0087 => "FlashMode",
+        0x0088 => "AFPoint",
+        0x0089 => "ShootingMode",
+        0x008B => "LensStops",
+        0x0093 => "NEFCompression",
+        0x0094 => "Saturation",
+        _ => return None,
+    })
 }
 
 fn identify(bytes: &[u8]) -> Option<MakerNoteIdentity> {
@@ -95,7 +430,12 @@ mod tests {
     fn identifies_known_maker_note_headers_without_decoding_proprietary_tags() {
         let mut metadata =
             Metadata::new(FileInfo::new("maker-note.jpg".into(), 16, FileFormat::Jpeg));
-        inspect_maker_note(b"Nikon\0\x02\0\0\0opaque", 100, &mut metadata);
+        inspect_maker_note(
+            b"Nikon\0\x02\0\0\0opaque",
+            100,
+            &mut metadata,
+            ParseLimits::default(),
+        );
         assert_eq!(
             metadata.find("MakerNotes:Vendor").unwrap().display_value(),
             "Nikon"
@@ -114,7 +454,35 @@ mod tests {
     fn ignores_unknown_maker_note_payloads() {
         let mut metadata =
             Metadata::new(FileInfo::new("maker-note.jpg".into(), 4, FileFormat::Jpeg));
-        inspect_maker_note(b"opaque", 0, &mut metadata);
+        inspect_maker_note(b"opaque", 0, &mut metadata, ParseLimits::default());
         assert!(metadata.tags.is_empty());
+    }
+
+    #[test]
+    fn reads_bounded_nikon_type_two_ifd_values() {
+        let mut tiff = vec![b'I', b'I', 42, 0, 8, 0, 0, 0, 2, 0];
+        tiff.extend_from_slice(&[1, 0, 2, 0, 8, 0, 0, 0]);
+        tiff.extend_from_slice(&40_u32.to_le_bytes());
+        tiff.extend_from_slice(&[2, 0, 3, 0, 1, 0, 0, 0, 100, 0, 0, 0]);
+        tiff.extend_from_slice(&[0, 0, 0, 0]);
+        tiff.resize(40, 0);
+        tiff.extend_from_slice(b"v1.0\0\0\0\0");
+        let mut maker_note = b"Nikon\0\x02\0\0\0".to_vec();
+        maker_note.extend_from_slice(&tiff);
+        let mut metadata = Metadata::new(FileInfo::new(
+            "nikon.jpg".into(),
+            maker_note.len() as u64,
+            FileFormat::Jpeg,
+        ));
+        inspect_maker_note(&maker_note, 200, &mut metadata, ParseLimits::default());
+        assert_eq!(
+            metadata.find("MakerNotes:Nikon:Version").unwrap().value,
+            TagValue::String("v1.0".to_owned())
+        );
+        assert_eq!(
+            metadata.find("MakerNotes:Nikon:ISO").unwrap().value,
+            TagValue::Unsigned(100)
+        );
+        assert_eq!(metadata.find("MakerNotes:Nikon:ISO").unwrap().id, Some(2));
     }
 }

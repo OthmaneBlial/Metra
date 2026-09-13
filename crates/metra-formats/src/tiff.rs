@@ -643,7 +643,17 @@ impl<R: Read + Seek> TiffParser<'_, R> {
         };
         let maker_note = if namespace == "EXIF" && id == 0x927C {
             match &value {
-                TagValue::Bytes(bytes) => Some(bytes.clone()),
+                TagValue::Bytes(bytes) => {
+                    let value_offset = if total_size <= 4 {
+                        entry_offset.saturating_add(8)
+                    } else {
+                        u64::from(self.endian.u32(&entry[8..12]))
+                    };
+                    Some((
+                        bytes.clone(),
+                        self.absolute_start.saturating_add(value_offset),
+                    ))
+                }
                 _ => None,
             }
         } else {
@@ -666,12 +676,8 @@ impl<R: Read + Seek> TiffParser<'_, R> {
             writable: false,
         });
 
-        if let Some(bytes) = maker_note {
-            inspect_maker_note(
-                &bytes,
-                self.absolute_start.saturating_add(entry_offset),
-                metadata,
-            );
+        if let Some((bytes, maker_note_offset)) = maker_note {
+            inspect_maker_note(&bytes, maker_note_offset, metadata, self.limits);
         }
 
         if count == 1 && matches!(id, 0x8769 | 0x8825 | 0xA005) {
