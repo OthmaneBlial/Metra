@@ -20,14 +20,15 @@ before allocating or traversing metadata.
 ## Limits
 
 The default `ParseLimits` values are intentionally conservative for a first
-read-only release. Library callers can select stricter values for untrusted
+read-first release. Library callers can select stricter values for untrusted
 batch jobs. Any new decompression or XML implementation must add its own
 expansion and nesting limits before being enabled.
 
 ## Current rewrite safety
 
-Only JPEG comment, PNG `tEXt`, and WAV `LIST/INFO` replacement/deletion/copy is implemented,
-through the library API and the explicit `--set`/`--delete`/`--copy` CLI flags.
+Only JPEG comment, PNG `tEXt`, WAV `LIST/INFO`, and FLAC Vorbis Comment
+replacement/deletion/copy is implemented, through the library API and the
+explicit `--set`/`--delete`/`--copy` CLI flags.
 Each writer reads and validates the source first,
 copies the container through a same-directory temporary file, syncs and
 re-reads the output, preserves source permissions, and replaces the original

@@ -68,13 +68,14 @@ out-of-range required read.
 ## Rewrite boundary
 
 The current writer surface is deliberately limited to JPEG COM segments, PNG
-`tEXt` chunks, and WAV `LIST/INFO` fields. Each library writer validates its
-source through the reader before writing, streams the original container while
-preserving untargeted bytes, validates the temporary output with the reader
-again, syncs it, and atomically renames a same-directory temporary file. The
-CLI exposes `--set`/`--delete`/`--copy` for `JPEG:Comment`,
-`PNG:Text:<keyword>`, and `WAV:<INFO field>`; generic tag mutation and other
-format writers remain deferred until their round-trip acceptance tests exist.
+`tEXt` chunks, WAV `LIST/INFO` fields, and FLAC Vorbis Comment key/value pairs.
+Each library writer validates its source through the reader before writing,
+streams the original container while preserving untargeted bytes, validates
+the temporary output with the reader again, syncs it, and atomically renames a
+same-directory temporary file. The CLI exposes `--set`/`--delete`/`--copy` for
+`JPEG:Comment`, `PNG:Text:<keyword>`, `WAV:<INFO field>`, and
+`FLAC:<Vorbis field>`; generic tag mutation and other format writers remain
+deferred until their round-trip acceptance tests exist.
 
 ## Output contract
 
@@ -100,7 +101,7 @@ The following changes are deferred until their acceptance tests exist:
   meaningful shared operations;
 - manufacturer-specific MakerNote modules;
 - deeper HEIF/AVIF and media metadata modules;
-- a lossless block-preservation layer for safe rewrites;
+- a generalized lossless block-preservation abstraction across more formats;
 - cancellation and interrupt propagation for long-running batches.
 
 Deferring a seam is not a compatibility claim. The compatibility matrix records

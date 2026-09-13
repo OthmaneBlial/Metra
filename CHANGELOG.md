@@ -2,7 +2,7 @@
 
 ## 0.1.0 - 2026-09-13
 
-Initial read-only foundation:
+Initial read-first foundation with narrow validated rewrites:
 
 - added the public typed metadata model and versioned JSON schema;
 - added signature-based detection for JPEG, TIFF, PNG, WebP, PDF, and GIF;
@@ -29,6 +29,8 @@ Initial read-only foundation:
   streamed image chunks, and atomic target replacement;
 - added validated WAV `LIST/INFO` replacement/deletion/copy with RIFF size
   repair, streamed audio chunks, and atomic target replacement;
+- added validated FLAC Vorbis Comment replacement/deletion/copy while
+  preserving other metadata blocks and audio frames;
 - added bounded `--jobs` batch inspection with deterministic result ordering;
 - expanded ISO-BMFF inspection with `ispe` dimensions, item/handler fields,
   and direct XMP/EXIF decoding when the metadata boxes are available;

@@ -4,8 +4,9 @@ Fast, safe metadata inspection powered by Rust.
 
 Metra is an independent metadata toolkit whose library is the product and whose
 CLI is a thin consumer of the same public API. The current release is a
-read-only foundation: it inspects container metadata without decoding image
-pixels and reports unsupported blocks instead of pretending to understand them.
+read-first foundation with narrow, validated rewrites: it inspects container
+metadata without decoding image pixels and reports unsupported blocks instead of
+pretending to understand them.
 
 ## Current status
 
@@ -40,14 +41,14 @@ Implemented today:
 | Batch | Deterministic path ordering with bounded parallel inspection through `--jobs N`; human, JSON Lines, and CSV modes stream results with a bounded out-of-order buffer |
 | Safety | Checked offsets, bounded reads, recursion and entry limits, deterministic recursive traversal, and structured warnings |
 
-Generic writing, creation, deletion, metadata copying, SVG embedded-XMP
-extraction, MakerNotes interpretation, and full media and ExifTool compatibility
-are intentionally not advertised as implemented yet. The library now supports
-validated, lossless JPEG comment, PNG `tEXt`, and WAV `LIST/INFO`
-replacement/deletion through
-format-specific rewrite APIs, and the CLI exposes the same narrow operations
-through `--set`, `--delete`, and `--copy`. Manufacturer-specific MakerNotes are still planned;
-MP3/ID3, FLAC/Vorbis comments, PDF, and WAV are only partially covered. Their
+Generic writing, creation, SVG embedded-XMP extraction, MakerNotes
+interpretation, and full media and ExifTool compatibility are intentionally not
+advertised as implemented yet. The library now supports validated, lossless
+JPEG comment, PNG `tEXt`, WAV `LIST/INFO`, and FLAC Vorbis Comment
+replacement/deletion through format-specific rewrite APIs, and the CLI exposes
+the same narrow operations through `--set`, `--delete`, and `--copy`.
+Manufacturer-specific MakerNotes are still planned; MP3/ID3, PDF, WAV, and
+FLAC remain only partially covered outside their explicit writable fields. Their
 boundaries are tracked in
 [`compat/exiftool-compatibility.json`](compat/exiftool-compatibility.json).
 
@@ -68,6 +69,7 @@ cargo run -- --delete JPEG:Comment photo.jpg
 cargo run -- --copy JPEG:Comment=source.jpg target.jpg
 cargo run -- --set 'PNG:Text:Comment=reviewed' image.png
 cargo run -- --set 'WAV:Title=reviewed' audio.wav
+cargo run -- --set 'FLAC:Title=reviewed' audio.flac
 ```
 
 Install the local CLI:
@@ -135,9 +137,8 @@ readers only materialize bounded metadata chunks.
 
 The next architectural boundaries are deliberately deferred until behavior
 requires them: a generated tag database, isolated MakerNote readers, deeper
-media metadata support, and a transactional rewrite engine. This keeps the
-current working slice small enough to test while leaving the public model
-extensible.
+media metadata support, and a generalized rewrite capability layer. The current
+format-specific writers remain intentionally narrow and independently tested.
 
 ## Validation
 
@@ -165,7 +166,7 @@ are the local validation gate.
 
 ## Roadmap
 
-Avancement global vérifié : **66 %**. Ce chiffre est une moyenne indicative des
+Avancement global vérifié : **69 %**. Ce chiffre est une moyenne indicative des
 huit axes ci-dessous, calculée uniquement sur le code et les tests présents ; il
 ne représente pas un pourcentage de compatibilité ExifTool.
 
@@ -173,8 +174,8 @@ ne représente pas un pourcentage de compatibilité ExifTool.
 2. **30 %** — Ajouter des corpus réels et des tests différentiels JPEG/TIFF/PNG/WebP.
 3. **90 %** — Approfondir HEIF/AVIF et les conteneurs média, puis couvrir les lecteurs restants.
 4. **65 %** — Étendre XMP/IPTC/ICC/ID3 et isoler les espaces MakerNote.
-5. **40 %** — Concevoir l’écriture read-modify-write avec validation et remplacement atomique.
-6. **65 %** — Ajouter `set`/`delete`/`copy` après les tests round-trip ; les trois opérations couvrent maintenant JPEG `Comment`, PNG `tEXt` et WAV `LIST/INFO` via API et CLI.
+5. **50 %** — Concevoir l’écriture read-modify-write avec validation et remplacement atomique ; quatre writers bornés couvrent maintenant JPEG, PNG, WAV et FLAC.
+6. **75 %** — Ajouter `set`/`delete`/`copy` après les tests round-trip ; les trois opérations couvrent maintenant JPEG `Comment`, PNG `tEXt`, WAV `LIST/INFO` et FLAC Vorbis Comments via API et CLI.
 7. **60 %** — Ajouter le traitement parallèle contrôlé, le rendu en flux borné et les benchmarks sur collections réelles.
 8. **100 %** — Étendre les sorties structurées avec CSV, TOML et YAML versionnés.
 
