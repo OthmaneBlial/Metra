@@ -111,6 +111,11 @@ fn tag_definition(namespace: &str, id: u16) -> TagDefinition {
             name: "ImageLength",
             description: "Image height in pixels",
         },
+        ("EXIF", 0x0102) => TagDefinition {
+            namespace: "EXIF",
+            name: "BitsPerSample",
+            description: "Bits per component",
+        },
         ("EXIF", 0x0103) => TagDefinition {
             namespace: "EXIF",
             name: "Compression",
@@ -141,6 +146,21 @@ fn tag_definition(namespace: &str, id: u16) -> TagDefinition {
             name: "Orientation",
             description: "Image orientation",
         },
+        ("EXIF", 0x0115) => TagDefinition {
+            namespace: "EXIF",
+            name: "SamplesPerPixel",
+            description: "Number of components per pixel",
+        },
+        ("EXIF", 0x0116) => TagDefinition {
+            namespace: "EXIF",
+            name: "RowsPerStrip",
+            description: "Rows per image strip",
+        },
+        ("EXIF", 0x0117) => TagDefinition {
+            namespace: "EXIF",
+            name: "StripByteCounts",
+            description: "Byte counts for image strips",
+        },
         ("EXIF", 0x011A) => TagDefinition {
             namespace: "EXIF",
             name: "XResolution",
@@ -156,6 +176,16 @@ fn tag_definition(namespace: &str, id: u16) -> TagDefinition {
             name: "ResolutionUnit",
             description: "Resolution unit",
         },
+        ("EXIF", 0x011C) => TagDefinition {
+            namespace: "EXIF",
+            name: "PlanarConfiguration",
+            description: "Planar or chunky component layout",
+        },
+        ("EXIF", 0x012D) => TagDefinition {
+            namespace: "EXIF",
+            name: "TransferFunction",
+            description: "Transfer function table",
+        },
         ("EXIF", 0x0131) => TagDefinition {
             namespace: "EXIF",
             name: "Software",
@@ -170,6 +200,21 @@ fn tag_definition(namespace: &str, id: u16) -> TagDefinition {
             namespace: "EXIF",
             name: "Artist",
             description: "Person who created the image",
+        },
+        ("EXIF", 0x013E) => TagDefinition {
+            namespace: "EXIF",
+            name: "WhitePoint",
+            description: "Chromaticity of the white point",
+        },
+        ("EXIF", 0x013F) => TagDefinition {
+            namespace: "EXIF",
+            name: "PrimaryChromaticities",
+            description: "Chromaticities of the primary colors",
+        },
+        ("EXIF", 0x0152) => TagDefinition {
+            namespace: "EXIF",
+            name: "ExtraSamples",
+            description: "Additional image components",
         },
         ("EXIF", 0x014A) => TagDefinition {
             namespace: "EXIF",
@@ -216,6 +261,36 @@ fn tag_definition(namespace: &str, id: u16) -> TagDefinition {
             name: "ISO",
             description: "ISO speed rating",
         },
+        ("EXIF", 0x8830) => TagDefinition {
+            namespace: "EXIF",
+            name: "SensitivityType",
+            description: "Sensitivity type",
+        },
+        ("EXIF", 0x8831) => TagDefinition {
+            namespace: "EXIF",
+            name: "StandardOutputSensitivity",
+            description: "Standard output sensitivity",
+        },
+        ("EXIF", 0x8832) => TagDefinition {
+            namespace: "EXIF",
+            name: "RecommendedExposureIndex",
+            description: "Recommended exposure index",
+        },
+        ("EXIF", 0x8833) => TagDefinition {
+            namespace: "EXIF",
+            name: "ISOSpeed",
+            description: "ISO speed value",
+        },
+        ("EXIF", 0x8834) => TagDefinition {
+            namespace: "EXIF",
+            name: "ISOSpeedLatitudeyyy",
+            description: "ISO speed latitude yyy",
+        },
+        ("EXIF", 0x8835) => TagDefinition {
+            namespace: "EXIF",
+            name: "ISOSpeedLatitudezzz",
+            description: "ISO speed latitude zzz",
+        },
         ("EXIF", 0x8822) => TagDefinition {
             namespace: "EXIF",
             name: "ExposureProgram",
@@ -246,15 +321,35 @@ fn tag_definition(namespace: &str, id: u16) -> TagDefinition {
             name: "ApertureValue",
             description: "Aperture value",
         },
+        ("EXIF", 0x9203) => TagDefinition {
+            namespace: "EXIF",
+            name: "BrightnessValue",
+            description: "Brightness value",
+        },
         ("EXIF", 0x9204) => TagDefinition {
             namespace: "EXIF",
             name: "ExposureCompensation",
             description: "Exposure bias value",
         },
+        ("EXIF", 0x9205) => TagDefinition {
+            namespace: "EXIF",
+            name: "MaxApertureValue",
+            description: "Maximum lens aperture",
+        },
+        ("EXIF", 0x9206) => TagDefinition {
+            namespace: "EXIF",
+            name: "SubjectDistance",
+            description: "Distance to the subject",
+        },
         ("EXIF", 0x9207) => TagDefinition {
             namespace: "EXIF",
             name: "MeteringMode",
             description: "Metering mode",
+        },
+        ("EXIF", 0x9208) => TagDefinition {
+            namespace: "EXIF",
+            name: "LightSource",
+            description: "Light source",
         },
         ("EXIF", 0x9209) => TagDefinition {
             namespace: "EXIF",
@@ -265,6 +360,11 @@ fn tag_definition(namespace: &str, id: u16) -> TagDefinition {
             namespace: "EXIF",
             name: "FocalLength",
             description: "Lens focal length",
+        },
+        ("EXIF", 0x9214) => TagDefinition {
+            namespace: "EXIF",
+            name: "SubjectArea",
+            description: "Subject location and area",
         },
         ("EXIF", 0x927C) => TagDefinition {
             namespace: "EXIF",
@@ -281,6 +381,21 @@ fn tag_definition(namespace: &str, id: u16) -> TagDefinition {
             name: "SubSecTimeOriginal",
             description: "Sub-second capture time",
         },
+        ("EXIF", 0x9292) => TagDefinition {
+            namespace: "EXIF",
+            name: "SubSecTimeDigitized",
+            description: "Sub-second digitized time",
+        },
+        ("EXIF", 0x9101) => TagDefinition {
+            namespace: "EXIF",
+            name: "ComponentsConfiguration",
+            description: "Component configuration",
+        },
+        ("EXIF", 0x9102) => TagDefinition {
+            namespace: "EXIF",
+            name: "CompressedBitsPerPixel",
+            description: "Compressed bits per pixel",
+        },
         ("EXIF", 0xA002) => TagDefinition {
             namespace: "EXIF",
             name: "PixelXDimension",
@@ -296,10 +411,125 @@ fn tag_definition(namespace: &str, id: u16) -> TagDefinition {
             name: "ColorSpace",
             description: "Color space information",
         },
+        ("EXIF", 0xA20E) => TagDefinition {
+            namespace: "EXIF",
+            name: "FocalPlaneXResolution",
+            description: "Focal-plane horizontal resolution",
+        },
+        ("EXIF", 0xA20F) => TagDefinition {
+            namespace: "EXIF",
+            name: "FocalPlaneYResolution",
+            description: "Focal-plane vertical resolution",
+        },
+        ("EXIF", 0xA210) => TagDefinition {
+            namespace: "EXIF",
+            name: "FocalPlaneResolutionUnit",
+            description: "Focal-plane resolution unit",
+        },
+        ("EXIF", 0xA214) => TagDefinition {
+            namespace: "EXIF",
+            name: "SubjectLocation",
+            description: "Subject location",
+        },
+        ("EXIF", 0xA215) => TagDefinition {
+            namespace: "EXIF",
+            name: "ExposureIndex",
+            description: "Exposure index",
+        },
+        ("EXIF", 0xA217) => TagDefinition {
+            namespace: "EXIF",
+            name: "SensingMethod",
+            description: "Sensing method",
+        },
+        ("EXIF", 0xA300) => TagDefinition {
+            namespace: "EXIF",
+            name: "FileSource",
+            description: "Image source",
+        },
+        ("EXIF", 0xA301) => TagDefinition {
+            namespace: "EXIF",
+            name: "SceneType",
+            description: "Scene type",
+        },
+        ("EXIF", 0xA302) => TagDefinition {
+            namespace: "EXIF",
+            name: "CFAPattern",
+            description: "Color filter array pattern",
+        },
+        ("EXIF", 0xA401) => TagDefinition {
+            namespace: "EXIF",
+            name: "CustomRendered",
+            description: "Custom image processing",
+        },
+        ("EXIF", 0xA402) => TagDefinition {
+            namespace: "EXIF",
+            name: "ExposureMode",
+            description: "Exposure mode",
+        },
+        ("EXIF", 0xA403) => TagDefinition {
+            namespace: "EXIF",
+            name: "WhiteBalance",
+            description: "White balance mode",
+        },
+        ("EXIF", 0xA404) => TagDefinition {
+            namespace: "EXIF",
+            name: "DigitalZoomRatio",
+            description: "Digital zoom ratio",
+        },
         ("EXIF", 0xA405) => TagDefinition {
             namespace: "EXIF",
             name: "FocalLengthIn35mmFormat",
             description: "Equivalent focal length in 35mm film",
+        },
+        ("EXIF", 0xA406) => TagDefinition {
+            namespace: "EXIF",
+            name: "SceneCaptureType",
+            description: "Scene capture type",
+        },
+        ("EXIF", 0xA407) => TagDefinition {
+            namespace: "EXIF",
+            name: "GainControl",
+            description: "Gain control",
+        },
+        ("EXIF", 0xA408) => TagDefinition {
+            namespace: "EXIF",
+            name: "Contrast",
+            description: "Contrast setting",
+        },
+        ("EXIF", 0xA409) => TagDefinition {
+            namespace: "EXIF",
+            name: "Saturation",
+            description: "Saturation setting",
+        },
+        ("EXIF", 0xA40A) => TagDefinition {
+            namespace: "EXIF",
+            name: "Sharpness",
+            description: "Sharpness setting",
+        },
+        ("EXIF", 0xA40C) => TagDefinition {
+            namespace: "EXIF",
+            name: "SubjectDistanceRange",
+            description: "Subject distance range",
+        },
+        ("EXIF", 0xA420) => TagDefinition {
+            namespace: "EXIF",
+            name: "ImageUniqueID",
+            description: "Unique image identifier",
+        },
+        ("EXIF", 0xA430) => TagDefinition {
+            namespace: "EXIF",
+            name: "CameraOwnerName",
+            description: "Camera owner name",
+        },
+        ("EXIF", 0xA431) => TagDefinition {
+            namespace: "EXIF",
+            name: "BodySerialNumber",
+            description: "Camera body serial number",
+        },
+        ("EXIF", 0xA432) => TagDefinition {
+            namespace: "EXIF",
+            name: "LensSpecification",
+            description: "Lens specification",
         },
         ("EXIF", 0xA433) => TagDefinition {
             namespace: "EXIF",
@@ -315,6 +545,11 @@ fn tag_definition(namespace: &str, id: u16) -> TagDefinition {
             namespace: "EXIF",
             name: "LensSerialNumber",
             description: "Lens serial number",
+        },
+        ("EXIF", 0xA500) => TagDefinition {
+            namespace: "EXIF",
+            name: "Gamma",
+            description: "Image gamma",
         },
         ("EXIF", 0xC612) => TagDefinition {
             namespace: "DNG",
@@ -1563,6 +1798,12 @@ mod tests {
             TagValue::String("2026:09:13 12:34:56".into())
         );
         assert_eq!(tag_definition("EXIF", 0x0100).name, "ImageWidth");
+        assert_eq!(tag_definition("EXIF", 0x0102).name, "BitsPerSample");
+        assert_eq!(
+            tag_definition("EXIF", 0x8831).name,
+            "StandardOutputSensitivity"
+        );
+        assert_eq!(tag_definition("EXIF", 0xA432).name, "LensSpecification");
         assert_eq!(tag_definition("EXIF", 0xA434).name, "LensModel");
     }
 

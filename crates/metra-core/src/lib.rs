@@ -38,6 +38,12 @@ const TAG_DEFINITIONS: &[TagDefinition] = &[
     },
     TagDefinition {
         namespace: "EXIF",
+        id: 0x0102,
+        name: "BitsPerSample",
+        description: "Bits per component",
+    },
+    TagDefinition {
+        namespace: "EXIF",
         id: 0x0103,
         name: "Compression",
         description: "Image compression scheme",
@@ -74,6 +80,24 @@ const TAG_DEFINITIONS: &[TagDefinition] = &[
     },
     TagDefinition {
         namespace: "EXIF",
+        id: 0x0115,
+        name: "SamplesPerPixel",
+        description: "Number of components per pixel",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x0116,
+        name: "RowsPerStrip",
+        description: "Rows per image strip",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x0117,
+        name: "StripByteCounts",
+        description: "Byte counts for image strips",
+    },
+    TagDefinition {
+        namespace: "EXIF",
         id: 0x011A,
         name: "XResolution",
         description: "Horizontal resolution",
@@ -92,6 +116,18 @@ const TAG_DEFINITIONS: &[TagDefinition] = &[
     },
     TagDefinition {
         namespace: "EXIF",
+        id: 0x011C,
+        name: "PlanarConfiguration",
+        description: "Planar or chunky component layout",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x012D,
+        name: "TransferFunction",
+        description: "Transfer function table",
+    },
+    TagDefinition {
+        namespace: "EXIF",
         id: 0x0131,
         name: "Software",
         description: "Software used to create the file",
@@ -107,6 +143,24 @@ const TAG_DEFINITIONS: &[TagDefinition] = &[
         id: 0x013B,
         name: "Artist",
         description: "Person who created the image",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x013E,
+        name: "WhitePoint",
+        description: "Chromaticity of the white point",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x013F,
+        name: "PrimaryChromaticities",
+        description: "Chromaticities of the primary colors",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x0152,
+        name: "ExtraSamples",
+        description: "Additional image components",
     },
     TagDefinition {
         namespace: "EXIF",
@@ -164,6 +218,42 @@ const TAG_DEFINITIONS: &[TagDefinition] = &[
     },
     TagDefinition {
         namespace: "EXIF",
+        id: 0x8830,
+        name: "SensitivityType",
+        description: "Sensitivity type",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x8831,
+        name: "StandardOutputSensitivity",
+        description: "Standard output sensitivity",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x8832,
+        name: "RecommendedExposureIndex",
+        description: "Recommended exposure index",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x8833,
+        name: "ISOSpeed",
+        description: "ISO speed value",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x8834,
+        name: "ISOSpeedLatitudeyyy",
+        description: "ISO speed latitude yyy",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x8835,
+        name: "ISOSpeedLatitudezzz",
+        description: "ISO speed latitude zzz",
+    },
+    TagDefinition {
+        namespace: "EXIF",
         id: 0x8822,
         name: "ExposureProgram",
         description: "Exposure program",
@@ -200,15 +290,39 @@ const TAG_DEFINITIONS: &[TagDefinition] = &[
     },
     TagDefinition {
         namespace: "EXIF",
+        id: 0x9203,
+        name: "BrightnessValue",
+        description: "Brightness value",
+    },
+    TagDefinition {
+        namespace: "EXIF",
         id: 0x9204,
         name: "ExposureCompensation",
         description: "Exposure bias value",
     },
     TagDefinition {
         namespace: "EXIF",
+        id: 0x9205,
+        name: "MaxApertureValue",
+        description: "Maximum lens aperture",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x9206,
+        name: "SubjectDistance",
+        description: "Distance to the subject",
+    },
+    TagDefinition {
+        namespace: "EXIF",
         id: 0x9207,
         name: "MeteringMode",
         description: "Metering mode",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x9208,
+        name: "LightSource",
+        description: "Light source",
     },
     TagDefinition {
         namespace: "EXIF",
@@ -221,6 +335,12 @@ const TAG_DEFINITIONS: &[TagDefinition] = &[
         id: 0x920A,
         name: "FocalLength",
         description: "Lens focal length",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x9214,
+        name: "SubjectArea",
+        description: "Subject location and area",
     },
     TagDefinition {
         namespace: "EXIF",
@@ -242,6 +362,24 @@ const TAG_DEFINITIONS: &[TagDefinition] = &[
     },
     TagDefinition {
         namespace: "EXIF",
+        id: 0x9292,
+        name: "SubSecTimeDigitized",
+        description: "Sub-second digitized time",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x9101,
+        name: "ComponentsConfiguration",
+        description: "Component configuration",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x9102,
+        name: "CompressedBitsPerPixel",
+        description: "Compressed bits per pixel",
+    },
+    TagDefinition {
+        namespace: "EXIF",
         id: 0xA002,
         name: "PixelXDimension",
         description: "Image width",
@@ -260,9 +398,147 @@ const TAG_DEFINITIONS: &[TagDefinition] = &[
     },
     TagDefinition {
         namespace: "EXIF",
+        id: 0xA20E,
+        name: "FocalPlaneXResolution",
+        description: "Focal-plane horizontal resolution",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0xA20F,
+        name: "FocalPlaneYResolution",
+        description: "Focal-plane vertical resolution",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0xA210,
+        name: "FocalPlaneResolutionUnit",
+        description: "Focal-plane resolution unit",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0xA214,
+        name: "SubjectLocation",
+        description: "Subject location",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0xA215,
+        name: "ExposureIndex",
+        description: "Exposure index",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0xA217,
+        name: "SensingMethod",
+        description: "Sensing method",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0xA300,
+        name: "FileSource",
+        description: "Image source",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0xA301,
+        name: "SceneType",
+        description: "Scene type",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0xA302,
+        name: "CFAPattern",
+        description: "Color filter array pattern",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0xA401,
+        name: "CustomRendered",
+        description: "Custom image processing",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0xA402,
+        name: "ExposureMode",
+        description: "Exposure mode",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0xA403,
+        name: "WhiteBalance",
+        description: "White balance mode",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0xA404,
+        name: "DigitalZoomRatio",
+        description: "Digital zoom ratio",
+    },
+    TagDefinition {
+        namespace: "EXIF",
         id: 0xA405,
         name: "FocalLengthIn35mmFormat",
         description: "Equivalent focal length in 35mm film",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0xA406,
+        name: "SceneCaptureType",
+        description: "Scene capture type",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0xA407,
+        name: "GainControl",
+        description: "Gain control",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0xA408,
+        name: "Contrast",
+        description: "Contrast setting",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0xA409,
+        name: "Saturation",
+        description: "Saturation setting",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0xA40A,
+        name: "Sharpness",
+        description: "Sharpness setting",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0xA40C,
+        name: "SubjectDistanceRange",
+        description: "Subject distance range",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0xA420,
+        name: "ImageUniqueID",
+        description: "Unique image identifier",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0xA430,
+        name: "CameraOwnerName",
+        description: "Camera owner name",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0xA431,
+        name: "BodySerialNumber",
+        description: "Camera body serial number",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0xA432,
+        name: "LensSpecification",
+        description: "Lens specification",
     },
     TagDefinition {
         namespace: "EXIF",
@@ -281,6 +557,12 @@ const TAG_DEFINITIONS: &[TagDefinition] = &[
         id: 0xA435,
         name: "LensSerialNumber",
         description: "Lens serial number",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0xA500,
+        name: "Gamma",
+        description: "Image gamma",
     },
     TagDefinition {
         namespace: "GPS",
@@ -1625,6 +1907,12 @@ mod tests {
             "MediaWhitePoint"
         );
         assert_eq!(tag_definition("EXIF", 0x829A).name, "ExposureTime");
+        assert_eq!(tag_definition("EXIF", 0x0102).name, "BitsPerSample");
+        assert_eq!(
+            tag_definition("EXIF", 0x8831).name,
+            "StandardOutputSensitivity"
+        );
+        assert_eq!(tag_definition("EXIF", 0xA432).name, "LensSpecification");
         assert_eq!(tag_definition("EXIF", 0xA434).name, "LensModel");
         assert_eq!(tag_definition("MakerNotes", 0x0002).name, "Nikon:ISO");
         assert_eq!(tag_definition("DNG", 0xC612).name, "DNGVersion");
