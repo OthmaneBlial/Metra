@@ -40,6 +40,9 @@ Initial read-first foundation with narrow validated rewrites:
   preserving color tables, image descriptors, LZW data, and trailers;
 - added validated WebP XMP chunk replacement/deletion/copy with bounded XML
   validation, RIFF size repair, streamed chunk preservation, and atomic target replacement;
+- added validated SVG title, description, and comment replacement/deletion/copy
+  with XML escaping, safe comment validation, source-range preservation, and
+  atomic target replacement;
 - added bounded `--jobs` batch inspection with deterministic result ordering;
 - expanded ISO-BMFF inspection with `ispe` dimensions, item/handler fields,
   and direct XMP/EXIF decoding when the metadata boxes are available;

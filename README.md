@@ -36,7 +36,7 @@ Implemented today:
 | FLAC | `STREAMINFO`, Vorbis comments, embedded-picture properties/data, and bounded metadata-block validation |
 | PDF | Header/version, bounded Info dictionaries, PDF string decoding, and embedded XMP packets when directly available |
 | WAV | RIFF/WAVE chunks, `fmt ` audio properties, `LIST/INFO`, Broadcast Wave `bext`, and bounded validation |
-| SVG | Bounded XML detection, root dimensions/version/viewBox, title, description, comments, and nesting/text limits |
+| SVG | Bounded XML detection, root dimensions/version/viewBox, title, description, comments, nesting/text limits, and safe document-text rewrites |
 | Output | Human-readable text, JSON, JSON Lines, CSV, TOML, or YAML; schema version `1` is retained in structured output |
 | Batch | Deterministic path ordering with bounded parallel inspection through `--jobs N`; human, JSON Lines, and CSV modes stream results with a bounded out-of-order buffer |
 | Safety | Checked offsets, bounded reads, recursion and entry limits, deterministic recursive traversal, and structured warnings |
@@ -45,9 +45,9 @@ Generic writing, creation, SVG embedded-XMP extraction, MakerNotes
 interpretation, and full media and ExifTool compatibility are intentionally not
 advertised as implemented yet. The library now supports validated, lossless
 JPEG comment, PNG `tEXt` and uncompressed `iTXt` XMP, GIF comments, WebP XMP,
-WAV `LIST/INFO`, FLAC Vorbis Comment, and common ID3v2 text/comment frames
-through format-specific rewrite APIs, and the CLI exposes the same narrow
-operations through `--set`,
+SVG title/description/comments, WAV `LIST/INFO`, FLAC Vorbis Comment, and
+common ID3v2 text/comment frames through format-specific rewrite APIs, and the
+CLI exposes the same narrow operations through `--set`,
 `--delete`, and `--copy`.
 Manufacturer-specific MakerNotes are still planned; MP3/ID3, PDF, WAV, and
 FLAC remain only partially covered outside their explicit writable fields. ID3
@@ -77,6 +77,7 @@ cargo run -- --set 'FLAC:Title=reviewed' audio.flac
 cargo run -- --set 'ID3:Title=reviewed' audio.mp3
 cargo run -- --set 'GIF:Comment=reviewed' animation.gif
 cargo run -- --set 'WebP:XMP=<x:xmpmeta>...</x:xmpmeta>' image.webp
+cargo run -- --set 'SVG:Title=reviewed' drawing.svg
 ```
 
 Install the local CLI:
@@ -177,7 +178,7 @@ are the local validation gate.
 
 ## Roadmap
 
-Avancement global vérifié : **73 %**. Ce chiffre est une moyenne indicative des
+Avancement global vérifié : **74 %**. Ce chiffre est une moyenne indicative des
 huit axes ci-dessous, calculée uniquement sur le code et les tests présents ; il
 ne représente pas un pourcentage de compatibilité ExifTool.
 
@@ -185,8 +186,8 @@ ne représente pas un pourcentage de compatibilité ExifTool.
 2. **30 %** — Ajouter des corpus réels et des tests différentiels JPEG/TIFF/PNG/WebP ; le harnais opt-in est présent, mais aucune exécution de corpus réel n’est comptée.
 3. **90 %** — Approfondir HEIF/AVIF et les conteneurs média, puis couvrir les lecteurs restants.
 4. **75 %** — Étendre XMP/IPTC/ICC/ID3 et isoler les espaces MakerNote ; XMP est maintenant réécrit de façon bornée pour WebP et PNG, et les champs texte/commentaires ID3v2 courants restent sous limites explicites.
-5. **62 %** — Concevoir l’écriture read-modify-write avec validation et remplacement atomique ; sept writers bornés couvrent maintenant JPEG, PNG, GIF, WebP, WAV, FLAC et ID3v2.
-6. **90 %** — Ajouter `set`/`delete`/`copy` après les tests round-trip ; les trois opérations couvrent maintenant JPEG `Comment`, PNG `tEXt`/`XMP`, GIF `Comment`, WebP `XMP`, WAV `LIST/INFO`, FLAC Vorbis Comments et ID3v2 texte/commentaire via API et CLI.
+5. **65 %** — Concevoir l’écriture read-modify-write avec validation et remplacement atomique ; huit writers bornés couvrent maintenant JPEG, PNG, GIF, WebP, SVG, WAV, FLAC et ID3v2.
+6. **92 %** — Ajouter `set`/`delete`/`copy` après les tests round-trip ; les trois opérations couvrent maintenant JPEG `Comment`, PNG `tEXt`/`XMP`, GIF `Comment`, WebP `XMP`, SVG `Title`/`Description`/`Comment`, WAV `LIST/INFO`, FLAC Vorbis Comments et ID3v2 texte/commentaire via API et CLI.
 7. **60 %** — Ajouter le traitement parallèle contrôlé, le rendu en flux borné et les benchmarks sur collections réelles.
 8. **100 %** — Étendre les sorties structurées avec CSV, TOML et YAML versionnés.
 
