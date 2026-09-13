@@ -141,6 +141,7 @@ enum EditRequest {
     DirectPng(Vec<metra::PngEdit>),
     DirectWav(Vec<metra::WavEdit>),
     DirectFlac(Vec<metra::FlacEdit>),
+    DirectMp3(Vec<metra::Mp3Edit>),
     Copy { key: CopyKey, source: PathBuf },
 }
 
@@ -150,6 +151,8 @@ enum CopyKey {
     PngText(String),
     WavInfo(String),
     FlacComment(String),
+    Mp3Text(String),
+    Mp3Comment,
 }
 
 fn parse_edits(
@@ -186,6 +189,19 @@ fn parse_edits(
                     },
                 ])));
             }
+            if key == "ID3:Comment" {
+                return Ok(Some(EditRequest::DirectMp3(vec![
+                    metra::Mp3Edit::SetComment(value.to_owned()),
+                ])));
+            }
+            if let Some(name) = mp3_text_name(key) {
+                return Ok(Some(EditRequest::DirectMp3(vec![
+                    metra::Mp3Edit::SetText {
+                        name: name.to_owned(),
+                        value: value.to_owned(),
+                    },
+                ])));
+            }
             return Err(unsupported_edit_message(key));
         }
         return Ok(Some(EditRequest::DirectJpeg(vec![
@@ -215,6 +231,18 @@ fn parse_edits(
                     },
                 ])));
             }
+            if key == "ID3:Comment" {
+                return Ok(Some(EditRequest::DirectMp3(vec![
+                    metra::Mp3Edit::DeleteComments,
+                ])));
+            }
+            if let Some(name) = mp3_text_name(key) {
+                return Ok(Some(EditRequest::DirectMp3(vec![
+                    metra::Mp3Edit::DeleteText {
+                        name: name.to_owned(),
+                    },
+                ])));
+            }
             return Err(unsupported_edit_message(key));
         }
         return Ok(Some(EditRequest::DirectJpeg(vec![
@@ -236,6 +264,10 @@ fn parse_edits(
             CopyKey::WavInfo(name.to_owned())
         } else if let Some(name) = flac_comment_name(key) {
             CopyKey::FlacComment(name.to_owned())
+        } else if key == "ID3:Comment" {
+            CopyKey::Mp3Comment
+        } else if let Some(name) = mp3_text_name(key) {
+            CopyKey::Mp3Text(name.to_owned())
         } else {
             return Err(unsupported_edit_message(key));
         };
@@ -254,8 +286,42 @@ fn png_text_keyword(key: &str) -> Option<&str> {
 
 fn unsupported_edit_message(key: &str) -> String {
     format!(
-        "unsupported metadata key {key}; writable keys are JPEG:Comment, PNG:Text:<keyword>, WAV:<INFO field>, or FLAC:<Vorbis field>"
+        "unsupported metadata key {key}; writable keys are JPEG:Comment, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, or ID3:<text field>"
     )
+}
+
+fn mp3_text_name(key: &str) -> Option<&str> {
+    let name = key.strip_prefix("ID3:")?;
+    matches!(
+        name,
+        "Title"
+            | "Artist"
+            | "AlbumArtist"
+            | "Album"
+            | "RecordingDate"
+            | "Genre"
+            | "TrackNumber"
+            | "DiscNumber"
+            | "Composer"
+            | "BPM"
+            | "DurationMilliseconds"
+            | "Copyright"
+            | "Publisher"
+            | "EncodedBy"
+            | "EncoderSettings"
+            | "AlbumSortOrder"
+            | "ArtistSortOrder"
+            | "TitleSortOrder"
+            | "OriginalReleaseDate"
+            | "ReleaseDate"
+            | "InitialKey"
+            | "Language"
+            | "ContentGroup"
+            | "Subtitle"
+            | "FileType"
+            | "MediaType"
+    )
+    .then_some(name)
 }
 
 fn flac_comment_name(key: &str) -> Option<&str> {
@@ -308,6 +374,7 @@ fn apply_request(paths: &[PathBuf], request: EditRequest) -> ExitCode {
         EditRequest::DirectPng(edits) => apply_png_edits(paths, &edits),
         EditRequest::DirectWav(edits) => apply_wav_edits(paths, &edits),
         EditRequest::DirectFlac(edits) => apply_flac_edits(paths, &edits),
+        EditRequest::DirectMp3(edits) => apply_mp3_edits(paths, &edits),
         EditRequest::Copy { key, source } => apply_copy(paths, key, &source),
     }
 }
@@ -482,6 +549,53 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path) -> ExitCode {
             }];
             apply_flac_edits(paths, &edits)
         }
+        CopyKey::Mp3Comment => {
+            if source_metadata.file_info.format != metra::FileFormat::Mp3 {
+                eprintln!(
+                    "metra: {}: source format {} is not MP3",
+                    source.display(),
+                    source_metadata.file_info.format
+                );
+                return ExitCode::from(1);
+            }
+            let Some(comment) = find_mp3_tag(&source_metadata, "ID3:Comment") else {
+                eprintln!(
+                    "metra: {}: source does not contain ID3:Comment",
+                    source.display()
+                );
+                return ExitCode::from(1);
+            };
+            let metra::TagValue::String(comment) = &comment.value else {
+                eprintln!("metra: {}: ID3:Comment is not a string", source.display());
+                return ExitCode::from(1);
+            };
+            let edits = [metra::Mp3Edit::SetComment(comment.clone())];
+            apply_mp3_edits(paths, &edits)
+        }
+        CopyKey::Mp3Text(name) => {
+            if source_metadata.file_info.format != metra::FileFormat::Mp3 {
+                eprintln!(
+                    "metra: {}: source format {} is not MP3",
+                    source.display(),
+                    source_metadata.file_info.format
+                );
+                return ExitCode::from(1);
+            }
+            let key = format!("ID3:{name}");
+            let Some(text) = find_mp3_tag(&source_metadata, &key) else {
+                eprintln!("metra: {}: source does not contain {key}", source.display());
+                return ExitCode::from(1);
+            };
+            let metra::TagValue::String(text) = &text.value else {
+                eprintln!("metra: {}: {key} is not a string", source.display());
+                return ExitCode::from(1);
+            };
+            let edits = [metra::Mp3Edit::SetText {
+                name,
+                value: text.clone(),
+            }];
+            apply_mp3_edits(paths, &edits)
+        }
     }
 }
 
@@ -549,6 +663,47 @@ fn apply_flac_edits(paths: &[PathBuf], edits: &[metra::FlacEdit]) -> ExitCode {
     } else {
         ExitCode::from(1)
     }
+}
+
+fn apply_mp3_edits(paths: &[PathBuf], edits: &[metra::Mp3Edit]) -> ExitCode {
+    let mut failures = 0_usize;
+    for path in paths {
+        match metra::read(path) {
+            Ok(metadata) if metadata.file_info.format == metra::FileFormat::Mp3 => {
+                if let Err(error) = metra::rewrite_mp3_path(path, ParseLimits::default(), edits) {
+                    eprintln!("metra: {}: {error}", path.display());
+                    failures += 1;
+                } else {
+                    println!("updated: {}", path.display());
+                }
+            }
+            Ok(metadata) => {
+                eprintln!(
+                    "metra: {}: {} edits are supported only for MP3 files",
+                    path.display(),
+                    metadata.file_info.format
+                );
+                failures += 1;
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", path.display());
+                failures += 1;
+            }
+        }
+    }
+    if failures == 0 {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
+fn find_mp3_tag<'a>(metadata: &'a Metadata, key: &str) -> Option<&'a metra::Tag> {
+    metadata
+        .tags()
+        .iter()
+        .find(|tag| tag.key() == key && tag.group.starts_with("ID3v"))
+        .or_else(|| metadata.tags().iter().find(|tag| tag.key() == key))
 }
 
 fn parse_jobs(value: &str) -> std::result::Result<usize, String> {

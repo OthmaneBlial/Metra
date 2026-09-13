@@ -157,6 +157,40 @@ fn minimal_flac(title: &str) -> Vec<u8> {
     bytes
 }
 
+fn id3_synchsafe(value: usize) -> [u8; 4] {
+    [
+        ((value >> 21) & 0x7F) as u8,
+        ((value >> 14) & 0x7F) as u8,
+        ((value >> 7) & 0x7F) as u8,
+        (value & 0x7F) as u8,
+    ]
+}
+
+fn id3_frame(id: &[u8; 4], payload: &[u8]) -> Vec<u8> {
+    let mut frame = id.to_vec();
+    frame.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+    frame.extend_from_slice(&[0, 0]);
+    frame.extend_from_slice(payload);
+    frame
+}
+
+fn minimal_mp3(title: &str) -> Vec<u8> {
+    let mut title_payload = vec![3];
+    title_payload.extend_from_slice(title.as_bytes());
+    let mut frames = id3_frame(b"TIT2", &title_payload);
+    let mut comment = vec![3, b'e', b'n', b'g', 0];
+    comment.extend_from_slice(b"source comment");
+    frames.extend_from_slice(&id3_frame(b"COMM", &comment));
+    frames.extend_from_slice(&[0; 8]);
+
+    let mut bytes = b"ID3".to_vec();
+    bytes.extend_from_slice(&[4, 0, 0]);
+    bytes.extend_from_slice(&id3_synchsafe(frames.len()));
+    bytes.extend_from_slice(&frames);
+    bytes.extend_from_slice(&[0xFF, 0xFB, 0x90, 0x64, 1, 2, 3, 4]);
+    bytes
+}
+
 fn run(args: &[&Path]) -> std::process::Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_metra"));
     for path in args {
@@ -531,6 +565,82 @@ fn cli_can_edit_and_copy_flac_comments() {
         metra::read(&target)
             .unwrap()
             .find("FLAC:Title")
+            .unwrap()
+            .display_value(),
+        "source title"
+    );
+}
+
+#[test]
+fn cli_can_edit_and_copy_id3_text() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.file("source.mp3", &minimal_mp3("source title"));
+    let target = directory.file("target.mp3", &minimal_mp3("target title"));
+
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "ID3:Title=edited title",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("ID3:Title")
+            .unwrap()
+            .display_value(),
+        "edited title"
+    );
+
+    let set_comment = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "ID3:Comment=edited comment",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(
+        set_comment.status.success(),
+        "stderr: {:?}",
+        set_comment.stderr
+    );
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("ID3:Comment")
+            .unwrap()
+            .display_value(),
+        "edited comment"
+    );
+
+    let delete = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--delete",
+            "ID3:Comment",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(delete.status.success(), "stderr: {:?}", delete.stderr);
+    assert!(metra::read(&target).unwrap().find("ID3:Comment").is_none());
+
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            &format!("ID3:Title={}", source.to_str().expect("UTF-8 test path")),
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("ID3:Title")
             .unwrap()
             .display_value(),
         "source title"
