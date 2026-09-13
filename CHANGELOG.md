@@ -128,6 +128,8 @@ Initial read-first foundation with narrow validated rewrites:
   bounded public stream and path dispatch;
 - added bounded Ogg page and logical-stream inspection for Vorbis, Opus, and
   Ogg-FLAC metadata packets, including typed stream headers and comments;
+- expanded Matroska/WebM inspection with bounded chapter, cue-point, and
+  attachment descriptors while skipping cluster and attachment payload data;
 - tolerated truncated trailing Ogg segment tables after preserving complete
   preceding pages as structured metadata with a warning;
 - documented the verified surface and remaining compatibility boundaries.

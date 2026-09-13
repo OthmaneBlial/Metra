@@ -138,7 +138,10 @@
     "VorbisComments": "partial",
     "BWF": "partial",
     "SVGDocument": "partial",
-    "RAW": "partial"
+    "RAW": "partial",
+    "MatroskaChapters": "partial",
+    "MatroskaCues": "partial",
+    "MatroskaAttachments": "partial"
   },
   "cli": {
     "human_readable": "supported",

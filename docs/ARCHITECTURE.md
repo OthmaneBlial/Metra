@@ -177,8 +177,7 @@ The following changes are deferred until their acceptance tests exist:
 - vendor-specific RAW container structures and RAF/CR3 payload metadata beyond
   the current bounded delegation;
 - PSD/PSB resource writers and layer/pixel metadata modules;
-- deeper HEIF/AVIF and media metadata modules, including Matroska chapters,
-  cues, attachments, and codec-specific fields;
+- deeper HEIF/AVIF and media metadata modules, including codec-specific fields;
 - a generalized lossless block-preservation abstraction across more formats;
 
 Deferring a seam is not a compatibility claim. The compatibility matrix records
