@@ -460,6 +460,34 @@ fn public_generic_edit_api_rewrites_and_revalidates_cr3_text() {
 }
 
 #[test]
+fn public_generic_edit_api_deletes_existing_cr3_text() {
+    let bytes = minimal_cr3_with_title("old");
+    let output = metra::rewrite_metadata_to_vec(
+        &bytes,
+        metra::FileInfo::new(
+            "memory.cr3".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::delete("ISOBMFF:Title")],
+    )
+    .expect("generic CR3 deletion should validate its rewritten bytes");
+
+    let metadata = metra::read_from(
+        &mut std::io::Cursor::new(output),
+        metra::FileInfo::new(
+            "memory.cr3".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+    )
+    .expect("deleted CR3 should remain readable");
+    assert_eq!(metadata.find("RAW:Variant").unwrap().display_value(), "CR3");
+    assert!(metadata.find("ISOBMFF:Title").is_none());
+}
+
+#[test]
 fn public_generic_copy_api_reads_source_before_atomic_target_rewrite() {
     let source_bytes = [
         0xFF, 0xD8, 0xFF, 0xFE, 0x00, 0x0D, b'f', b'r', b'o', b'm', b' ', b's', b'o', b'u', b'r',
