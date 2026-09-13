@@ -5,6 +5,8 @@ use metra_core::{
     FileInfo, Metadata, MetraError, ParseLimits, Result, Source, Tag, TagValue, ValueType, Warning,
 };
 
+use crate::icc::parse_icc_profile;
+use crate::iptc::parse_photoshop_resources;
 use crate::tiff::parse_tiff_from_reader;
 use crate::xmp::parse_xmp;
 
@@ -189,20 +191,44 @@ fn process_segment(
                     .add_warning(Warning::new("invalid-xmp", error.to_string()).at(data_offset));
             }
         }
-        0xE2 if data.starts_with(b"ICC_PROFILE\0") => metadata.add_warning(
-            Warning::new(
-                "unsupported-icc",
-                "JPEG contains an ICC profile; ICC parsing is planned",
-            )
-            .at(data_offset),
-        ),
-        0xED if data.starts_with(b"Photoshop 3.0\0") => metadata.add_warning(
-            Warning::new(
-                "unsupported-photoshop",
-                "JPEG contains Photoshop resources; Photoshop/IPTC parsing is planned",
-            )
-            .at(data_offset),
-        ),
+        0xE2 if data.starts_with(b"ICC_PROFILE\0") => {
+            let prefix_len = b"ICC_PROFILE\0".len();
+            if data.len() < prefix_len + 2 {
+                metadata.add_warning(
+                    Warning::new("truncated-icc", "ICC APP2 header is truncated").at(data_offset),
+                );
+            } else {
+                let sequence = data[prefix_len];
+                let total = data[prefix_len + 1];
+                if total != 1 || sequence != 1 {
+                    metadata.add_warning(
+                        Warning::new(
+                            "icc-fragment",
+                            format!(
+                                "ICC profile fragment {sequence} of {total} is not reassembled yet"
+                            ),
+                        )
+                        .at(data_offset),
+                    );
+                } else if let Err(error) = parse_icc_profile(
+                    &data[prefix_len + 2..],
+                    data_offset + u64::try_from(prefix_len + 2).unwrap_or(u64::MAX),
+                    metadata,
+                    limits,
+                ) {
+                    metadata.add_warning(
+                        Warning::new("invalid-icc", error.to_string()).at(data_offset),
+                    );
+                }
+            }
+        }
+        0xED if data.starts_with(b"Photoshop 3.0\0") => {
+            if let Err(error) = parse_photoshop_resources(data, data_offset, metadata, limits) {
+                metadata.add_warning(
+                    Warning::new("invalid-photoshop", error.to_string()).at(data_offset),
+                );
+            }
+        }
         0xE0 if data.starts_with(b"JFIF\0") => parse_jfif(data, data_offset, metadata),
         0xFE => {
             let value = String::from_utf8_lossy(data).into_owned();

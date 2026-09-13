@@ -10,6 +10,8 @@ use std::path::Path;
 
 use metra_core::{FileFormat, FileInfo, Metadata, MetraError, ParseLimits, Result};
 
+mod icc;
+mod iptc;
 mod jpeg;
 mod png;
 mod tiff;
