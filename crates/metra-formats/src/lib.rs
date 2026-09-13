@@ -22,6 +22,7 @@ mod iptc;
 mod iptc_writer;
 mod isobmff;
 mod jpeg;
+mod makers;
 mod pdf;
 mod png;
 mod png_writer;

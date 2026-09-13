@@ -5,6 +5,8 @@ use metra_core::{
     FileInfo, Metadata, MetraError, ParseLimits, Result, Source, Tag, TagValue, ValueType, Warning,
 };
 
+use crate::makers::inspect_maker_note;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Endian {
     Little,
@@ -639,6 +641,14 @@ impl<R: Read + Seek> TiffParser<'_, R> {
         } else {
             definition.name.to_owned()
         };
+        let maker_note = if namespace == "EXIF" && id == 0x927C {
+            match &value {
+                TagValue::Bytes(bytes) => Some(bytes.clone()),
+                _ => None,
+            }
+        } else {
+            None
+        };
         metadata.add_tag(Tag {
             namespace: definition.namespace.to_owned(),
             group: group.to_owned(),
@@ -655,6 +665,14 @@ impl<R: Read + Seek> TiffParser<'_, R> {
             ),
             writable: false,
         });
+
+        if let Some(bytes) = maker_note {
+            inspect_maker_note(
+                &bytes,
+                self.absolute_start.saturating_add(entry_offset),
+                metadata,
+            );
+        }
 
         if count == 1 && matches!(id, 0x8769 | 0x8825 | 0xA005) {
             let pointer = match metadata.tags.last().map(|tag| &tag.value) {
