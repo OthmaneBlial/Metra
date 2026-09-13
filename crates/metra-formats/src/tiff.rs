@@ -242,6 +242,16 @@ fn tag_definition(namespace: &str, id: u16) -> TagDefinition {
             name: "GPSTimeStamp",
             description: "GPS time of day",
         },
+        ("GPS", 0x000C) => TagDefinition {
+            namespace: "GPS",
+            name: "GPSSpeedRef",
+            description: "GPS speed unit",
+        },
+        ("GPS", 0x000D) => TagDefinition {
+            namespace: "GPS",
+            name: "GPSSpeed",
+            description: "GPS speed",
+        },
         ("GPS", 0x0010) => TagDefinition {
             namespace: "GPS",
             name: "GPSImgDirectionRef",
@@ -858,6 +868,15 @@ fn add_gps_decimal_tags(metadata: &mut Metadata) {
             ValueType::Float,
         );
     }
+    if let Some(value) = gps_speed_meters_per_second(metadata) {
+        add_derived_gps_tag(
+            metadata,
+            "SpeedMetersPerSecond",
+            "GPS speed converted to meters per second",
+            TagValue::Float(value),
+            ValueType::Float,
+        );
+    }
 }
 
 fn add_derived_gps_tag(
@@ -989,6 +1008,32 @@ fn gps_time_seconds(metadata: &Metadata) -> Option<f64> {
         return None;
     }
     Some(hours * 3_600.0 + minutes * 60.0 + seconds)
+}
+
+fn gps_speed_meters_per_second(metadata: &Metadata) -> Option<f64> {
+    let speed = metadata
+        .tags
+        .iter()
+        .find(|tag| tag.namespace == "GPS" && tag.name == "GPSSpeed")
+        .and_then(|tag| scalar_number(&tag.value))?;
+    if speed < 0.0 {
+        return None;
+    }
+    let unit = metadata
+        .tags
+        .iter()
+        .find(|tag| tag.namespace == "GPS" && tag.name == "GPSSpeedRef")
+        .and_then(|tag| match &tag.value {
+            TagValue::String(value) => value.chars().next(),
+            _ => None,
+        })?;
+    let multiplier = match unit {
+        'K' | 'k' => 1_000.0 / 3_600.0,
+        'M' | 'm' => 1.0,
+        'N' | 'n' => 1_852.0 / 3_600.0,
+        _ => return None,
+    };
+    Some(speed * multiplier)
 }
 
 fn scalar_number(value: &TagValue) -> Option<f64> {
@@ -1169,6 +1214,19 @@ mod tests {
             ]),
             ValueType::Array,
         ));
+        metadata.add_tag(gps_tag(
+            "GPSSpeed",
+            TagValue::UnsignedRational {
+                numerator: 36,
+                denominator: 1,
+            },
+            ValueType::UnsignedRational,
+        ));
+        metadata.add_tag(gps_tag(
+            "GPSSpeedRef",
+            TagValue::String("K".to_owned()),
+            ValueType::String,
+        ));
 
         add_gps_decimal_tags(&mut metadata);
 
@@ -1207,6 +1265,13 @@ mod tests {
                 .unwrap()
                 .display_value(),
             "45296"
+        );
+        assert_eq!(
+            metadata
+                .find("GPS:SpeedMetersPerSecond")
+                .unwrap()
+                .display_value(),
+            "10"
         );
     }
 
