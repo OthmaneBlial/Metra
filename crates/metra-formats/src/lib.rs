@@ -17,6 +17,7 @@ mod gif_writer;
 mod icc;
 mod id3;
 mod id3_writer;
+mod inflate;
 mod iptc;
 mod isobmff;
 mod jpeg;

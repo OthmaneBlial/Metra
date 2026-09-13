@@ -5,6 +5,7 @@ use metra_core::{
     FileInfo, Metadata, MetraError, ParseLimits, Result, Source, Tag, TagValue, ValueType, Warning,
 };
 
+use crate::inflate::decompress_zlib;
 use crate::tiff::parse_tiff_from_reader;
 use crate::xmp::parse_xmp;
 
@@ -137,13 +138,7 @@ fn process_chunk(
 ) -> Result<()> {
     match chunk_type {
         b"tEXt" => parse_text_chunk(data, data_offset, metadata, limits),
-        b"zTXt" => metadata.add_warning(
-            Warning::new(
-                "unsupported-ztxt",
-                "PNG contains compressed tEXt metadata; decompression is planned",
-            )
-            .at(data_offset),
-        ),
+        b"zTXt" => parse_ztxt_chunk(data, data_offset, metadata, limits),
         b"iTXt" => parse_itxt_chunk(data, data_offset, metadata, limits),
         b"eXIf" => {
             if data.len() < 8 {
@@ -184,6 +179,55 @@ fn process_chunk(
     Ok(())
 }
 
+fn parse_ztxt_chunk(data: &[u8], data_offset: u64, metadata: &mut Metadata, limits: ParseLimits) {
+    let Some(separator) = data.iter().position(|byte| *byte == 0) else {
+        metadata.add_warning(
+            Warning::new("invalid-ztxt", "PNG zTXt chunk has no keyword separator").at(data_offset),
+        );
+        return;
+    };
+    let Some(compression_method) = data.get(separator + 1).copied() else {
+        metadata.add_warning(
+            Warning::new("invalid-ztxt", "PNG zTXt chunk has no compression method")
+                .at(data_offset),
+        );
+        return;
+    };
+    if compression_method != 0 {
+        metadata.add_warning(
+            Warning::new(
+                "unsupported-ztxt-compression",
+                format!("PNG zTXt compression method {compression_method} is unsupported"),
+            )
+            .at(data_offset),
+        );
+        return;
+    }
+    let keyword = String::from_utf8_lossy(&data[..separator]);
+    let compressed = &data[separator + 2..];
+    let text = match decompress_zlib(compressed, limits, "PNG zTXt text") {
+        Ok(text) => text,
+        Err(error) => {
+            metadata.add_warning(Warning::new("invalid-ztxt", error.to_string()).at(data_offset));
+            return;
+        }
+    };
+    if keyword == "XML:com.adobe.xmp" {
+        if let Err(error) = parse_xmp(
+            &text,
+            data_offset + u64::try_from(separator + 2).unwrap_or(u64::MAX),
+            "PNG/zTXt-XMP",
+            metadata,
+            limits,
+        ) {
+            metadata.add_warning(Warning::new("invalid-xmp", error.to_string()).at(data_offset));
+        }
+        return;
+    }
+    let value = String::from_utf8_lossy(&text).into_owned();
+    add_text_tag(metadata, &keyword, value, data, data_offset, "zTXt");
+}
+
 fn parse_text_chunk(data: &[u8], data_offset: u64, metadata: &mut Metadata, limits: ParseLimits) {
     let Some(separator) = data.iter().position(|byte| *byte == 0) else {
         metadata.add_warning(
@@ -210,43 +254,91 @@ fn parse_text_chunk(data: &[u8], data_offset: u64, metadata: &mut Metadata, limi
 }
 
 fn parse_itxt_chunk(data: &[u8], data_offset: u64, metadata: &mut Metadata, limits: ParseLimits) {
-    let mut fields = data.splitn(6, |byte| *byte == 0);
-    let Some(keyword) = fields.next() else {
+    let Some(keyword_end) = data.iter().position(|byte| *byte == 0) else {
+        metadata.add_warning(
+            Warning::new("invalid-itxt", "PNG iTXt chunk has no keyword separator").at(data_offset),
+        );
         return;
     };
-    let compression_flag = fields
-        .next()
-        .and_then(|field| field.first().copied())
-        .unwrap_or(0);
-    let _compression_method = fields.next();
-    let _language = fields.next();
-    let _translated_keyword = fields.next();
-    let Some(text) = fields.next() else {
+    let keyword = String::from_utf8_lossy(&data[..keyword_end]);
+    let mut cursor = keyword_end + 1;
+    let Some(compression_flag) = data.get(cursor).copied() else {
+        metadata.add_warning(
+            Warning::new("invalid-itxt", "PNG iTXt chunk has no compression flag").at(data_offset),
+        );
+        return;
+    };
+    cursor += 1;
+    let Some(compression_method) = data.get(cursor).copied() else {
+        metadata.add_warning(
+            Warning::new("invalid-itxt", "PNG iTXt chunk has no compression method")
+                .at(data_offset),
+        );
+        return;
+    };
+    cursor += 1;
+    let Some(language_end) = data
+        .get(cursor..)
+        .and_then(|remaining| remaining.iter().position(|byte| *byte == 0))
+    else {
+        metadata.add_warning(
+            Warning::new("invalid-itxt", "PNG iTXt chunk has no language separator")
+                .at(data_offset),
+        );
+        return;
+    };
+    cursor += language_end + 1;
+    let Some(translated_end) = data
+        .get(cursor..)
+        .and_then(|remaining| remaining.iter().position(|byte| *byte == 0))
+    else {
+        metadata.add_warning(
+            Warning::new(
+                "invalid-itxt",
+                "PNG iTXt chunk has no translated-keyword separator",
+            )
+            .at(data_offset),
+        );
+        return;
+    };
+    cursor += translated_end + 1;
+    let Some(text) = data.get(cursor..) else {
         metadata.add_warning(
             Warning::new("invalid-itxt", "PNG iTXt chunk is missing text").at(data_offset),
         );
         return;
     };
-    if compression_flag != 0 {
+    let text = if compression_flag == 0 {
+        text.to_vec()
+    } else if compression_flag == 1 && compression_method == 0 {
+        match decompress_zlib(text, limits, "PNG iTXt text") {
+            Ok(text) => text,
+            Err(error) => {
+                metadata
+                    .add_warning(Warning::new("invalid-itxt", error.to_string()).at(data_offset));
+                return;
+            }
+        }
+    } else {
         metadata.add_warning(
             Warning::new(
                 "unsupported-itxt-compression",
-                "PNG iTXt text is compressed; decompression is planned",
+                format!(
+                    "PNG iTXt compression flag {compression_flag} and method {compression_method} are unsupported"
+                ),
             )
             .at(data_offset),
         );
         return;
-    }
-    let keyword = String::from_utf8_lossy(keyword);
+    };
     if keyword == "XML:com.adobe.xmp" {
-        let text_offset =
-            data_offset + u64::try_from(data.len().saturating_sub(text.len())).unwrap_or(0);
-        if let Err(error) = parse_xmp(text, text_offset, "PNG/iTXt-XMP", metadata, limits) {
+        let text_offset = data_offset + u64::try_from(cursor).unwrap_or(u64::MAX);
+        if let Err(error) = parse_xmp(&text, text_offset, "PNG/iTXt-XMP", metadata, limits) {
             metadata.add_warning(Warning::new("invalid-xmp", error.to_string()).at(data_offset));
         }
         return;
     }
-    let value = String::from_utf8_lossy(text).into_owned();
+    let value = String::from_utf8_lossy(&text).into_owned();
     add_text_tag(metadata, &keyword, value, data, data_offset, "iTXt");
 }
 
@@ -404,9 +496,10 @@ fn io_error(path: &Path, source: std::io::Error) -> MetraError {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Cursor;
+    use std::io::{Cursor, Write};
 
     use super::*;
+    use flate2::{Compression, write::ZlibEncoder};
     use metra_core::{FileFormat, FileInfo};
 
     fn chunk(kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
@@ -416,6 +509,12 @@ mod tests {
         bytes.extend_from_slice(data);
         bytes.extend_from_slice(&crc32(kind, data).to_be_bytes());
         bytes
+    }
+
+    fn zlib(value: &[u8]) -> Vec<u8> {
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(value).unwrap();
+        encoder.finish().unwrap()
     }
 
     #[test]
@@ -460,5 +559,59 @@ mod tests {
                 .iter()
                 .any(|warning| warning.code == "png-crc")
         );
+    }
+
+    #[test]
+    fn reads_compressed_ztxt_and_itxt_xmp() {
+        let xmp = br#"<x:xmpmeta><rdf:RDF><rdf:Description xmlns:dc="urn:dc" dc:format="compressed"/></rdf:RDF></x:xmpmeta>"#;
+        let mut ztxt = b"Comment\0\0".to_vec();
+        ztxt.extend_from_slice(&zlib(b"compressed comment"));
+        let mut itxt = b"XML:com.adobe.xmp\0".to_vec();
+        itxt.extend_from_slice(&[1, 0]);
+        itxt.extend_from_slice(b"\0\0");
+        itxt.extend_from_slice(&zlib(xmp));
+
+        let mut bytes = PNG_SIGNATURE.to_vec();
+        bytes.extend_from_slice(&chunk(b"zTXt", &ztxt));
+        bytes.extend_from_slice(&chunk(b"iTXt", &itxt));
+        bytes.extend_from_slice(&chunk(b"IEND", &[]));
+        let info = FileInfo::new("compressed.png".into(), bytes.len() as u64, FileFormat::Png);
+        let metadata = read_png(&mut Cursor::new(bytes), info, ParseLimits::default()).unwrap();
+        assert_eq!(
+            metadata.find("PNG:Text:Comment").unwrap().display_value(),
+            "compressed comment"
+        );
+        assert_eq!(
+            metadata.find("XMP:dc:format").unwrap().display_value(),
+            "compressed"
+        );
+        assert!(
+            !metadata
+                .warnings
+                .iter()
+                .any(|warning| warning.code.contains("compression"))
+        );
+    }
+
+    #[test]
+    fn compressed_text_expansion_stays_within_value_budget() {
+        let mut ztxt = b"Comment\0\0".to_vec();
+        ztxt.extend_from_slice(&zlib(b"this exceeds four bytes"));
+        let mut bytes = PNG_SIGNATURE.to_vec();
+        bytes.extend_from_slice(&chunk(b"zTXt", &ztxt));
+        bytes.extend_from_slice(&chunk(b"IEND", &[]));
+        let info = FileInfo::new("bounded.png".into(), bytes.len() as u64, FileFormat::Png);
+        let limits = ParseLimits {
+            max_value_bytes: 4,
+            ..ParseLimits::default()
+        };
+        let metadata = read_png(&mut Cursor::new(bytes), info, limits).unwrap();
+        assert!(
+            metadata
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "invalid-ztxt" && warning.message.contains("limit"))
+        );
+        assert!(metadata.find("PNG:Text:Comment").is_none());
     }
 }
