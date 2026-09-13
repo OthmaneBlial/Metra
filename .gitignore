@@ -1,0 +1,18 @@
+# Rust build output
+/target/
+
+# Local ExifTool oracle and other reference material. Never commit it.
+/base/
+
+# Editor and operating-system files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Local coverage/profiling output
+/coverage/
+/profraw/
+
+# Generated local artifacts
+/artifacts/
