@@ -242,6 +242,18 @@ const TAG_DEFINITIONS: &[TagDefinition] = &[
     },
     TagDefinition {
         namespace: "GPS",
+        id: 0x000C,
+        name: "GPSSpeedRef",
+        description: "GPS speed unit",
+    },
+    TagDefinition {
+        namespace: "GPS",
+        id: 0x000D,
+        name: "GPSSpeed",
+        description: "GPS speed",
+    },
+    TagDefinition {
+        namespace: "GPS",
         id: 0x0010,
         name: "GPSImgDirectionRef",
         description: "Image direction reference",
@@ -697,6 +709,7 @@ mod tests {
         let definition = tag_definition("EXIF", 0x010F);
         assert_eq!(definition.name, "Make");
         assert!(tag_definitions().iter().any(|item| item.name == "Make"));
+        assert_eq!(tag_definition("GPS", 0x000D).name, "GPSSpeed");
 
         let tag = Tag {
             namespace: "EXIF".to_owned(),
