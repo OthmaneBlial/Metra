@@ -111,6 +111,18 @@ impl<R: Read + Seek> BoxParser<'_, R> {
                 self.parse_text_item(&header, metadata)?;
             } else if &header.kind == b"ispe" {
                 self.parse_ispe(&header, metadata)?;
+            } else if &header.kind == b"pixi" {
+                self.parse_pixi(&header, metadata)?;
+            } else if &header.kind == b"irot" {
+                self.parse_irot(&header, metadata)?;
+            } else if &header.kind == b"imir" {
+                self.parse_imir(&header, metadata)?;
+            } else if &header.kind == b"pasp" {
+                self.parse_pasp(&header, metadata)?;
+            } else if &header.kind == b"colr" {
+                self.parse_colr(&header, metadata)?;
+            } else if &header.kind == b"auxC" {
+                self.parse_auxc(&header, metadata)?;
             } else if &header.kind == b"pitm" {
                 self.parse_pitm(&header, metadata)?;
             } else if &header.kind == b"hdlr" {
@@ -293,6 +305,204 @@ impl<R: Read + Seek> BoxParser<'_, R> {
             ))),
             header.data_start + 8,
             4,
+        );
+        Ok(())
+    }
+
+    fn parse_pixi(&mut self, header: &BoxHeader, metadata: &mut Metadata) -> Result<()> {
+        let data = self.read_payload(header, "ISO-BMFF pixi")?;
+        if data.len() < 5 {
+            metadata.add_warning(
+                Warning::new(
+                    "truncated-pixi",
+                    "pixi box is shorter than its channel count",
+                )
+                .at(header.data_start),
+            );
+            return Ok(());
+        }
+        add_tag(
+            metadata,
+            "ChannelCount",
+            TagValue::Unsigned(u64::from(data[4])),
+            header.data_start + 4,
+            1,
+        );
+        let bits = data[5..]
+            .iter()
+            .map(|value| TagValue::Unsigned(u64::from(*value)))
+            .collect::<Vec<_>>();
+        add_tag(
+            metadata,
+            "BitsPerChannel",
+            TagValue::Array(bits),
+            header.data_start + 5,
+            (data.len() - 5) as u64,
+        );
+        Ok(())
+    }
+
+    fn parse_irot(&mut self, header: &BoxHeader, metadata: &mut Metadata) -> Result<()> {
+        let data = self.read_payload(header, "ISO-BMFF irot")?;
+        let Some(value) = data.first() else {
+            metadata.add_warning(
+                Warning::new("truncated-irot", "irot box has no rotation value")
+                    .at(header.data_start),
+            );
+            return Ok(());
+        };
+        add_tag(
+            metadata,
+            "RotationDegrees",
+            TagValue::Unsigned(u64::from(value & 0x03) * 90),
+            header.data_start,
+            1,
+        );
+        Ok(())
+    }
+
+    fn parse_imir(&mut self, header: &BoxHeader, metadata: &mut Metadata) -> Result<()> {
+        let data = self.read_payload(header, "ISO-BMFF imir")?;
+        let Some(value) = data.first() else {
+            metadata.add_warning(
+                Warning::new("truncated-imir", "imir box has no mirror axis").at(header.data_start),
+            );
+            return Ok(());
+        };
+        let axis = if value & 0x01 == 0 {
+            "vertical"
+        } else {
+            "horizontal"
+        };
+        add_tag(
+            metadata,
+            "MirrorAxis",
+            TagValue::String(axis.to_owned()),
+            header.data_start,
+            1,
+        );
+        Ok(())
+    }
+
+    fn parse_pasp(&mut self, header: &BoxHeader, metadata: &mut Metadata) -> Result<()> {
+        let data = self.read_payload(header, "ISO-BMFF pasp")?;
+        if data.len() < 8 {
+            metadata.add_warning(
+                Warning::new(
+                    "truncated-pasp",
+                    "pasp box is shorter than its horizontal and vertical spacing",
+                )
+                .at(header.data_start),
+            );
+            return Ok(());
+        }
+        let horizontal = u64::from(u32::from_be_bytes(
+            data[..4].try_into().expect("pasp horizontal"),
+        ));
+        let vertical = u64::from(u32::from_be_bytes(
+            data[4..8].try_into().expect("pasp vertical"),
+        ));
+        if vertical == 0 {
+            metadata.add_warning(
+                Warning::new("invalid-pasp", "pasp vertical spacing must not be zero")
+                    .at(header.data_start + 4),
+            );
+            return Ok(());
+        }
+        add_tag(
+            metadata,
+            "PixelAspectHorizontal",
+            TagValue::Unsigned(horizontal),
+            header.data_start,
+            4,
+        );
+        add_tag(
+            metadata,
+            "PixelAspectVertical",
+            TagValue::Unsigned(vertical),
+            header.data_start + 4,
+            4,
+        );
+        add_tag(
+            metadata,
+            "PixelAspectRatio",
+            TagValue::Float(horizontal as f64 / vertical as f64),
+            header.data_start,
+            8,
+        );
+        Ok(())
+    }
+
+    fn parse_colr(&mut self, header: &BoxHeader, metadata: &mut Metadata) -> Result<()> {
+        let data = self.read_payload(header, "ISO-BMFF colr")?;
+        if data.len() < 4 {
+            metadata.add_warning(
+                Warning::new("truncated-colr", "colr box is shorter than its color type")
+                    .at(header.data_start),
+            );
+            return Ok(());
+        }
+        let color_type = fourcc(data[..4].try_into().expect("color type"));
+        add_tag(
+            metadata,
+            "ColorType",
+            TagValue::String(color_type.clone()),
+            header.data_start,
+            4,
+        );
+        if color_type == "nclx" {
+            if data.len() < 11 {
+                metadata.add_warning(
+                    Warning::new("truncated-colr", "nclx color profile is truncated")
+                        .at(header.data_start + 4),
+                );
+                return Ok(());
+            }
+            for (name, offset) in [
+                ("ColorPrimaries", 4_u64),
+                ("TransferCharacteristics", 6_u64),
+                ("MatrixCoefficients", 8_u64),
+            ] {
+                let start = usize::try_from(offset).expect("small colr offset");
+                add_tag(
+                    metadata,
+                    name,
+                    TagValue::Unsigned(u64::from(u16::from_be_bytes(
+                        data[start..start + 2].try_into().expect("nclx field"),
+                    ))),
+                    header.data_start + offset,
+                    2,
+                );
+            }
+            add_tag(
+                metadata,
+                "FullRange",
+                TagValue::Unsigned(u64::from(data[10] >> 7)),
+                header.data_start + 10,
+                1,
+            );
+        }
+        Ok(())
+    }
+
+    fn parse_auxc(&mut self, header: &BoxHeader, metadata: &mut Metadata) -> Result<()> {
+        let data = self.read_payload(header, "ISO-BMFF auxC")?;
+        if data.len() <= 4 {
+            metadata.add_warning(
+                Warning::new("truncated-auxc", "auxC box has no auxiliary type")
+                    .at(header.data_start),
+            );
+            return Ok(());
+        }
+        let auxiliary_type = String::from_utf8_lossy(&data[4..])
+            .trim_end_matches('\0')
+            .to_owned();
+        add_tag(
+            metadata,
+            "AuxiliaryType",
+            TagValue::String(auxiliary_type),
+            header.data_start + 4,
+            (data.len() - 4) as u64,
         );
         Ok(())
     }
@@ -533,6 +743,9 @@ fn is_container(kind: &[u8; 4]) -> bool {
             | b"meco"
             | b"hnti"
             | b"tref"
+            | b"iprp"
+            | b"ipco"
+            | b"iref"
     )
 }
 
@@ -587,6 +800,8 @@ fn add_tag(metadata: &mut Metadata, name: &str, value: TagValue, offset: u64, le
     let value_type = match &value {
         TagValue::String(_) => ValueType::String,
         TagValue::Unsigned(_) => ValueType::UnsignedInteger,
+        TagValue::Float(_) => ValueType::Float,
+        TagValue::UnsignedRational { .. } => ValueType::UnsignedRational,
         TagValue::Array(_) => ValueType::Array,
         _ => ValueType::Unknown,
     };
@@ -644,6 +859,21 @@ mod tests {
         let udta = box_with_kind(b"udta", &ilst);
         let moov = box_with_kind(b"moov", &udta);
         let ispe = box_with_kind(b"ispe", &[0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 2, 0]);
+        let pixi = box_with_kind(b"pixi", &[0, 0, 0, 0, 3, 8, 10, 12]);
+        let irot = box_with_kind(b"irot", &[2]);
+        let imir = box_with_kind(b"imir", &[1]);
+        let pasp = box_with_kind(b"pasp", &[0, 0, 0, 4, 0, 0, 0, 3]);
+        let colr = box_with_kind(b"colr", b"nclx\0\x01\0\x02\0\x03\x80");
+        let mut auxc_data = vec![0, 0, 0, 0];
+        auxc_data.extend_from_slice(b"urn:mpeg:avc:auxiliary:alpha\0");
+        let auxc = box_with_kind(b"auxC", &auxc_data);
+        let mut properties = pixi;
+        properties.extend_from_slice(&irot);
+        properties.extend_from_slice(&imir);
+        properties.extend_from_slice(&pasp);
+        properties.extend_from_slice(&colr);
+        properties.extend_from_slice(&auxc);
+        let iprp = box_with_kind(b"iprp", &box_with_kind(b"ipco", &properties));
         let xmp = box_with_kind(
             b"xml ",
             br#"<x:xmpmeta><rdf:RDF><rdf:Description dc:format="image/heic" xmlns:dc="urn:dc"/></rdf:RDF></x:xmpmeta>"#,
@@ -651,6 +881,7 @@ mod tests {
         let mut bytes = ftyp;
         bytes.extend_from_slice(&moov);
         bytes.extend_from_slice(&ispe);
+        bytes.extend_from_slice(&iprp);
         bytes.extend_from_slice(&xmp);
         let info = FileInfo::new("movie.mp4".into(), bytes.len() as u64, FileFormat::Mp4);
         let metadata = read_isobmff(&mut Cursor::new(bytes), info, ParseLimits::default()).unwrap();
@@ -665,6 +896,33 @@ mod tests {
         assert_eq!(
             metadata.find("ISOBMFF:ImageWidth").unwrap().display_value(),
             "768"
+        );
+        assert_eq!(
+            metadata.find("ISOBMFF:ChannelCount").unwrap().value,
+            TagValue::Unsigned(3)
+        );
+        assert_eq!(
+            metadata.find("ISOBMFF:RotationDegrees").unwrap().value,
+            TagValue::Unsigned(180)
+        );
+        assert_eq!(
+            metadata.find("ISOBMFF:MirrorAxis").unwrap().display_value(),
+            "horizontal"
+        );
+        assert_eq!(
+            metadata.find("ISOBMFF:PixelAspectRatio").unwrap().value,
+            TagValue::Float(4.0 / 3.0)
+        );
+        assert_eq!(
+            metadata.find("ISOBMFF:ColorPrimaries").unwrap().value,
+            TagValue::Unsigned(1)
+        );
+        assert_eq!(
+            metadata
+                .find("ISOBMFF:AuxiliaryType")
+                .unwrap()
+                .display_value(),
+            "urn:mpeg:avc:auxiliary:alpha"
         );
         assert_eq!(
             metadata.find("XMP:dc:format").unwrap().display_value(),
