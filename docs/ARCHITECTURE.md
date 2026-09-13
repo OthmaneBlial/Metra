@@ -33,7 +33,11 @@ through the CLI.
 The TIFF reader is the low-level building block for EXIF in JPEG, PNG, and
 WebP. It accepts a bounded random-access region, so embedded offsets remain
 relative to the correct TIFF payload while source offsets can still be
-reported against the containing file.
+reported against the containing file. JPEG, PNG, and WebP delegate structured
+XMP to the bounded XML reader; Photoshop resources delegate IPTC IIM parsing,
+and ICC payloads delegate profile-header/tag-table inspection. The ISO-BMFF
+reader walks bounded boxes and exposes brands plus a conservative subset of
+QuickTime-style `ilst` text items.
 
 ## Parser invariants
 
@@ -66,8 +70,8 @@ The following changes are deferred until their acceptance tests exist:
 - a generated tag-definition database instead of a growing handwritten table;
 - a `FormatHandler` capability abstraction once write/create behavior creates
   meaningful shared operations;
-- independent XMP/RDF, IPTC, and ICC modules;
 - manufacturer-specific MakerNote modules;
+- deeper HEIF/AVIF and media metadata modules;
 - a lossless block-preservation layer for safe rewrites;
 - controlled worker parallelism with deterministic output ordering.
 

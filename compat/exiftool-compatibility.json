@@ -35,11 +35,12 @@
       "lossless_rewrite": "planned",
       "streaming": "partial"
     },
-    "HEIF": { "read": "planned", "write": "planned" },
-    "AVIF": { "read": "planned", "write": "planned" },
-    "GIF": { "read": "planned", "write": "planned" },
-    "MP4": { "read": "planned", "write": "planned" },
-    "MOV": { "read": "planned", "write": "planned" },
+    "HEIF": { "read": "partial", "write": "planned", "streaming": "partial" },
+    "AVIF": { "read": "partial", "write": "planned", "streaming": "partial" },
+    "GIF": { "read": "partial", "write": "planned", "streaming": "partial" },
+    "MP4": { "read": "partial", "write": "planned", "streaming": "partial" },
+    "MOV": { "read": "partial", "write": "planned", "streaming": "partial" },
+    "M4A": { "read": "partial", "write": "planned", "streaming": "partial" },
     "PDF": { "read": "planned", "write": "planned" },
     "MP3": { "read": "planned", "write": "planned" },
     "FLAC": { "read": "planned", "write": "planned" }
@@ -48,13 +49,13 @@
     "EXIF": "partial",
     "GPS": "partial",
     "JFIF": "partial",
-    "XMP": "planned",
-    "IPTC": "planned",
-    "ICC": "planned",
-    "Photoshop_IRB": "planned",
+    "XMP": "partial",
+    "IPTC": "partial",
+    "ICC": "partial",
+    "Photoshop_IRB": "partial",
     "MakerNotes": "planned",
     "ID3": "planned",
-    "QuickTime": "planned"
+    "QuickTime": "partial"
   },
   "cli": {
     "human_readable": "supported",

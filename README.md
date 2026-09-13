@@ -12,7 +12,7 @@ pixels and reports unsupported blocks instead of pretending to understand them.
 The first verified vertical slice is:
 
 ```text
-JPEG / TIFF / PNG / WebP
+JPEG / TIFF / PNG / WebP / GIF / ISO-BMFF media
         ↓
 bounded container parsing
         ↓
@@ -25,16 +25,19 @@ Implemented today:
 
 | Area | Current behavior |
 | --- | --- |
-| JPEG | Magic-byte detection, segment walking, JFIF properties, JPEG comments, EXIF APP1, and presence warnings for XMP/ICC/Photoshop blocks |
+| JPEG | Magic-byte detection, segment walking, JFIF properties, JPEG comments, EXIF APP1, structured XMP, basic ICC profiles, and IPTC resources from Photoshop blocks |
 | TIFF/EXIF | Little- and big-endian headers, IFDs, nested EXIF/GPS/Interop directories, rational values, unknown tags, thumbnail range checks, and decimal GPS helpers |
-| PNG | Chunk walking, CRC warnings, tEXt/iTXt, eXIf, tIME, pHYs, and ICC presence warnings |
-| WebP | RIFF chunk walking, VP8X dimensions, EXIF, and XMP/ICC presence warnings |
+| PNG | Chunk walking, CRC warnings, tEXt/iTXt, eXIf, tIME, pHYs, structured XMP, and ICC presence warnings |
+| WebP | RIFF chunk walking, VP8X dimensions, EXIF, structured XMP, and ICC presence warnings |
+| GIF | GIF87a/GIF89a headers, logical-screen dimensions, comments, and bounded extension validation |
+| ISO-BMFF | HEIF/AVIF/MP4/MOV/M4A brand detection, bounded box walking, and QuickTime-style `ilst` text metadata |
 | Output | Human-readable text, one JSON document, or JSON Lines; schema version `1` |
 | Safety | Checked offsets, bounded reads, recursion and entry limits, deterministic recursive traversal, and structured warnings |
 
 Writing, creation, deletion, metadata copying, MakerNotes interpretation, and
-full XMP/IPTC/ICC/media support are intentionally not advertised as implemented
-yet. Their boundaries are tracked in
+full media and ExifTool compatibility are intentionally not advertised as
+implemented yet. PDF, MP3, FLAC, ID3, and manufacturer-specific MakerNotes are
+also still planned. Their boundaries are tracked in
 [`compat/exiftool-compatibility.json`](compat/exiftool-compatibility.json).
 
 ## Quick start
@@ -70,7 +73,8 @@ if let Some(make) = metadata.find("EXIF:Make") {
 }
 ```
 
-The model keeps namespaces explicit (`EXIF`, `GPS`, `PNG`, `WebP`, `JFIF`),
+The model keeps namespaces explicit (`EXIF`, `GPS`, `PNG`, `WebP`, `JFIF`,
+`XMP`, `IPTC`, `ICC`, and `ISOBMFF`),
 retains bounded raw bytes, represents rational and array values without
 flattening them into strings, and exposes warnings separately from tags.
 
@@ -104,9 +108,10 @@ does not need to be copied wholesale into memory. The JPEG, PNG, and WebP
 readers only materialize bounded metadata chunks.
 
 The next architectural boundaries are deliberately deferred until behavior
-requires them: a generated tag database, isolated MakerNote readers, a robust
-XMP representation, and a transactional rewrite engine. This keeps the current
-working slice small enough to test while leaving the public model extensible.
+requires them: a generated tag database, isolated MakerNote readers, deeper
+media metadata support, and a transactional rewrite engine. This keeps the
+current working slice small enough to test while leaving the public model
+extensible.
 
 ## Validation
 
@@ -117,8 +122,9 @@ cargo clippy --workspace --all-targets -- -D warnings
 ```
 
 The tests generate small synthetic files at runtime, covering signatures,
-little-endian nested EXIF, malformed offsets, JPEG segments, PNG CRC behavior,
-WebP dimensions, and CLI JSON/human output. Real-world corpus and differential
+little-endian nested EXIF, malformed offsets, JPEG segments, structured XMP,
+IPTC/ICC resources, PNG CRC behavior, WebP dimensions, GIF extensions, ISO-BMFF
+boxes, and CLI JSON/human output. Real-world corpus and differential
 compatibility tests are separate follow-up gates; passing these local tests does
 not claim complete ExifTool compatibility.
 
@@ -126,8 +132,8 @@ not claim complete ExifTool compatibility.
 
 1. Expand the read model and generated tag definitions without losing raw data.
 2. Add corpus and differential tests for JPEG/TIFF/PNG/WebP edge cases.
-3. Add HEIF/AVIF/GIF and media container readers with bounded streaming access.
-4. Implement XMP, IPTC, ICC, and isolated MakerNote namespaces.
+3. Deepen HEIF/AVIF and media container readers, then add MP3/FLAC/PDF readers.
+4. Expand XMP/IPTC/ICC coverage and add isolated MakerNote namespaces.
 5. Design read-modify-write with validation, temporary files, and atomic replace.
 6. Add carefully scoped set/delete/copy commands only after round-trip tests.
 7. Add controlled parallel batch processing and benchmark real collections.
