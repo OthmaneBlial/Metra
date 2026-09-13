@@ -67,15 +67,14 @@ out-of-range required read.
 
 ## Rewrite boundary
 
-The current writer surface is deliberately limited to JPEG COM segments. The
-library validates the source through the JPEG reader before writing, streams
-the original container while preserving untargeted bytes, validates the
-temporary output with the reader again, syncs it, and atomically renames a
-same-directory temporary file. `SetComment` and `DeleteComments` are exposed
-through the library API and the CLI as `--set JPEG:Comment=...` and
-`--delete JPEG:Comment`, while `--copy JPEG:Comment=SOURCE` reads the source
-before applying the same validated rewrite. Generic tag mutation and other
-format writers remain deferred until their round-trip acceptance tests exist.
+The current writer surface is deliberately limited to JPEG COM segments and
+PNG `tEXt` chunks. Each library writer validates its source through the reader
+before writing, streams the original container while preserving untargeted
+bytes, validates the temporary output with the reader again, syncs it, and
+atomically renames a same-directory temporary file. The CLI exposes
+`--set`/`--delete`/`--copy` for `JPEG:Comment` and `PNG:Text:<keyword>`; generic
+tag mutation and other format writers remain deferred until their round-trip
+acceptance tests exist.
 
 ## Output contract
 

@@ -25,6 +25,8 @@ Initial read-only foundation:
   `--delete` flags with non-JPEG rejection;
 - added `--copy JPEG:Comment=SOURCE TARGET` with source validation and the same
   atomic target rewrite path;
+- added validated PNG `tEXt` replacement/deletion/copy with CRC regeneration,
+  streamed image chunks, and atomic target replacement;
 - added bounded `--jobs` batch inspection with deterministic result ordering;
 - expanded ISO-BMFF inspection with `ispe` dimensions, item/handler fields,
   and direct XMP/EXIF decoding when the metadata boxes are available;

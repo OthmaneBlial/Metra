@@ -43,9 +43,9 @@ Implemented today:
 Generic writing, creation, deletion, metadata copying, SVG embedded-XMP
 extraction, MakerNotes interpretation, and full media and ExifTool compatibility
 are intentionally not advertised as implemented yet. The library now supports
-validated, lossless JPEG comment replacement/deletion through
-`rewrite_jpeg_path`, and the CLI exposes the same narrow operations through
-`--set`, `--delete`, and `--copy`. Manufacturer-specific MakerNotes are still planned;
+validated, lossless JPEG comment and PNG `tEXt` replacement/deletion through
+format-specific rewrite APIs, and the CLI exposes the same narrow operations
+through `--set`, `--delete`, and `--copy`. Manufacturer-specific MakerNotes are still planned;
 MP3/ID3, FLAC/Vorbis comments, PDF, and WAV are only partially covered. Their
 boundaries are tracked in
 [`compat/exiftool-compatibility.json`](compat/exiftool-compatibility.json).
@@ -65,6 +65,7 @@ cargo run -- --yaml photo.jpg
 cargo run -- --set 'JPEG:Comment=reviewed' photo.jpg
 cargo run -- --delete JPEG:Comment photo.jpg
 cargo run -- --copy JPEG:Comment=source.jpg target.jpg
+cargo run -- --set 'PNG:Text:Comment=reviewed' image.png
 ```
 
 Install the local CLI:
@@ -162,7 +163,7 @@ are the local validation gate.
 
 ## Roadmap
 
-Avancement global vérifié : **61 %**. Ce chiffre est une moyenne indicative des
+Avancement global vérifié : **63 %**. Ce chiffre est une moyenne indicative des
 huit axes ci-dessous, calculée uniquement sur le code et les tests présents ; il
 ne représente pas un pourcentage de compatibilité ExifTool.
 
@@ -170,8 +171,8 @@ ne représente pas un pourcentage de compatibilité ExifTool.
 2. **30 %** — Ajouter des corpus réels et des tests différentiels JPEG/TIFF/PNG/WebP.
 3. **90 %** — Approfondir HEIF/AVIF et les conteneurs média, puis couvrir les lecteurs restants.
 4. **65 %** — Étendre XMP/IPTC/ICC/ID3 et isoler les espaces MakerNote.
-5. **20 %** — Concevoir l’écriture read-modify-write avec validation et remplacement atomique.
-6. **40 %** — Ajouter `set`/`delete`/`copy` après les tests round-trip ; les trois opérations couvrent maintenant `JPEG:Comment` via API et CLI.
+5. **30 %** — Concevoir l’écriture read-modify-write avec validation et remplacement atomique.
+6. **50 %** — Ajouter `set`/`delete`/`copy` après les tests round-trip ; les trois opérations couvrent maintenant JPEG `Comment` et PNG `tEXt` via API et CLI.
 7. **60 %** — Ajouter le traitement parallèle contrôlé, le rendu en flux borné et les benchmarks sur collections réelles.
 8. **100 %** — Étendre les sorties structurées avec CSV, TOML et YAML versionnés.
 
