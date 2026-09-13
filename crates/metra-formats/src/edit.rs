@@ -531,7 +531,17 @@ pub(crate) fn collect_matroska(
                     Err(unsupported_edit(format, key))
                 }
             }
-            MetadataEdit::Delete { key } => Err(unsupported_edit(format, key)),
+            MetadataEdit::Delete { key } => {
+                if let Some(name) = matroska_tag_name(key) {
+                    Ok(crate::MatroskaEdit::DeleteTag {
+                        name: name.to_owned(),
+                    })
+                } else if matroska_info_key(key) {
+                    Ok(crate::MatroskaEdit::DeleteString { key: key.clone() })
+                } else {
+                    Err(unsupported_edit(format, key))
+                }
+            }
         })
         .collect()
 }
@@ -865,6 +875,26 @@ mod tests {
             collect_isobmff(&[MetadataEdit::delete("ISOBMFF:Title")], FileFormat::Mp4,).unwrap(),
             vec![crate::IsobmffEdit::DeleteText {
                 key: "ISOBMFF:Title".to_owned(),
+            }]
+        );
+    }
+
+    #[test]
+    fn matroska_collector_accepts_canonical_text_deletion() {
+        assert_eq!(
+            collect_matroska(
+                &[MetadataEdit::delete("Matroska:Tag:TITLE")],
+                FileFormat::Webm,
+            )
+            .unwrap(),
+            vec![crate::MatroskaEdit::DeleteTag {
+                name: "TITLE".to_owned(),
+            }]
+        );
+        assert_eq!(
+            collect_matroska(&[MetadataEdit::delete("Matroska:Title")], FileFormat::Webm,).unwrap(),
+            vec![crate::MatroskaEdit::DeleteString {
+                key: "Matroska:Title".to_owned(),
             }]
         );
     }

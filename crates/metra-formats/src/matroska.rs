@@ -328,25 +328,29 @@ fn scan_region<R: Read + Seek>(
                         }
                         _ => group,
                     };
-                    add_tag(
-                        metadata,
-                        Some(header.id as u32),
-                        name,
-                        value,
-                        value_type,
-                        &format!("Matroska/{element_group}"),
-                        Some(payload_start),
-                        Some(payload_length),
-                        Some(raw),
-                    );
-                    if header.id == DURATION
-                        && let TagValue::Float(value) = metadata
-                            .tags
-                            .last()
-                            .map(|tag| tag.value.clone())
-                            .unwrap_or(TagValue::Float(0.0))
-                    {
-                        state.duration = Some(value);
+                    let is_empty_string =
+                        matches!(&value, TagValue::String(value) if value.is_empty());
+                    if !is_empty_string {
+                        add_tag(
+                            metadata,
+                            Some(header.id as u32),
+                            name,
+                            value,
+                            value_type,
+                            &format!("Matroska/{element_group}"),
+                            Some(payload_start),
+                            Some(payload_length),
+                            Some(raw),
+                        );
+                        if header.id == DURATION
+                            && let TagValue::Float(value) = metadata
+                                .tags
+                                .last()
+                                .map(|tag| tag.value.clone())
+                                .unwrap_or(TagValue::Float(0.0))
+                        {
+                            state.duration = Some(value);
+                        }
                     }
                 }
             }
@@ -432,7 +436,9 @@ fn parse_simple_tag<R: Read + Seek>(
         cursor = payload_end;
         *element_count += 1;
     }
-    if let (Some(name), Some(value)) = (name, value) {
+    if let (Some(name), Some(value)) = (name, value)
+        && !value.is_empty()
+    {
         add_tag(
             metadata,
             None,

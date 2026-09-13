@@ -17,6 +17,8 @@ use crate::matroska::read_matroska;
 pub enum MatroskaEdit {
     SetTag { name: String, value: String },
     SetString { key: String, value: String },
+    DeleteTag { name: String },
+    DeleteString { key: String },
 }
 
 pub fn rewrite_matroska<R: Read + Seek, W: Write + Seek>(
@@ -153,7 +155,16 @@ fn collect_patches(
                             .to_owned(),
                     });
                 }
-                (format!("Matroska:Tag:{name}"), value, true)
+                (format!("Matroska:Tag:{name}"), value.as_str(), true)
+            }
+            MatroskaEdit::DeleteTag { name } => {
+                if name.is_empty() || name.contains('\0') {
+                    return Err(MetraError::WriteFailure {
+                        message: "Matroska SimpleTag name cannot be empty or contain NUL"
+                            .to_owned(),
+                    });
+                }
+                (format!("Matroska:Tag:{name}"), "", true)
             }
             MatroskaEdit::SetString { key, value } => {
                 if !is_writable_string_key(key) {
@@ -161,7 +172,15 @@ fn collect_patches(
                         message: format!("Matroska string field {key} is not writable"),
                     });
                 }
-                (key.clone(), value, false)
+                (key.clone(), value.as_str(), false)
+            }
+            MatroskaEdit::DeleteString { key } => {
+                if !is_writable_string_key(key) {
+                    return Err(MetraError::WriteFailure {
+                        message: format!("Matroska string field {key} is not writable"),
+                    });
+                }
+                (key.clone(), "", false)
             }
         };
         if value.contains('\0') {
@@ -461,5 +480,49 @@ mod tests {
             metadata.find("Matroska:Title").unwrap().display_value(),
             "new"
         );
+    }
+
+    #[test]
+    fn deletes_existing_simple_tag_without_changing_ebml_layout() {
+        let bytes = minimal_webm("old");
+        let output = rewrite_matroska_to_vec(
+            &bytes,
+            FileInfo::new("editable.webm".into(), bytes.len() as u64, FileFormat::Webm),
+            ParseLimits::default(),
+            &[MatroskaEdit::DeleteTag {
+                name: "TITLE".to_owned(),
+            }],
+        )
+        .expect("SimpleTag deletion should succeed");
+        assert_eq!(output.len(), bytes.len());
+        let metadata = read_matroska(
+            &mut Cursor::new(output),
+            FileInfo::new("editable.webm".into(), bytes.len() as u64, FileFormat::Webm),
+            ParseLimits::default(),
+        )
+        .expect("deleted SimpleTag output should remain readable");
+        assert!(metadata.find("Matroska:Tag:TITLE").is_none());
+    }
+
+    #[test]
+    fn deletes_existing_info_title_without_changing_ebml_layout() {
+        let bytes = minimal_webm_with_info_title("old");
+        let output = rewrite_matroska_to_vec(
+            &bytes,
+            FileInfo::new("editable.webm".into(), bytes.len() as u64, FileFormat::Webm),
+            ParseLimits::default(),
+            &[MatroskaEdit::DeleteString {
+                key: "Matroska:Title".to_owned(),
+            }],
+        )
+        .expect("Info title deletion should succeed");
+        assert_eq!(output.len(), bytes.len());
+        let metadata = read_matroska(
+            &mut Cursor::new(output),
+            FileInfo::new("editable.webm".into(), bytes.len() as u64, FileFormat::Webm),
+            ParseLimits::default(),
+        )
+        .expect("deleted Info output should remain readable");
+        assert!(metadata.find("Matroska:Title").is_none());
     }
 }
