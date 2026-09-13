@@ -209,6 +209,11 @@ writer_adapter!(
     super::edit::collect_matroska
 );
 writer_adapter!(
+    write_raw_tiff,
+    super::raw_writer::rewrite_raw_tiff,
+    super::edit::collect_tiff
+);
+writer_adapter!(
     write_wav,
     super::wav_writer::rewrite_wav,
     super::edit::collect_wav
@@ -333,7 +338,7 @@ static FORMAT_HANDLERS: &[RegisteredFormatHandler] = &[
     RegisteredFormatHandler {
         format: FileFormat::Raw,
         reader: read_raw,
-        writer: None,
+        writer: Some(write_raw_tiff),
     },
 ];
 
@@ -571,6 +576,39 @@ mod tests {
             metadata.find("Matroska:Tag:TITLE").unwrap().display_value(),
             "new"
         );
+    }
+
+    #[test]
+    fn registered_raw_writer_dispatches_tiff_like_edits() {
+        let mut bytes = vec![
+            b'I', b'I', 42, 0, 8, 0, 0, 0, 1, 0, // one IFD0 entry
+            0x0F, 0x01, 2, 0, 6, 0, 0, 0, 26, 0, 0, 0, 0, 0, 0, 0, // no next IFD
+        ];
+        bytes.extend_from_slice(b"Canon\0");
+        let handler = handler_for_format(FileFormat::Raw).expect("RAW handler should exist");
+        let mut reader = std::io::Cursor::new(bytes.clone());
+        let mut writer = std::io::Cursor::new(Vec::new());
+        handler
+            .write_metadata(
+                &mut reader,
+                &mut writer,
+                FileInfo::new("handler.dng".into(), bytes.len() as u64, FileFormat::Raw),
+                ParseLimits::default(),
+                &[MetadataEdit::set("TIFF:EXIF:Make", "Sony")],
+            )
+            .expect("registered RAW writer should accept TIFF-like edits");
+
+        let output = writer.into_inner();
+        let metadata = crate::read_reader(
+            &mut std::io::Cursor::new(output.clone()),
+            FileInfo::new(
+                "handler.dng".into(),
+                output.len() as u64,
+                FileFormat::Unknown,
+            ),
+        )
+        .expect("registered RAW writer output should remain readable");
+        assert_eq!(metadata.find("EXIF:Make").unwrap().display_value(), "Sony");
     }
 
     #[test]
