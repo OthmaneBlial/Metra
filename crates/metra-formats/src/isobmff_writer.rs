@@ -16,6 +16,7 @@ use crate::isobmff::read_isobmff;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IsobmffEdit {
     SetText { key: String, value: String },
+    DeleteText { key: String },
 }
 
 pub fn rewrite_isobmff<R: Read + Seek, W: Write + Seek>(
@@ -165,7 +166,10 @@ fn collect_patches(
 ) -> Result<Vec<Patch>> {
     let mut patches = Vec::with_capacity(edits.len());
     for edit in edits {
-        let IsobmffEdit::SetText { key, value } = edit;
+        let (key, value) = match edit {
+            IsobmffEdit::SetText { key, value } => (key, value.as_str()),
+            IsobmffEdit::DeleteText { key } => (key, ""),
+        };
         if !is_writable_text_key(key) {
             return Err(MetraError::WriteFailure {
                 message: format!("ISO-BMFF metadata key {key} is not writable"),
@@ -434,5 +438,24 @@ mod tests {
             }],
         );
         assert!(matches!(result, Err(MetraError::WriteFailure { .. })));
+    }
+
+    #[test]
+    fn deletes_existing_text_by_zeroing_only_its_value_span() {
+        let bytes = quicktime_fixture();
+        let info = FileInfo::new("movie.mp4".into(), bytes.len() as u64, FileFormat::Mp4);
+        let output = rewrite_isobmff_to_vec(
+            &bytes,
+            info.clone(),
+            ParseLimits::default(),
+            &[IsobmffEdit::DeleteText {
+                key: "ISOBMFF:Title".to_owned(),
+            }],
+        )
+        .expect("ISO-BMFF text deletion should succeed");
+        assert_eq!(output.len(), bytes.len());
+        let metadata = read_isobmff(&mut Cursor::new(output), info, ParseLimits::default())
+            .expect("edited ISO-BMFF should remain readable");
+        assert!(metadata.find("ISOBMFF:Title").is_none());
     }
 }

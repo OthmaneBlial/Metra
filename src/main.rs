@@ -494,6 +494,13 @@ fn parse_edits(
                     },
                 ])));
             }
+            if isobmff_text_key(key) {
+                return Ok(Some(EditRequest::DirectIsobmff(vec![
+                    metra::IsobmffEdit::DeleteText {
+                        key: key.to_owned(),
+                    },
+                ])));
+            }
             if let Some(name) = flac_comment_name(key) {
                 return Ok(Some(EditRequest::DirectFlac(vec![
                     metra::FlacEdit::DeleteComment {

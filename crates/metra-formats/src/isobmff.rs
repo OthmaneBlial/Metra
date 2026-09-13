@@ -251,7 +251,7 @@ impl<R: Read + Seek> BoxParser<'_, R> {
         } else {
             (data, header.data_start)
         };
-        if value.is_empty() {
+        if value.iter().all(|byte| *byte == 0) {
             return Ok(());
         }
         let name = match &header.kind {

@@ -360,6 +360,9 @@ pub(crate) fn collect_isobmff(
                     value: value.clone(),
                 })
             }
+            MetadataEdit::Delete { key } if isobmff_text_key(key) => {
+                Ok(crate::IsobmffEdit::DeleteText { key: key.clone() })
+            }
             _ => Err(unsupported_edit(format, edit.key())),
         })
         .collect()
@@ -852,6 +855,16 @@ mod tests {
             vec![crate::JpegEdit::SetExifAscii {
                 key: "EXIF:Make".to_owned(),
                 value: "Sony".to_owned(),
+            }]
+        );
+    }
+
+    #[test]
+    fn isobmff_collector_accepts_canonical_text_deletion() {
+        assert_eq!(
+            collect_isobmff(&[MetadataEdit::delete("ISOBMFF:Title")], FileFormat::Mp4,).unwrap(),
+            vec![crate::IsobmffEdit::DeleteText {
+                key: "ISOBMFF:Title".to_owned(),
             }]
         );
     }
