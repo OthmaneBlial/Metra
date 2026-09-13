@@ -155,14 +155,18 @@ fn process_chunk(
                 );
             } else {
                 let mut cursor = std::io::Cursor::new(data);
-                parse_tiff_from_reader(
+                if let Err(error) = parse_tiff_from_reader(
                     &mut cursor,
                     0,
                     data.len() as u64,
                     data_offset,
                     metadata,
                     limits,
-                )?;
+                ) {
+                    metadata.add_warning(
+                        Warning::new("invalid-exif", error.to_string()).at(data_offset),
+                    );
+                }
             }
         }
         b"iCCP" => metadata.add_warning(

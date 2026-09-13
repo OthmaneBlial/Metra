@@ -99,12 +99,12 @@ fn collect_directory(directory: &Path, output: &mut Vec<PathBuf>) -> Result<(), 
     for entry in entries {
         let entry = entry.map_err(|error| format!("cannot read directory entry: {error}"))?;
         let path = entry.path();
-        let metadata = entry
-            .metadata()
+        let file_type = entry
+            .file_type()
             .map_err(|error| format!("cannot inspect {}: {error}", path.display()))?;
-        if metadata.is_dir() {
+        if file_type.is_dir() {
             collect_directory(&path, output)?;
-        } else if metadata.is_file() {
+        } else if file_type.is_file() {
             output.push(path);
         }
     }

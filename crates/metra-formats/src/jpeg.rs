@@ -162,14 +162,18 @@ fn process_segment(
             }
             let tiff_data = &data[6..];
             let mut cursor = std::io::Cursor::new(tiff_data);
-            parse_tiff_from_reader(
+            if let Err(error) = parse_tiff_from_reader(
                 &mut cursor,
                 0,
                 tiff_data.len() as u64,
                 data_offset.saturating_add(6),
                 metadata,
                 limits,
-            )?;
+            ) {
+                metadata.add_warning(
+                    Warning::new("invalid-exif", error.to_string()).at(data_offset + 6),
+                );
+            }
         }
         0xE1 if data.starts_with(b"http://ns.adobe.com/xap/1.0/\0") => metadata.add_warning(
             Warning::new(

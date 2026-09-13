@@ -124,14 +124,18 @@ fn process_chunk(
                 );
             } else {
                 let mut cursor = std::io::Cursor::new(tiff_data);
-                parse_tiff_from_reader(
+                if let Err(error) = parse_tiff_from_reader(
                     &mut cursor,
                     0,
                     tiff_data.len() as u64,
                     absolute_start,
                     metadata,
                     limits,
-                )?;
+                ) {
+                    metadata.add_warning(
+                        Warning::new("invalid-exif", error.to_string()).at(absolute_start),
+                    );
+                }
             }
         }
         b"XMP " => metadata.add_warning(
