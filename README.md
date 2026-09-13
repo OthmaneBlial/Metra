@@ -26,7 +26,7 @@ Implemented today:
 
 | Area | Current behavior |
 | --- | --- |
-| JPEG | Magic-byte detection, segment walking, JFIF properties, JPEG comments, EXIF APP1, structured XMP, basic ICC profiles, and IPTC resources from Photoshop blocks |
+| JPEG | Magic-byte detection, segment walking, JFIF properties, JPEG comments, EXIF APP1, structured XMP, typed ICC profile headers/descriptions, and IPTC resources from Photoshop blocks |
 | TIFF/EXIF | Little- and big-endian headers, IFDs, nested EXIF/GPS/Interop directories, rational values, unknown tags, thumbnail range checks, and decimal GPS helpers |
 | PNG | Chunk walking, CRC warnings, tEXt/zTXt/iTXt including bounded zlib text, eXIf, tIME, pHYs, structured XMP, and ICC presence warnings |
 | WebP | RIFF chunk walking, VP8X dimensions, EXIF, structured XMP, and ICC presence warnings |
@@ -178,14 +178,14 @@ are the local validation gate.
 
 ## Roadmap
 
-Avancement global vérifié : **74 %**. Ce chiffre est une moyenne indicative des
+Avancement global vérifié : **75 %**. Ce chiffre est une moyenne indicative des
 huit axes ci-dessous, calculée uniquement sur le code et les tests présents ; il
 ne représente pas un pourcentage de compatibilité ExifTool.
 
 1. **80 %** — Étendre le modèle de lecture et les définitions de tags sans perdre les données brutes.
 2. **30 %** — Ajouter des corpus réels et des tests différentiels JPEG/TIFF/PNG/WebP ; le harnais opt-in est présent, mais aucune exécution de corpus réel n’est comptée.
 3. **90 %** — Approfondir HEIF/AVIF et les conteneurs média, puis couvrir les lecteurs restants.
-4. **78 %** — Étendre XMP/IPTC/ICC/ID3 et isoler les espaces MakerNote ; XMP est maintenant réécrit de façon bornée pour WebP et PNG, les références XML sûres sont décodées sans entités personnalisées, les textes PNG compressés sont déployés sous budget, et les champs texte/commentaires ID3v2 courants restent sous limites explicites.
+4. **80 %** — Étendre XMP/IPTC/ICC/ID3 et isoler les espaces MakerNote ; XMP est maintenant réécrit de façon bornée pour WebP et PNG, les références XML sûres sont décodées sans entités personnalisées, les textes PNG compressés sont déployés sous budget, les en-têtes ICC sont typés, et les champs texte/commentaires ID3v2 courants restent sous limites explicites.
 5. **65 %** — Concevoir l’écriture read-modify-write avec validation et remplacement atomique ; huit writers bornés couvrent maintenant JPEG, PNG, GIF, WebP, SVG, WAV, FLAC et ID3v2.
 6. **92 %** — Ajouter `set`/`delete`/`copy` après les tests round-trip ; les trois opérations couvrent maintenant JPEG `Comment`, PNG `tEXt`/`XMP`, GIF `Comment`, WebP `XMP`, SVG `Title`/`Description`/`Comment`, WAV `LIST/INFO`, FLAC Vorbis Comments et ID3v2 texte/commentaire via API et CLI.
 7. **60 %** — Ajouter le traitement parallèle contrôlé, le rendu en flux borné et les benchmarks sur collections réelles.

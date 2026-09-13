@@ -8,6 +8,9 @@ Initial read-first foundation with narrow validated rewrites:
 - added signature-based detection for JPEG, TIFF, PNG, WebP, PDF, and GIF;
 - added defensive JPEG, TIFF/EXIF, PNG, and WebP readers;
 - added bounded XMP/RDF, IPTC IIM, and ICC profile readers;
+- expanded ICC inspection with typed profile class, platform, manufacturer,
+  model, creation date, rendering intent, illuminant, profile ID, and
+  description fields;
 - added GIF comment and logical-screen inspection;
 - added ISO-BMFF box walking with HEIF/AVIF/MP4/MOV/M4A brand detection and
   partial QuickTime-style text metadata;
