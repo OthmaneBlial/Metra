@@ -53,7 +53,7 @@ APP13 resources, PNG `tEXt` and uncompressed `iTXt` XMP, GIF comments, WebP XMP,
 title/description/comments, WAV `LIST/INFO`, FLAC Vorbis Comment, Ogg Vorbis/Opus/Ogg-FLAC
 comment packet rewrites, common
 ID3v2 text/comment replacement/deletion/copy, bounded TIFF ASCII copy,
-existing ISO-BMFF text replacement/copy, and bounded Nikon/Canon/Fujifilm/Panasonic/Olympus/Sony/Apple MakerNote IFD plus Samsung STMN fields
+existing ISO-BMFF text replacement/copy, and bounded Nikon/Canon/Fujifilm/Panasonic/Olympus/Sony/Apple/DJI MakerNote IFD plus Samsung STMN fields
 inspection are implemented, through the
 library API and the explicit `--set`/`--delete`/`--copy` CLI flags. JPEG XMP
 writes validate replacement packets with the bounded XML reader. IPTC writes

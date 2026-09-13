@@ -131,6 +131,8 @@ Initial read-first foundation with narrow validated rewrites:
   Samsung STMN nested fields and DJI/GoPro fields detection-only;
 - added bounded Samsung STMN header and preview-field decoding with nested
   payload retention under the configured value budget;
+- added bounded DJI MakerNote IFD decoding with manufacturer-context dispatch,
+  byte-order selection, known motion fields, and source-range preservation;
 - catalogued the bounded Nikon MakerNote identifiers centrally and covered the
   EXIF integration path with absolute source-offset assertions;
 - added bounded PSD/PSB inspection for headers, dimensions, common Photoshop
