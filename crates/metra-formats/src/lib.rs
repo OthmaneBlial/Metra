@@ -10,6 +10,7 @@ use std::path::Path;
 
 use metra_core::{FileFormat, FileInfo, Metadata, MetraError, ParseLimits, Result};
 
+mod avi;
 mod flac;
 mod flac_writer;
 mod gif;
@@ -37,6 +38,7 @@ mod webp_writer;
 mod xml;
 mod xmp;
 
+pub use avi::read_avi;
 pub use flac::read_flac;
 pub use flac_writer::{FlacEdit, rewrite_flac, rewrite_flac_path, rewrite_flac_to_vec};
 pub use gif::read_gif;
@@ -96,6 +98,11 @@ pub fn detect_format(bytes: &[u8]) -> Option<DetectedFormat> {
             Some(DetectedFormat {
                 format: FileFormat::Wav,
                 signature: "RIFF/WAVE",
+            })
+        } else if &bytes[8..12] == b"AVI " {
+            Some(DetectedFormat {
+                format: FileFormat::Avi,
+                signature: "RIFF/AVI",
             })
         } else {
             None
@@ -249,6 +256,7 @@ pub fn read_path_with_limits(path: impl AsRef<Path>, limits: ParseLimits) -> Res
         FileFormat::Wav => wav::read_wav(&mut file, file_info, limits),
         FileFormat::Svg => svg::read_svg(&mut file, file_info, limits),
         FileFormat::Psd => psd::read_psd(&mut file, file_info, limits),
+        FileFormat::Avi => avi::read_avi(&mut file, file_info, limits),
         format => Err(MetraError::UnsupportedFormat {
             description: format!("{format} is detected but its reader is not implemented yet"),
         }),
@@ -276,6 +284,10 @@ mod tests {
         assert_eq!(
             detect_format(b"8BPS\0\x01rest").unwrap().format,
             FileFormat::Psd
+        );
+        assert_eq!(
+            detect_format(b"RIFF\0\0\0\0AVI ").unwrap().format,
+            FileFormat::Avi
         );
         assert!(detect_format(b"photo.jpg").is_none());
         assert_eq!(

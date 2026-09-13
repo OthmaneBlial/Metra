@@ -733,6 +733,7 @@ pub enum FileFormat {
     Wav,
     Svg,
     Psd,
+    Avi,
     Unknown,
 }
 
@@ -755,6 +756,7 @@ impl FileFormat {
             Self::Wav => Some("audio/wav"),
             Self::Svg => Some("image/svg+xml"),
             Self::Psd => Some("image/vnd.adobe.photoshop"),
+            Self::Avi => Some("video/x-msvideo"),
             Self::Unknown => None,
         }
     }
@@ -779,6 +781,7 @@ impl fmt::Display for FileFormat {
             Self::Wav => "WAV",
             Self::Svg => "SVG",
             Self::Psd => "PSD",
+            Self::Avi => "AVI",
             Self::Unknown => "Unknown",
         })
     }
@@ -942,6 +945,15 @@ const FORMAT_CAPABILITIES: &[FormatCapabilities] = &[
     },
     FormatCapabilities {
         format: FileFormat::Psd,
+        read: CapabilityStatus::Partial,
+        write: CapabilityStatus::Planned,
+        create: CapabilityStatus::Planned,
+        delete: CapabilityStatus::Planned,
+        lossless_rewrite: CapabilityStatus::Planned,
+        streaming: CapabilityStatus::Partial,
+    },
+    FormatCapabilities {
+        format: FileFormat::Avi,
         read: CapabilityStatus::Partial,
         write: CapabilityStatus::Planned,
         create: CapabilityStatus::Planned,
@@ -1464,6 +1476,6 @@ mod tests {
 
         let unknown = format_capabilities(FileFormat::Unknown);
         assert_eq!(unknown.read, CapabilityStatus::Unsupported);
-        assert_eq!(format_capabilities_all().len(), 16);
+        assert_eq!(format_capabilities_all().len(), 17);
     }
 }
