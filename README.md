@@ -147,6 +147,11 @@ is intentionally partial and will grow through generated definitions. IPTC-IIM
 tags retain their numeric dataset identifiers, so `find_by_id("IPTC", 25)` and
 structured output remain stable even when repeated values are represented as arrays.
 
+Format support is also available programmatically through
+`format_capabilities(format)` and `format_capabilities_all()`. Each entry
+reports independent `read`, `write`, `create`, `delete`, `lossless_rewrite`,
+and `streaming` statuses instead of implying full support from detection alone.
+
 ## Architecture
 
 ```text

@@ -80,6 +80,7 @@ Initial read-first foundation with narrow validated rewrites:
   retaining parsed metadata and warning evidence;
 - exposed configurable `--max-metadata-bytes` and `--max-value-bytes` budgets,
   including during source and rewritten-output validation;
+- exposed a typed format capability matrix through the public Rust API;
 - added value-level `Metadata::diff` and CLI `--compare` for deterministic
   additions, removals, and changes;
 - added opt-in local corpus and oracle-differential harnesses without counting

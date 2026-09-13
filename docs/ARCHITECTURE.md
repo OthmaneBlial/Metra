@@ -15,6 +15,7 @@ This crate owns stable, format-independent types:
 
 - `Metadata` and `FileInfo`;
 - namespace-aware `Tag` records;
+- a format capability matrix with independent read/write/create/delete statuses;
 - stable tag identifiers and a shared partial definition catalog;
 - canonical definitions for common EXIF image, exposure, color, and lens tags;
 - typed `TagValue` variants, including rationals, arrays, bytes, and unknowns;
