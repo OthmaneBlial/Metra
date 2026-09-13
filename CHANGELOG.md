@@ -27,6 +27,8 @@ Initial read-only foundation:
   atomic target rewrite path;
 - added validated PNG `tEXt` replacement/deletion/copy with CRC regeneration,
   streamed image chunks, and atomic target replacement;
+- added validated WAV `LIST/INFO` replacement/deletion/copy with RIFF size
+  repair, streamed audio chunks, and atomic target replacement;
 - added bounded `--jobs` batch inspection with deterministic result ordering;
 - expanded ISO-BMFF inspection with `ispe` dimensions, item/handler fields,
   and direct XMP/EXIF decoding when the metadata boxes are available;

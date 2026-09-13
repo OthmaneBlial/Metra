@@ -26,7 +26,7 @@ expansion and nesting limits before being enabled.
 
 ## Current rewrite safety
 
-Only JPEG comment and PNG `tEXt` replacement/deletion/copy is implemented,
+Only JPEG comment, PNG `tEXt`, and WAV `LIST/INFO` replacement/deletion/copy is implemented,
 through the library API and the explicit `--set`/`--delete`/`--copy` CLI flags.
 Each writer reads and validates the source first,
 copies the container through a same-directory temporary file, syncs and
