@@ -29,7 +29,7 @@ pub use flac::read_flac;
 pub use gif::read_gif;
 pub use id3::read_mp3;
 pub use isobmff::read_isobmff;
-pub use jpeg::read_jpeg;
+pub use jpeg::{JpegEdit, read_jpeg, rewrite_jpeg, rewrite_jpeg_path, rewrite_jpeg_to_vec};
 pub use pdf::read_pdf;
 pub use png::read_png;
 pub use svg::read_svg;

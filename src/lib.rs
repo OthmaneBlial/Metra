@@ -10,7 +10,10 @@ pub use metra_core::{
     FileFormat, FileInfo, Metadata, MetraError, ParseLimits, Result, Source, Tag, TagValue,
     ValueType, Warning,
 };
-pub use metra_formats::{DetectedFormat, detect_format, read_path_with_limits};
+pub use metra_formats::{
+    DetectedFormat, JpegEdit, detect_format, read_path_with_limits, rewrite_jpeg,
+    rewrite_jpeg_path, rewrite_jpeg_to_vec,
+};
 
 /// Read metadata from a path using the default defensive parser limits.
 pub fn read(path: impl AsRef<Path>) -> Result<Metadata> {
