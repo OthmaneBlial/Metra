@@ -42,6 +42,9 @@ The MP3 reader handles bounded ID3v2 frame tables, ID3v1 fixed fields, and a
 single MPEG frame header without decoding audio payloads.
 The FLAC reader validates the metadata-block chain and decodes STREAMINFO,
 Vorbis comments, and bounded PICTURE blocks without touching audio frames.
+The PDF reader scans bounded head/tail windows for Info dictionaries and direct
+XMP packets; the WAV reader walks RIFF chunks and decodes `fmt `, `LIST/INFO`,
+and Broadcast Wave `bext` fields without loading audio data.
 
 ## Parser invariants
 

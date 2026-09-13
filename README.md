@@ -33,14 +33,16 @@ Implemented today:
 | ISO-BMFF | HEIF/AVIF/MP4/MOV/M4A brand detection, bounded box walking, and QuickTime-style `ilst` text metadata |
 | MP3 | ID3v2.2/v2.3/v2.4 text, comments, lyrics, attached-picture metadata, ID3v1 fallback, and first MPEG frame properties |
 | FLAC | `STREAMINFO`, Vorbis comments, embedded-picture properties/data, and bounded metadata-block validation |
+| PDF | Header/version, bounded Info dictionaries, PDF string decoding, and embedded XMP packets when directly available |
+| WAV | RIFF/WAVE chunks, `fmt ` audio properties, `LIST/INFO`, Broadcast Wave `bext`, and bounded validation |
 | Output | Human-readable text, one JSON document, or JSON Lines; schema version `1` |
 | Safety | Checked offsets, bounded reads, recursion and entry limits, deterministic recursive traversal, and structured warnings |
 
 Writing, creation, deletion, metadata copying, MakerNotes interpretation, and
 full media and ExifTool compatibility are intentionally not advertised as
-implemented yet. PDF and manufacturer-specific MakerNotes are still planned;
-MP3/ID3 and FLAC/Vorbis comments are only partially covered. Their boundaries
-are tracked in
+implemented yet. Manufacturer-specific MakerNotes are still planned;
+MP3/ID3, FLAC/Vorbis comments, PDF, and WAV are only partially covered. Their
+boundaries are tracked in
 [`compat/exiftool-compatibility.json`](compat/exiftool-compatibility.json).
 
 ## Quick start
@@ -137,13 +139,13 @@ are the local validation gate.
 
 ## Roadmap
 
-Avancement global vérifié : **37 %**. Ce chiffre est une moyenne indicative des
+Avancement global vérifié : **38 %**. Ce chiffre est une moyenne indicative des
 sept axes ci-dessous, calculée uniquement sur le code et les tests présents ; il
 ne représente pas un pourcentage de compatibilité ExifTool.
 
 1. **70 %** — Étendre le modèle de lecture et les définitions de tags sans perdre les données brutes.
 2. **30 %** — Ajouter des corpus réels et des tests différentiels JPEG/TIFF/PNG/WebP.
-3. **75 %** — Approfondir HEIF/AVIF et les conteneurs média, puis couvrir les lecteurs restants.
+3. **82 %** — Approfondir HEIF/AVIF et les conteneurs média, puis couvrir les lecteurs restants.
 4. **65 %** — Étendre XMP/IPTC/ICC/ID3 et isoler les espaces MakerNote.
 5. **0 %** — Concevoir l’écriture read-modify-write avec validation et remplacement atomique.
 6. **0 %** — Ajouter `set`/`delete`/`copy` après les tests round-trip.

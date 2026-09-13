@@ -41,9 +41,10 @@
     "MP4": { "read": "partial", "write": "planned", "streaming": "partial" },
     "MOV": { "read": "partial", "write": "planned", "streaming": "partial" },
     "M4A": { "read": "partial", "write": "planned", "streaming": "partial" },
-    "PDF": { "read": "planned", "write": "planned" },
+    "PDF": { "read": "partial", "write": "planned", "streaming": "partial" },
     "MP3": { "read": "partial", "write": "planned", "streaming": "partial" },
-    "FLAC": { "read": "partial", "write": "planned", "streaming": "partial" }
+    "FLAC": { "read": "partial", "write": "planned", "streaming": "partial" },
+    "WAV": { "read": "partial", "write": "planned", "streaming": "partial" }
   },
   "metadata_families": {
     "EXIF": "partial",
@@ -56,7 +57,8 @@
     "MakerNotes": "planned",
     "ID3": "partial",
     "QuickTime": "partial",
-    "VorbisComments": "partial"
+    "VorbisComments": "partial",
+    "BWF": "partial"
   },
   "cli": {
     "human_readable": "supported",
