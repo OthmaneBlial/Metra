@@ -11,6 +11,284 @@ use thiserror::Error;
 
 pub const SCHEMA_VERSION: u8 = 1;
 
+/// Stable definition for a format-level metadata tag.
+///
+/// Definitions are kept separate from display values so readers and clients
+/// can retain the numeric identifier while using a canonical name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TagDefinition {
+    pub namespace: &'static str,
+    pub id: u32,
+    pub name: &'static str,
+    pub description: &'static str,
+}
+
+const TAG_DEFINITIONS: &[TagDefinition] = &[
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x010F,
+        name: "Make",
+        description: "Camera manufacturer",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x0110,
+        name: "Model",
+        description: "Camera model",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x0112,
+        name: "Orientation",
+        description: "Image orientation",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x011A,
+        name: "XResolution",
+        description: "Horizontal resolution",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x011B,
+        name: "YResolution",
+        description: "Vertical resolution",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x0128,
+        name: "ResolutionUnit",
+        description: "Resolution unit",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x0131,
+        name: "Software",
+        description: "Software used to create the file",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x0132,
+        name: "ModifyDate",
+        description: "File modification date from EXIF",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x013B,
+        name: "Artist",
+        description: "Person who created the image",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x0201,
+        name: "JPEGInterchangeFormat",
+        description: "Thumbnail offset",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x0202,
+        name: "JPEGInterchangeFormatLength",
+        description: "Thumbnail length",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x8298,
+        name: "Copyright",
+        description: "Copyright notice",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x8769,
+        name: "ExifIFDPointer",
+        description: "Offset to the EXIF IFD",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x8825,
+        name: "GPSInfoIFDPointer",
+        description: "Offset to the GPS IFD",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x8827,
+        name: "ISO",
+        description: "ISO speed rating",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x9000,
+        name: "ExifVersion",
+        description: "EXIF specification version",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x9003,
+        name: "DateTimeOriginal",
+        description: "Original capture date and time",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x9004,
+        name: "CreateDate",
+        description: "Digitized date and time",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x9201,
+        name: "ShutterSpeedValue",
+        description: "Shutter speed value",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x9202,
+        name: "ApertureValue",
+        description: "Aperture value",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x9204,
+        name: "ExposureCompensation",
+        description: "Exposure bias value",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x9207,
+        name: "MeteringMode",
+        description: "Metering mode",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x9209,
+        name: "Flash",
+        description: "Flash status",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x920A,
+        name: "FocalLength",
+        description: "Lens focal length",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x927C,
+        name: "MakerNote",
+        description: "Manufacturer-specific metadata block",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x9291,
+        name: "SubSecTimeOriginal",
+        description: "Sub-second capture time",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0xA002,
+        name: "PixelXDimension",
+        description: "Image width",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0xA003,
+        name: "PixelYDimension",
+        description: "Image height",
+    },
+    TagDefinition {
+        namespace: "GPS",
+        id: 0x0000,
+        name: "GPSVersionID",
+        description: "GPS metadata version",
+    },
+    TagDefinition {
+        namespace: "GPS",
+        id: 0x0001,
+        name: "GPSLatitudeRef",
+        description: "North or south latitude reference",
+    },
+    TagDefinition {
+        namespace: "GPS",
+        id: 0x0002,
+        name: "GPSLatitude",
+        description: "Latitude in degrees, minutes, seconds",
+    },
+    TagDefinition {
+        namespace: "GPS",
+        id: 0x0003,
+        name: "GPSLongitudeRef",
+        description: "East or west longitude reference",
+    },
+    TagDefinition {
+        namespace: "GPS",
+        id: 0x0004,
+        name: "GPSLongitude",
+        description: "Longitude in degrees, minutes, seconds",
+    },
+    TagDefinition {
+        namespace: "GPS",
+        id: 0x0005,
+        name: "GPSAltitudeRef",
+        description: "Altitude reference",
+    },
+    TagDefinition {
+        namespace: "GPS",
+        id: 0x0006,
+        name: "GPSAltitude",
+        description: "Altitude",
+    },
+    TagDefinition {
+        namespace: "GPS",
+        id: 0x0007,
+        name: "GPSTimeStamp",
+        description: "GPS time of day",
+    },
+    TagDefinition {
+        namespace: "GPS",
+        id: 0x0010,
+        name: "GPSImgDirectionRef",
+        description: "Image direction reference",
+    },
+    TagDefinition {
+        namespace: "GPS",
+        id: 0x0011,
+        name: "GPSImgDirection",
+        description: "Image direction",
+    },
+    TagDefinition {
+        namespace: "GPS",
+        id: 0x001D,
+        name: "GPSDateStamp",
+        description: "GPS date",
+    },
+    TagDefinition {
+        namespace: "Interop",
+        id: 0x0001,
+        name: "InteroperabilityIndex",
+        description: "Interoperability identifier",
+    },
+];
+
+/// Return the catalog of definitions currently shared by the readers.
+pub fn tag_definitions() -> &'static [TagDefinition] {
+    TAG_DEFINITIONS
+}
+
+/// Resolve a namespace/id pair while preserving a stable fallback for unknown tags.
+pub fn tag_definition(namespace: &str, id: u32) -> TagDefinition {
+    TAG_DEFINITIONS
+        .iter()
+        .find(|definition| definition.namespace == namespace && definition.id == id)
+        .copied()
+        .unwrap_or(TagDefinition {
+            namespace: match namespace {
+                "GPS" => "GPS",
+                "Interop" => "Interop",
+                _ => "EXIF",
+            },
+            id,
+            name: "Unknown",
+            description: "Unknown TIFF tag",
+        })
+}
+
 /// A detected container or file family. More formats can be added without
 /// changing the shape of a metadata record.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -85,6 +363,14 @@ pub struct FileInfo {
     pub mime_type: Option<String>,
 }
 
+/// Stable identity of a tag independent from its localized display value.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TagIdentifier {
+    pub namespace: String,
+    pub id: Option<u32>,
+    pub name: String,
+}
+
 impl FileInfo {
     pub fn new(path: PathBuf, size: u64, format: FileFormat) -> Self {
         Self {
@@ -150,6 +436,13 @@ impl Metadata {
     pub fn find(&self, key: &str) -> Option<&Tag> {
         self.tags.iter().find(|tag| tag.key() == key)
     }
+
+    /// Find a tag by its format-level numeric identifier.
+    pub fn find_by_id(&self, namespace: &str, id: u32) -> Option<&Tag> {
+        self.tags
+            .iter()
+            .find(|tag| tag.namespace == namespace && tag.id == Some(id))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -180,6 +473,14 @@ impl Tag {
 
     pub fn display_value(&self) -> String {
         self.value.to_display_string()
+    }
+
+    pub fn identifier(&self) -> TagIdentifier {
+        TagIdentifier {
+            namespace: self.namespace.clone(),
+            id: self.id,
+            name: self.name.clone(),
+        }
     }
 }
 
@@ -386,5 +687,36 @@ mod tests {
         let json = serde_json::to_string(&metadata).expect("core types should be serializable");
         assert!(json.contains("schema_version"));
         assert!(json.contains("JPEG"));
+    }
+
+    #[test]
+    fn tag_catalog_and_numeric_lookup_are_stable() {
+        let definition = tag_definition("EXIF", 0x010F);
+        assert_eq!(definition.name, "Make");
+        assert!(tag_definitions().iter().any(|item| item.name == "Make"));
+
+        let tag = Tag {
+            namespace: "EXIF".to_owned(),
+            group: "IFD0".to_owned(),
+            id: Some(0x010F),
+            name: "Make".to_owned(),
+            description: None,
+            raw_value: None,
+            value: TagValue::String("Metra".to_owned()),
+            value_type: ValueType::String,
+            source: Source::default(),
+            writable: false,
+        };
+        let mut metadata = Metadata::new(FileInfo::new(
+            PathBuf::from("photo.jpg"),
+            1,
+            FileFormat::Jpeg,
+        ));
+        metadata.add_tag(tag);
+        assert_eq!(metadata.find_by_id("EXIF", 0x010F).unwrap().name, "Make");
+        assert_eq!(
+            metadata.find("EXIF:Make").unwrap().identifier().id,
+            Some(0x010F)
+        );
     }
 }
