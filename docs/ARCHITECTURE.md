@@ -24,8 +24,9 @@ This crate owns stable, format-independent types:
 The model preserves a canonical tag name and underlying numeric identifier when
 available. TIFF/EXIF numeric IDs and IPTC-IIM dataset numbers are retained by
 their readers. `Metadata` exposes both first-match and repeated-match lookup so
-duplicate datasets do not need to be flattened. Display formatting is a
-presentation concern and is not a lookup contract.
+duplicate datasets do not need to be flattened. `Metadata::diff` compares value
+multisets by canonical key while ignoring source offsets and raw storage details.
+Display formatting is a presentation concern and is not a lookup contract.
 
 ### `metra-formats`
 
@@ -115,6 +116,8 @@ complete document or collection. Errors are sent to stderr and produce a
 non-zero exit code.
 The CLI `--validate` flag additionally treats any recoverable warning as a
 non-zero validation result while retaining the warning in the emitted metadata.
+The CLI `--compare reference target` renders the value-level diff and returns a
+non-zero code when differences or read failures are found.
 
 ## Planned seams
 

@@ -71,6 +71,7 @@ cargo run -- --csv -r photos/
 cargo run -- --toml photo.jpg
 cargo run -- --yaml photo.jpg
 cargo run -- --validate --json photo.jpg
+cargo run -- --compare reference.jpg target.jpg
 cargo run -- --set 'JPEG:Comment=reviewed' photo.jpg
 cargo run -- --delete JPEG:Comment photo.jpg
 cargo run -- --copy JPEG:Comment=source.jpg target.jpg
@@ -192,6 +193,8 @@ successful results until serialization.
 `--validate` keeps the normal metadata output but exits non-zero when a file
 produces one or more recoverable parser warnings, which makes corruption checks
 usable in scripts without hiding the parsed evidence.
+`--compare reference target` reports added, removed, and changed metadata values;
+it returns zero for equality and one when a difference or read failure is found.
 
 GitHub Actions automatic push and pull-request triggers are currently disabled;
 the workflow remains available for a deliberate manual run. The commands above
@@ -199,7 +202,7 @@ are the local validation gate.
 
 ## Roadmap
 
-Avancement global vérifié : **77 %**. Ce chiffre est une moyenne indicative des
+Avancement global vérifié : **78 %**. Ce chiffre est une moyenne indicative des
 huit axes ci-dessous, calculée uniquement sur le code et les tests présents ; il
 ne représente pas un pourcentage de compatibilité ExifTool.
 
@@ -208,7 +211,7 @@ ne représente pas un pourcentage de compatibilité ExifTool.
 3. **90 %** — Approfondir HEIF/AVIF et les conteneurs média, puis couvrir les lecteurs restants.
 4. **90 %** — Étendre XMP/IPTC/ICC/ID3 et isoler les espaces MakerNote ; XMP est maintenant réécrit de façon bornée pour JPEG APP1, WebP et PNG, les datasets IPTC-IIM connus peuvent être réécrits dans les ressources Photoshop APP13, les profils ICC fragmentés JPEG, PNG `iCCP` et WebP `ICCP` sont inspectés sous limites, les références XML sûres sont décodées sans entités personnalisées, les textes PNG compressés sont déployés sous budget, et les champs texte/commentaires ID3v2 courants restent sous limites explicites.
 5. **65 %** — Concevoir l’écriture read-modify-write avec validation et remplacement atomique ; huit writers bornés couvrent maintenant JPEG, PNG, GIF, WebP, SVG, WAV, FLAC et ID3v2.
-6. **94 %** — Ajouter `set`/`delete`/`copy` après les tests round-trip ; les trois opérations couvrent maintenant JPEG `Comment`/`XMP` et datasets IPTC-IIM connus, PNG `tEXt`/`XMP`, GIF `Comment`, WebP `XMP`, SVG `Title`/`Description`/`Comment`, WAV `LIST/INFO`, FLAC Vorbis Comments et ID3v2 texte/commentaire via API et CLI.
+6. **95 %** — Ajouter `set`/`delete`/`copy` et comparer après les tests round-trip ; les opérations couvrent maintenant JPEG `Comment`/`XMP` et datasets IPTC-IIM connus, PNG `tEXt`/`XMP`, GIF `Comment`, WebP `XMP`, SVG `Title`/`Description`/`Comment`, WAV `LIST/INFO`, FLAC Vorbis Comments et ID3v2 texte/commentaire via API et CLI, avec comparaison déterministe des valeurs.
 7. **60 %** — Ajouter le traitement parallèle contrôlé, le rendu en flux borné et les benchmarks sur collections réelles.
 8. **100 %** — Étendre les sorties structurées avec CSV, TOML et YAML versionnés.
 

@@ -103,6 +103,8 @@
     "set": "partial",
     "delete": "partial",
     "copy": "partial",
+    "validate": "supported",
+    "compare": "supported",
     "exiftool_compatibility_mode": "planned"
   }
 }
