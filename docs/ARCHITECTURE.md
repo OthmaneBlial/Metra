@@ -135,7 +135,8 @@ SVG title/description/comment nodes, WAV `LIST/INFO` fields, FLAC Vorbis
 Comment key/value pairs, Ogg Vorbis/Opus comment packets, and common ID3v2 text/comment frames. Ogg
 rewrites preserve the existing packet size and page layout, recompute page CRCs, and refuse
 growth that cannot fit in the original packet; deletions use bounded Vorbis padding when
-available. Ogg-FLAC comment blocks use the native metadata-block header and the same
+available. Ogg-FLAC comment blocks, whether embedded in the mapping packet or in a
+subsequent metadata packet, use the native metadata-block header and the same
 lossless packet-size rule. New packet/page creation remains planned. TIFF ASCII
 values can be copied from a validated TIFF-like source into an existing target
 slot when the target field has enough storage. The WebP and

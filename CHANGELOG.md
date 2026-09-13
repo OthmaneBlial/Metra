@@ -26,6 +26,8 @@ Initial read-first foundation with narrow validated rewrites:
   atomic replacement;
 - extended Ogg comment rewriting to native Ogg-FLAC Vorbis Comment blocks while
   preserving their metadata-block headers and packet sizes;
+- extended Ogg-FLAC rewriting to comments embedded in the initial mapping
+  packet, preserving unrelated mapping and streaminfo bytes;
 - added explicit chained TIFF `IFD1`/`IFD2` traversal for thumbnail-directory
   metadata while keeping thumbnail pixel payloads out of memory;
 - added bounded Ogg-FLAC Vorbis Comment decoding from mapping and subsequent

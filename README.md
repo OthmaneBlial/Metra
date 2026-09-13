@@ -54,7 +54,7 @@ The library now supports validated, lossless
 JPEG comment, bounded APP1 XMP, and selected IPTC-IIM datasets in Photoshop
 APP13 resources, PNG `tEXt` and uncompressed `iTXt` XMP, GIF comments, WebP XMP, SVG
 title/description/comments, WAV `LIST/INFO`, FLAC Vorbis Comment, bounded Ogg
-Vorbis/Opus/Ogg-FLAC comment rewrites, and common ID3v2 text/comment frames, plus existing TIFF/BigTIFF ASCII and ISO-BMFF
+Vorbis/Opus/Ogg-FLAC comment rewrites (including mapping packets), and common ID3v2 text/comment frames, plus existing TIFF/BigTIFF ASCII and ISO-BMFF
 QuickTime text values through format-specific rewrite APIs, and the CLI
 exposes the same narrow operations through `--set`, `--delete`, and `--copy`.
 TIFF ASCII values can also be copied from a TIFF-like source into an existing
