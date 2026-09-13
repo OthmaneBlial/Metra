@@ -263,6 +263,22 @@ fn read_u32(bytes: &[u8], offset: usize, endian: Endian) -> Option<u32> {
     })
 }
 
+fn read_u64(bytes: &[u8], offset: usize, endian: Endian) -> Option<u64> {
+    let bytes = bytes.get(offset..offset.checked_add(8)?)?;
+    Some(match endian {
+        Endian::Little => u64::from_le_bytes(bytes.try_into().ok()?),
+        Endian::Big => u64::from_be_bytes(bytes.try_into().ok()?),
+    })
+}
+
+fn read_i16(bytes: &[u8], offset: usize, endian: Endian) -> Option<i16> {
+    read_u16(bytes, offset, endian).map(|value| i16::from_ne_bytes(value.to_ne_bytes()))
+}
+
+fn read_i32(bytes: &[u8], offset: usize, endian: Endian) -> Option<i32> {
+    read_u32(bytes, offset, endian).map(|value| i32::from_ne_bytes(value.to_ne_bytes()))
+}
+
 fn type_size(type_id: u16) -> Option<usize> {
     match type_id {
         1 | 2 | 6 | 7 => Some(1),
@@ -281,8 +297,11 @@ fn decode_value(type_id: u16, count: u32, bytes: &[u8], endian: Endian) -> Optio
                 .to_owned(),
         ));
     }
+    if type_id == 7 {
+        return Some(TagValue::Bytes(bytes.to_vec()));
+    }
     let values = match type_id {
-        1 | 7 => Some(
+        1 => Some(
             bytes
                 .iter()
                 .map(|byte| TagValue::Unsigned(u64::from(*byte)))
@@ -309,8 +328,53 @@ fn decode_value(type_id: u16, count: u32, bytes: &[u8], endian: Endian) -> Optio
                 })
             })
             .collect::<Option<Vec<_>>>(),
+        6 => Some(
+            bytes
+                .iter()
+                .map(|byte| TagValue::Signed(i64::from(i8::from_ne_bytes([*byte]))))
+                .collect::<Vec<_>>(),
+        ),
+        8 => bytes
+            .chunks_exact(2)
+            .map(|chunk| read_i16(chunk, 0, endian).map(|value| TagValue::Signed(i64::from(value))))
+            .collect::<Option<Vec<_>>>(),
+        9 => bytes
+            .chunks_exact(4)
+            .map(|chunk| read_i32(chunk, 0, endian).map(|value| TagValue::Signed(i64::from(value))))
+            .collect::<Option<Vec<_>>>(),
+        10 => bytes
+            .chunks_exact(8)
+            .map(|chunk| {
+                Some(TagValue::Rational {
+                    numerator: i64::from(read_i32(chunk, 0, endian)?),
+                    denominator: i64::from(read_i32(chunk, 4, endian)?),
+                })
+            })
+            .collect::<Option<Vec<_>>>(),
+        11 => bytes
+            .chunks_exact(4)
+            .map(|chunk| {
+                read_u32(chunk, 0, endian)
+                    .map(|value| TagValue::Float(f32::from_bits(value) as f64))
+            })
+            .collect::<Option<Vec<_>>>(),
+        12 => bytes
+            .chunks_exact(8)
+            .map(|chunk| {
+                read_u64(chunk, 0, endian).map(|value| TagValue::Float(f64::from_bits(value)))
+            })
+            .collect::<Option<Vec<_>>>(),
         _ => None,
     }?;
+    if values
+        .iter()
+        .any(|value| matches!(value, TagValue::Float(number) if !number.is_finite()))
+    {
+        return Some(TagValue::Unknown {
+            type_id,
+            bytes: bytes.to_vec(),
+        });
+    }
     (values.len() == usize::try_from(count).ok()?).then(|| {
         if values.len() == 1 {
             values.into_iter().next().expect("length checked")
@@ -434,12 +498,13 @@ mod tests {
 
     #[test]
     fn reads_bounded_nikon_type_two_ifd_values() {
-        let mut tiff = vec![b'I', b'I', 42, 0, 8, 0, 0, 0, 2, 0];
+        let mut tiff = vec![b'I', b'I', 42, 0, 8, 0, 0, 0, 3, 0];
         tiff.extend_from_slice(&[1, 0, 2, 0, 8, 0, 0, 0]);
-        tiff.extend_from_slice(&40_u32.to_le_bytes());
+        tiff.extend_from_slice(&50_u32.to_le_bytes());
         tiff.extend_from_slice(&[2, 0, 3, 0, 1, 0, 0, 0, 100, 0, 0, 0]);
+        tiff.extend_from_slice(&[0x0B, 0, 8, 0, 1, 0, 0, 0, 0xFE, 0xFF, 0, 0]);
         tiff.extend_from_slice(&[0, 0, 0, 0]);
-        tiff.resize(40, 0);
+        tiff.resize(50, 0);
         tiff.extend_from_slice(b"v1.0\0\0\0\0");
         let mut maker_note = b"Nikon\0\x02\0\0\0".to_vec();
         maker_note.extend_from_slice(&tiff);
@@ -458,5 +523,12 @@ mod tests {
             TagValue::Unsigned(100)
         );
         assert_eq!(metadata.find("MakerNotes:Nikon:ISO").unwrap().id, Some(2));
+        assert_eq!(
+            metadata
+                .find("MakerNotes:Nikon:WhiteBalanceFineTune")
+                .unwrap()
+                .value,
+            TagValue::Signed(-2)
+        );
     }
 }
