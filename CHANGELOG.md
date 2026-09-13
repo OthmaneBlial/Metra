@@ -64,6 +64,9 @@ Initial read-first foundation with narrow validated rewrites:
 - added bounded ICC text and XYZ table-tag inspection with stable 4CC IDs;
 - added isolated detection of common Nikon, Canon, Fujifilm, Sony, Panasonic,
   and Olympus MakerNote containers without claiming proprietary tag decoding;
+- added bounded Nikon Type 2 MakerNote IFD parsing for known camera fields with
+  typed values, stable numeric identifiers, source offsets, and ParseLimits;
+  other detected vendors remain header-only;
 - preserved numeric IPTC-IIM dataset identifiers in parsed tags and stable lookup;
 - decoded EXIF `UserComment` ASCII and Unicode payloads while preserving raw bytes;
 - expanded canonical EXIF names for common image, exposure, color, and lens tags;

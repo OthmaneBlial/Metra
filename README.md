@@ -27,7 +27,7 @@ Implemented today:
 | Area | Current behavior |
 | --- | --- |
 | JPEG | Magic-byte detection, segment walking, JFIF properties, JPEG comments, EXIF APP1, structured XMP, reassembled typed ICC profiles with common table values, and IPTC resources from Photoshop blocks |
-| TIFF/EXIF | Little- and big-endian headers, IFDs, nested EXIF/GPS/Interop directories, common image/exposure/lens tag names, rational values, ASCII/Unicode `UserComment`, common MakerNote container detection, unknown tags, thumbnail range checks, and validated decimal GPS latitude/longitude, altitude, direction, time, and speed helpers |
+| TIFF/EXIF | Little- and big-endian headers, IFDs, nested EXIF/GPS/Interop directories, common image/exposure/lens tag names, rational values, ASCII/Unicode `UserComment`, common MakerNote container detection with bounded Nikon Type 2 fields, unknown tags, thumbnail range checks, and validated decimal GPS latitude/longitude, altitude, direction, time, and speed helpers |
 | PNG | Chunk walking, CRC warnings, tEXt/zTXt/iTXt including bounded zlib text, eXIf, tIME, pHYs, structured XMP, and bounded ICC profile headers from `iCCP` |
 | WebP | RIFF chunk walking, VP8X dimensions, EXIF, structured XMP, and typed ICC profiles |
 | GIF | GIF87a/GIF89a headers, logical-screen dimensions, comments, and bounded extension validation |
@@ -41,10 +41,10 @@ Implemented today:
 | Batch | Deterministic path ordering with bounded parallel inspection through `--jobs N`; human, JSON Lines, and CSV modes stream results with a bounded out-of-order buffer |
 | Safety | Checked offsets, bounded reads, recursion and entry limits, deterministic recursive traversal, safe XML entity handling, and structured warnings |
 
-Generic writing, creation, SVG embedded-XMP extraction, and MakerNote tag
-interpretation
-interpretation, and full media and ExifTool compatibility are intentionally not
-advertised as implemented yet. The library now supports validated, lossless
+Generic writing, creation, SVG embedded-XMP extraction, MakerNote tag
+interpretation beyond the bounded Nikon Type 2 fields, and full media and
+ExifTool compatibility are intentionally not advertised as implemented yet.
+The library now supports validated, lossless
 JPEG comment, bounded APP1 XMP, and selected IPTC-IIM datasets in Photoshop
 APP13 resources, PNG `tEXt` and uncompressed `iTXt` XMP, GIF comments, WebP XMP, SVG
 title/description/comments, WAV `LIST/INFO`, FLAC Vorbis Comment, and common
@@ -53,8 +53,9 @@ exposes the same narrow operations through `--set`, `--delete`, and `--copy`.
 Repeated IPTC datasets remain typed arrays when read; `--copy` accepts only a
 single-valued source dataset, while `--set` replaces all target occurrences
 with one bounded dataset.
-Manufacturer-specific MakerNotes are still planned; MP3/ID3, PDF, WAV, and
-FLAC remain only partially covered outside their explicit writable fields. ID3
+MakerNotes remain partial outside the bounded Nikon Type 2 fields; MP3/ID3,
+PDF, WAV, and FLAC remain only partially covered outside their explicit
+writable fields. ID3
 rewrites currently require a supported ID3v2 tag without unsynchronization,
 extended-header, or footer flags. Their boundaries are tracked in
 [`compat/exiftool-compatibility.json`](compat/exiftool-compatibility.json).
@@ -169,8 +170,9 @@ does not need to be copied wholesale into memory. The JPEG, PNG, and WebP
 readers only materialize bounded metadata chunks.
 
 The next architectural boundaries are deliberately deferred until behavior
-requires them: a generated tag database, isolated MakerNote readers, deeper
-media metadata support, and a generalized rewrite capability layer. The current
+requires them: a generated tag database, additional manufacturer-specific
+MakerNote readers, deeper media metadata support, and a generalized rewrite
+capability layer. The current
 format-specific writers remain intentionally narrow and independently tested.
 
 ## Validation
@@ -218,7 +220,7 @@ ne représente pas un pourcentage de compatibilité ExifTool.
 1. **90 %** — Étendre le modèle de lecture et les définitions de tags sans perdre les données brutes ; les dérivés GPS valident maintenant les références, les plages et les conversions altitude/direction/temps/vitesse, les datasets IPTC-IIM lus conservent leur identifiant numérique stable, `EXIF:UserComment` décode les préfixes ASCII/Unicode sans perdre les octets bruts, et les tags image/exposition/objectif courants ont des noms canoniques.
 2. **30 %** — Ajouter des corpus réels et des tests différentiels JPEG/TIFF/PNG/WebP ; le harnais opt-in est présent, mais aucune exécution de corpus réel n’est comptée.
 3. **90 %** — Approfondir HEIF/AVIF et les conteneurs média, puis couvrir les lecteurs restants.
-4. **93 %** — Étendre XMP/IPTC/ICC/ID3 et isoler les espaces MakerNote ; XMP est maintenant réécrit de façon bornée pour JPEG APP1, WebP et PNG, les datasets IPTC-IIM connus peuvent être réécrits dans les ressources Photoshop APP13, les profils ICC fragmentés JPEG, PNG `iCCP` et WebP `ICCP` sont inspectés sous limites avec descriptions texte et valeurs XYZ courantes, les références XML sûres sont décodées sans entités personnalisées, les textes PNG compressés sont déployés sous budget, les champs texte/commentaires ID3v2 courants restent sous limites explicites, et les conteneurs MakerNote courants sont identifiés sans interprétation propriétaire.
+4. **94 %** — Étendre XMP/IPTC/ICC/ID3 et isoler les espaces MakerNote ; XMP est maintenant réécrit de façon bornée pour JPEG APP1, WebP et PNG, les datasets IPTC-IIM connus peuvent être réécrits dans les ressources Photoshop APP13, les profils ICC fragmentés JPEG, PNG `iCCP` et WebP `ICCP` sont inspectés sous limites avec descriptions texte et valeurs XYZ courantes, les références XML sûres sont décodées sans entités personnalisées, les textes PNG compressés sont déployés sous budget, les champs texte/commentaires ID3v2 courants restent sous limites explicites, et les conteneurs MakerNote courants sont identifiés ; un IFD Nikon Type 2 borné expose maintenant les champs connus avec leurs types et identifiants.
 5. **67 %** — Concevoir l’écriture read-modify-write avec validation et remplacement atomique ; huit writers bornés couvrent maintenant JPEG, PNG, GIF, WebP, SVG, WAV, FLAC et ID3v2, et les budgets metadata/valeur sont configurables depuis le CLI.
 6. **95 %** — Ajouter `set`/`delete`/`copy` et comparer après les tests round-trip ; les opérations couvrent maintenant JPEG `Comment`/`XMP` et datasets IPTC-IIM connus, PNG `tEXt`/`XMP`, GIF `Comment`, WebP `XMP`, SVG `Title`/`Description`/`Comment`, WAV `LIST/INFO`, FLAC Vorbis Comments et ID3v2 texte/commentaire via API et CLI, avec comparaison déterministe des valeurs.
 7. **60 %** — Ajouter le traitement parallèle contrôlé, le rendu en flux borné et les benchmarks sur collections réelles.
