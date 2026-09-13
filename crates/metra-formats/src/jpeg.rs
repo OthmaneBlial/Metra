@@ -10,6 +10,10 @@ use metra_core::{
 
 use crate::icc::parse_icc_profile;
 use crate::iptc::parse_photoshop_resources;
+use crate::iptc_writer::{
+    IptcAction, delete_action as delete_iptc_action, new_photoshop_app13, rewrite_photoshop_app13,
+    set_action as set_iptc_action,
+};
 use crate::tiff::parse_tiff_from_reader;
 use crate::xmp::parse_xmp;
 
@@ -19,6 +23,8 @@ use crate::xmp::parse_xmp;
 pub enum JpegEdit {
     SetComment(String),
     DeleteComments,
+    SetIptc { name: String, value: String },
+    DeleteIptc { name: String },
 }
 
 pub fn read_jpeg<R: Read + Seek>(
@@ -238,7 +244,8 @@ fn rewrite_jpeg_stream<R: Read, W: Write>(
     limits: ParseLimits,
     edits: &[JpegEdit],
 ) -> Result<()> {
-    let action = comment_action(edits)?;
+    let comment = comment_action(edits)?;
+    let iptc = iptc_action(edits, limits)?;
     let mut soi = [0_u8; 2];
     read_exact(reader, &mut soi, path)?;
     if soi != [0xFF, 0xD8] {
@@ -251,7 +258,8 @@ fn rewrite_jpeg_stream<R: Read, W: Write>(
 
     let mut segments = 0_usize;
     let mut metadata_bytes = 0_usize;
-    let mut inserted = false;
+    let mut comment_inserted = false;
+    let mut iptc_inserted = false;
     loop {
         if segments >= limits.max_jpeg_segments {
             return Err(MetraError::ResourceLimitExceeded {
@@ -266,10 +274,16 @@ fn rewrite_jpeg_stream<R: Read, W: Write>(
         };
         let marker = *marker_bytes.last().unwrap_or(&0);
         if marker == 0xD9 || marker == 0xDA {
-            if let Some(CommentAction::Set(comment)) = action.as_ref()
-                && !inserted
+            if let Some(CommentAction::Set(comment)) = comment.as_ref()
+                && !comment_inserted
             {
                 write_comment(writer, comment)?;
+            }
+            if let Some(IptcAction::Set { .. }) = iptc.as_ref()
+                && !iptc_inserted
+            {
+                let segment = new_photoshop_app13(iptc.as_ref().expect("IPTC action"), limits)?;
+                write_all(writer, &segment)?;
             }
             write_all(writer, &marker_bytes)?;
             if marker == 0xDA {
@@ -303,10 +317,10 @@ fn rewrite_jpeg_stream<R: Read, W: Write>(
         let mut data = vec![0_u8; data_length];
         read_exact(reader, &mut data, path)?;
         if marker == 0xFE {
-            match action.as_ref() {
-                Some(CommentAction::Set(comment)) if !inserted => {
+            match comment.as_ref() {
+                Some(CommentAction::Set(comment)) if !comment_inserted => {
                     write_comment(writer, comment)?;
-                    inserted = true;
+                    comment_inserted = true;
                 }
                 Some(CommentAction::Set(_)) | Some(CommentAction::Delete) => {}
                 None => {
@@ -314,6 +328,21 @@ fn rewrite_jpeg_stream<R: Read, W: Write>(
                     write_all(writer, &length_bytes)?;
                     write_all(writer, &data)?;
                 }
+            }
+        } else if marker == 0xED {
+            if let Some(iptc_action) = iptc.as_ref() {
+                if let Some(updated) = rewrite_photoshop_app13(&data, iptc_action, limits)? {
+                    write_app13_payload(writer, &updated)?;
+                    iptc_inserted = true;
+                } else {
+                    write_all(writer, &marker_bytes)?;
+                    write_all(writer, &length_bytes)?;
+                    write_all(writer, &data)?;
+                }
+            } else {
+                write_all(writer, &marker_bytes)?;
+                write_all(writer, &length_bytes)?;
+                write_all(writer, &data)?;
             }
         } else {
             write_all(writer, &marker_bytes)?;
@@ -345,6 +374,23 @@ fn comment_action(edits: &[JpegEdit]) -> Result<Option<CommentAction>> {
                 action = Some(CommentAction::Set(bytes));
             }
             JpegEdit::DeleteComments => action = Some(CommentAction::Delete),
+            JpegEdit::SetIptc { .. } | JpegEdit::DeleteIptc { .. } => {}
+        }
+    }
+    Ok(action)
+}
+
+fn iptc_action(edits: &[JpegEdit], limits: ParseLimits) -> Result<Option<IptcAction>> {
+    let mut action = None;
+    for edit in edits {
+        match edit {
+            JpegEdit::SetIptc { name, value } => {
+                action = Some(set_iptc_action(name, value, limits)?);
+            }
+            JpegEdit::DeleteIptc { name } => {
+                action = Some(delete_iptc_action(name)?);
+            }
+            JpegEdit::SetComment(_) | JpegEdit::DeleteComments => {}
         }
     }
     Ok(action)
@@ -357,6 +403,21 @@ fn write_comment<W: Write>(writer: &mut W, comment: &[u8]) -> Result<()> {
     write_all(writer, &[0xFF, 0xFE])?;
     write_all(writer, &length.to_be_bytes())?;
     write_all(writer, comment)
+}
+
+fn write_app13_payload<W: Write>(writer: &mut W, data: &[u8]) -> Result<()> {
+    let segment_length = data
+        .len()
+        .checked_add(2)
+        .ok_or_else(|| MetraError::WriteFailure {
+            message: "JPEG APP13 length overflowed".to_owned(),
+        })?;
+    let segment_length = u16::try_from(segment_length).map_err(|_| MetraError::WriteFailure {
+        message: "JPEG IPTC APP13 exceeds the 65533-byte segment limit".to_owned(),
+    })?;
+    write_all(writer, &[0xFF, 0xED])?;
+    write_all(writer, &segment_length.to_be_bytes())?;
+    write_all(writer, data)
 }
 
 fn read_marker_bytes<R: Read>(reader: &mut R, path: &Path) -> Result<Option<Vec<u8>>> {
@@ -704,6 +765,39 @@ mod tests {
         bytes
     }
 
+    fn photoshop_resource(id: u16, value: &[u8]) -> Vec<u8> {
+        let mut resource = b"8BIM".to_vec();
+        resource.extend_from_slice(&id.to_be_bytes());
+        resource.extend_from_slice(&[0, 0]);
+        resource.extend_from_slice(&(value.len() as u32).to_be_bytes());
+        resource.extend_from_slice(value);
+        if value.len() & 1 == 1 {
+            resource.push(0);
+        }
+        resource
+    }
+
+    fn iptc_dataset(number: u8, value: &[u8]) -> Vec<u8> {
+        let mut dataset = vec![0x1C, 2, number];
+        dataset.extend_from_slice(&(value.len() as u16).to_be_bytes());
+        dataset.extend_from_slice(value);
+        dataset
+    }
+
+    fn jpeg_with_iptc() -> Vec<u8> {
+        let mut app13 = b"Photoshop 3.0\0".to_vec();
+        app13.extend_from_slice(&photoshop_resource(0x0400, b"preserve me"));
+        let mut iptc = iptc_dataset(25, b"before");
+        iptc.extend_from_slice(&iptc_dataset(120, b"old caption"));
+        app13.extend_from_slice(&photoshop_resource(0x0404, &iptc));
+        let length = u16::try_from(app13.len() + 2).unwrap();
+        let mut bytes = vec![0xFF, 0xD8, 0xFF, 0xED];
+        bytes.extend_from_slice(&length.to_be_bytes());
+        bytes.extend_from_slice(&app13);
+        bytes.extend_from_slice(&[0xFF, 0xD9]);
+        bytes
+    }
+
     #[test]
     fn reads_jpeg_comment_without_decoding_pixels() {
         let bytes = jpeg_with_comment();
@@ -796,6 +890,104 @@ mod tests {
         )
         .unwrap();
         assert!(inserted.windows(2).any(|window| window == [0xFF, 0xFE]));
+    }
+
+    #[test]
+    fn rewrites_iptc_and_preserves_other_photoshop_resources() {
+        let bytes = jpeg_with_iptc();
+        let output = rewrite_jpeg_to_vec(
+            &bytes,
+            FileInfo::new("iptc.jpg".into(), bytes.len() as u64, FileFormat::Jpeg),
+            ParseLimits::default(),
+            &[JpegEdit::SetIptc {
+                name: "Keywords".to_owned(),
+                value: "after".to_owned(),
+            }],
+        )
+        .unwrap();
+        assert!(
+            output
+                .windows(b"preserve me".len())
+                .any(|window| window == b"preserve me")
+        );
+        let metadata = read_jpeg(
+            &mut Cursor::new(output),
+            FileInfo::new("iptc.jpg".into(), 0, FileFormat::Jpeg),
+            ParseLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            metadata.find("IPTC:Keywords").unwrap().display_value(),
+            "after"
+        );
+        assert_eq!(
+            metadata
+                .find("IPTC:CaptionAbstract")
+                .unwrap()
+                .display_value(),
+            "old caption"
+        );
+    }
+
+    #[test]
+    fn deletes_and_inserts_iptc_datasets() {
+        let bytes = jpeg_with_iptc();
+        let deleted = rewrite_jpeg_to_vec(
+            &bytes,
+            FileInfo::new("iptc.jpg".into(), bytes.len() as u64, FileFormat::Jpeg),
+            ParseLimits::default(),
+            &[JpegEdit::DeleteIptc {
+                name: "Keywords".to_owned(),
+            }],
+        )
+        .unwrap();
+        let deleted_metadata = read_jpeg(
+            &mut Cursor::new(deleted),
+            FileInfo::new("iptc.jpg".into(), 0, FileFormat::Jpeg),
+            ParseLimits::default(),
+        )
+        .unwrap();
+        assert!(deleted_metadata.find("IPTC:Keywords").is_none());
+        assert!(deleted_metadata.find("IPTC:CaptionAbstract").is_some());
+
+        let inserted = rewrite_jpeg_to_vec(
+            &[0xFF, 0xD8, 0xFF, 0xD9],
+            FileInfo::new("new-iptc.jpg".into(), 4, FileFormat::Jpeg),
+            ParseLimits::default(),
+            &[JpegEdit::SetIptc {
+                name: "CaptionAbstract".to_owned(),
+                value: "new caption".to_owned(),
+            }],
+        )
+        .unwrap();
+        let inserted_metadata = read_jpeg(
+            &mut Cursor::new(inserted),
+            FileInfo::new("new-iptc.jpg".into(), 0, FileFormat::Jpeg),
+            ParseLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            inserted_metadata
+                .find("IPTC:CaptionAbstract")
+                .unwrap()
+                .display_value(),
+            "new caption"
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_iptc_datasets_before_writing() {
+        let error = rewrite_jpeg_to_vec(
+            &jpeg_with_iptc(),
+            FileInfo::new("iptc.jpg".into(), 0, FileFormat::Jpeg),
+            ParseLimits::default(),
+            &[JpegEdit::SetIptc {
+                name: "Unknown".to_owned(),
+                value: "value".to_owned(),
+            }],
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("unsupported IPTC dataset"));
     }
 
     #[test]

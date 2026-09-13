@@ -19,6 +19,7 @@ mod id3;
 mod id3_writer;
 mod inflate;
 mod iptc;
+mod iptc_writer;
 mod isobmff;
 mod jpeg;
 mod pdf;
