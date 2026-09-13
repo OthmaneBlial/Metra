@@ -10,6 +10,7 @@ use std::path::Path;
 
 use metra_core::{FileFormat, FileInfo, Metadata, MetraError, ParseLimits, Result};
 
+mod gif;
 mod icc;
 mod iptc;
 mod jpeg;
@@ -18,6 +19,7 @@ mod tiff;
 mod webp;
 mod xmp;
 
+pub use gif::read_gif;
 pub use jpeg::read_jpeg;
 pub use png::read_png;
 pub use tiff::read_tiff;
@@ -107,6 +109,7 @@ pub fn read_path_with_limits(path: impl AsRef<Path>, limits: ParseLimits) -> Res
         FileFormat::Tiff => tiff::read_tiff(&mut file, file_info, limits),
         FileFormat::Png => png::read_png(&mut file, file_info, limits),
         FileFormat::Webp => webp::read_webp(&mut file, file_info, limits),
+        FileFormat::Gif => gif::read_gif(&mut file, file_info, limits),
         format => Err(MetraError::UnsupportedFormat {
             description: format!("{format} is detected but its reader is not implemented yet"),
         }),
