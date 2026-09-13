@@ -33,6 +33,8 @@ Initial read-first foundation with narrow validated rewrites:
   preserving other metadata blocks and audio frames;
 - added validated ID3v2 text/comment replacement/deletion/copy for common
   fields while preserving other frames, padding, and MPEG audio bytes;
+- added validated GIF comment-extension replacement/deletion/copy while
+  preserving color tables, image descriptors, LZW data, and trailers;
 - added bounded `--jobs` batch inspection with deterministic result ordering;
 - expanded ISO-BMFF inspection with `ispe` dimensions, item/handler fields,
   and direct XMP/EXIF decoding when the metadata boxes are available;

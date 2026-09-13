@@ -37,7 +37,14 @@
     },
     "HEIF": { "read": "partial", "write": "planned", "streaming": "partial" },
     "AVIF": { "read": "partial", "write": "planned", "streaming": "partial" },
-    "GIF": { "read": "partial", "write": "planned", "streaming": "partial" },
+    "GIF": {
+      "read": "partial",
+      "write": "partial",
+      "create": "planned",
+      "delete": "partial",
+      "lossless_rewrite": "partial",
+      "streaming": "partial"
+    },
     "MP4": { "read": "partial", "write": "planned", "streaming": "partial" },
     "MOV": { "read": "partial", "write": "planned", "streaming": "partial" },
     "M4A": { "read": "partial", "write": "planned", "streaming": "partial" },

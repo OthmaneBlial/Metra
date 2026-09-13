@@ -44,9 +44,10 @@ Implemented today:
 Generic writing, creation, SVG embedded-XMP extraction, MakerNotes
 interpretation, and full media and ExifTool compatibility are intentionally not
 advertised as implemented yet. The library now supports validated, lossless
-JPEG comment, PNG `tEXt`, WAV `LIST/INFO`, FLAC Vorbis Comment, and common ID3v2
-text/comment frames through format-specific rewrite APIs, and the CLI exposes
-the same narrow operations through `--set`, `--delete`, and `--copy`.
+JPEG comment, PNG `tEXt`, GIF comments, WAV `LIST/INFO`, FLAC Vorbis Comment,
+and common ID3v2 text/comment frames through format-specific rewrite APIs, and
+the CLI exposes the same narrow operations through `--set`, `--delete`, and
+`--copy`.
 Manufacturer-specific MakerNotes are still planned; MP3/ID3, PDF, WAV, and
 FLAC remain only partially covered outside their explicit writable fields. ID3
 rewrites currently require a supported ID3v2 tag without unsynchronization,
@@ -72,6 +73,7 @@ cargo run -- --set 'PNG:Text:Comment=reviewed' image.png
 cargo run -- --set 'WAV:Title=reviewed' audio.wav
 cargo run -- --set 'FLAC:Title=reviewed' audio.flac
 cargo run -- --set 'ID3:Title=reviewed' audio.mp3
+cargo run -- --set 'GIF:Comment=reviewed' animation.gif
 ```
 
 Install the local CLI:
@@ -172,7 +174,7 @@ are the local validation gate.
 
 ## Roadmap
 
-Avancement global vérifié : **71 %**. Ce chiffre est une moyenne indicative des
+Avancement global vérifié : **72 %**. Ce chiffre est une moyenne indicative des
 huit axes ci-dessous, calculée uniquement sur le code et les tests présents ; il
 ne représente pas un pourcentage de compatibilité ExifTool.
 
@@ -180,8 +182,8 @@ ne représente pas un pourcentage de compatibilité ExifTool.
 2. **30 %** — Ajouter des corpus réels et des tests différentiels JPEG/TIFF/PNG/WebP ; le harnais opt-in est présent, mais aucune exécution de corpus réel n’est comptée.
 3. **90 %** — Approfondir HEIF/AVIF et les conteneurs média, puis couvrir les lecteurs restants.
 4. **70 %** — Étendre XMP/IPTC/ICC/ID3 et isoler les espaces MakerNote ; les champs texte/commentaires ID3v2 courants sont maintenant réécrits sous limites explicites.
-5. **55 %** — Concevoir l’écriture read-modify-write avec validation et remplacement atomique ; cinq writers bornés couvrent maintenant JPEG, PNG, WAV, FLAC et ID3v2.
-6. **80 %** — Ajouter `set`/`delete`/`copy` après les tests round-trip ; les trois opérations couvrent maintenant JPEG `Comment`, PNG `tEXt`, WAV `LIST/INFO`, FLAC Vorbis Comments et ID3v2 texte/commentaire via API et CLI.
+5. **60 %** — Concevoir l’écriture read-modify-write avec validation et remplacement atomique ; six writers bornés couvrent maintenant JPEG, PNG, GIF, WAV, FLAC et ID3v2.
+6. **85 %** — Ajouter `set`/`delete`/`copy` après les tests round-trip ; les trois opérations couvrent maintenant JPEG `Comment`, PNG `tEXt`, GIF `Comment`, WAV `LIST/INFO`, FLAC Vorbis Comments et ID3v2 texte/commentaire via API et CLI.
 7. **60 %** — Ajouter le traitement parallèle contrôlé, le rendu en flux borné et les benchmarks sur collections réelles.
 8. **100 %** — Étendre les sorties structurées avec CSV, TOML et YAML versionnés.
 
