@@ -205,6 +205,28 @@ fn minimal_avi_with_title(title: &str) -> Vec<u8> {
     bytes
 }
 
+fn minimal_webm_with_title(title: &str) -> Vec<u8> {
+    fn element(id: &[u8], data: &[u8]) -> Vec<u8> {
+        assert!(data.len() < 127);
+        let mut output = id.to_vec();
+        output.push(0x80 | data.len() as u8);
+        output.extend_from_slice(data);
+        output
+    }
+
+    let ebml_header = element(&[0x1A, 0x45, 0xDF, 0xA3], &element(&[0x42, 0x82], b"webm"));
+    let simple_tag = [
+        element(&[0x45, 0xA3], b"TITLE"),
+        element(&[0x44, 0x87], title.as_bytes()),
+    ]
+    .concat();
+    let tags = element(
+        &[0x12, 0x54, 0xC3, 0x67],
+        &element(&[0x73, 0x73], &element(&[0x67, 0xC8], &simple_tag)),
+    );
+    [ebml_header, tags].concat()
+}
+
 fn minimal_svg_document(title: &str, description: &str, comment: &str) -> Vec<u8> {
     format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\"><!-- {comment} --><title>{title}</title><desc>{description}</desc><rect width=\"2\" height=\"2\"/></svg>"
@@ -978,6 +1000,53 @@ fn cli_can_set_and_copy_existing_avi_info() {
         metra::read(&target)
             .unwrap()
             .find("AVI:Title")
+            .unwrap()
+            .display_value(),
+        "source"
+    );
+}
+
+#[test]
+fn cli_can_set_and_copy_existing_matroska_tag() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.file("source.webm", &minimal_webm_with_title("source"));
+    let target = directory.file("target.webm", &minimal_webm_with_title("target"));
+
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "Matroska:Tag:TITLE=edited",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("Matroska:Tag:TITLE")
+            .unwrap()
+            .display_value(),
+        "edited"
+    );
+
+    let copy_assignment = format!(
+        "Matroska:Tag:TITLE={}",
+        source.to_str().expect("UTF-8 test path")
+    );
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            copy_assignment.as_str(),
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("Matroska:Tag:TITLE")
             .unwrap()
             .display_value(),
         "source"

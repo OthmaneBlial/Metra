@@ -265,6 +265,7 @@ enum EditRequest {
     DirectPdf(Vec<metra::PdfEdit>),
     DirectPsd(Vec<metra::PsdEdit>),
     DirectAvi(Vec<metra::AviEdit>),
+    DirectMatroska(Vec<metra::MatroskaEdit>),
     DirectMp3(Vec<metra::Mp3Edit>),
     DirectGif(Vec<metra::GifEdit>),
     DirectWebp(Vec<metra::WebpEdit>),
@@ -288,6 +289,7 @@ enum CopyKey {
     PdfInfo(String),
     PsdXmp,
     AviInfo(String),
+    MatroskaTag(String),
     Mp3Text(String),
     Mp3Comment,
     GifComment,
@@ -344,6 +346,14 @@ fn parse_edits(
             if let Some(name) = avi_info_name(key) {
                 return Ok(Some(EditRequest::DirectAvi(vec![
                     metra::AviEdit::SetInfo {
+                        name: name.to_owned(),
+                        value: value.to_owned(),
+                    },
+                ])));
+            }
+            if let Some(name) = matroska_tag_name(key) {
+                return Ok(Some(EditRequest::DirectMatroska(vec![
+                    metra::MatroskaEdit::SetTag {
                         name: name.to_owned(),
                         value: value.to_owned(),
                     },
@@ -536,6 +546,8 @@ fn parse_edits(
             CopyKey::PsdXmp
         } else if let Some(name) = avi_info_name(key) {
             CopyKey::AviInfo(name.to_owned())
+        } else if let Some(name) = matroska_tag_name(key) {
+            CopyKey::MatroskaTag(name.to_owned())
         } else if isobmff_text_key(key) {
             CopyKey::IsobmffText(key.to_owned())
         } else if jpeg_xmp_key(key) {
@@ -621,6 +633,11 @@ fn avi_info_name(key: &str) -> Option<&str> {
             | "DateTime"
     )
     .then_some(name)
+}
+
+fn matroska_tag_name(key: &str) -> Option<&str> {
+    let name = key.strip_prefix("Matroska:Tag:")?;
+    (!name.is_empty()).then_some(name)
 }
 
 fn jpeg_exif_ascii_key(key: &str) -> Option<&str> {
@@ -720,7 +737,7 @@ fn svg_text_key(key: &str) -> Option<SvgTextKey> {
 
 fn unsupported_edit_message(key: &str) -> String {
     format!(
-        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:EXIF:<ASCII tag>, JPEG:XMP, IPTC:<dataset>, TIFF:EXIF:<ASCII tag>, PDF:<Info field>, PSD:XMP, AVI:<INFO field>, ISOBMFF:<text field>, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, Ogg:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
+        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:EXIF:<ASCII tag>, JPEG:XMP, IPTC:<dataset>, TIFF:EXIF:<ASCII tag>, PDF:<Info field>, PSD:XMP, AVI:<INFO field>, Matroska:Tag:<name>, ISOBMFF:<text field>, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, Ogg:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
     )
 }
 
@@ -843,6 +860,7 @@ fn apply_request(paths: &[PathBuf], request: EditRequest, limits: ParseLimits) -
         EditRequest::DirectPdf(edits) => apply_pdf_edits(paths, &edits, limits),
         EditRequest::DirectPsd(edits) => apply_psd_edits(paths, &edits, limits),
         EditRequest::DirectAvi(edits) => apply_avi_edits(paths, &edits, limits),
+        EditRequest::DirectMatroska(edits) => apply_matroska_edits(paths, &edits, limits),
         EditRequest::DirectMp3(edits) => apply_mp3_edits(paths, &edits, limits),
         EditRequest::DirectGif(edits) => apply_gif_edits(paths, &edits, limits),
         EditRequest::DirectWebp(edits) => apply_webp_edits(paths, &edits, limits),
@@ -1119,6 +1137,48 @@ fn apply_avi_edits(paths: &[PathBuf], edits: &[metra::AviEdit], limits: ParseLim
     }
 }
 
+fn apply_matroska_edits(
+    paths: &[PathBuf],
+    edits: &[metra::MatroskaEdit],
+    limits: ParseLimits,
+) -> ExitCode {
+    let mut failures = 0_usize;
+    for path in paths {
+        match metra::read_with_limits(path, limits) {
+            Ok(metadata)
+                if matches!(
+                    metadata.file_info.format,
+                    metra::FileFormat::Mkv | metra::FileFormat::Webm
+                ) =>
+            {
+                if let Err(error) = metra::rewrite_matroska_path(path, limits, edits) {
+                    eprintln!("metra: {}: {error}", path.display());
+                    failures += 1;
+                } else {
+                    println!("updated: {}", path.display());
+                }
+            }
+            Ok(metadata) => {
+                eprintln!(
+                    "metra: {}: {} edits are supported only for MKV/WebM files",
+                    path.display(),
+                    metadata.file_info.format
+                );
+                failures += 1;
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", path.display());
+                failures += 1;
+            }
+        }
+    }
+    if failures == 0 {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
 fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path, limits: ParseLimits) -> ExitCode {
     let source_metadata = match metra::read_with_limits(source, limits) {
         Ok(metadata) => metadata,
@@ -1328,6 +1388,33 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path, limits: ParseLimit
                 value: value.clone(),
             }];
             apply_avi_edits(paths, &edits, limits)
+        }
+        CopyKey::MatroskaTag(name) => {
+            if !matches!(
+                source_metadata.file_info.format,
+                metra::FileFormat::Mkv | metra::FileFormat::Webm
+            ) {
+                eprintln!(
+                    "metra: {}: source format {} is not MKV/WebM",
+                    source.display(),
+                    source_metadata.file_info.format
+                );
+                return ExitCode::from(1);
+            }
+            let key = format!("Matroska:Tag:{name}");
+            let Some(tag) = source_metadata.find(&key) else {
+                eprintln!("metra: {}: source does not contain {key}", source.display());
+                return ExitCode::from(1);
+            };
+            let metra::TagValue::String(value) = &tag.value else {
+                eprintln!("metra: {}: {key} is not a string", source.display());
+                return ExitCode::from(1);
+            };
+            let edits = [metra::MatroskaEdit::SetTag {
+                name,
+                value: value.clone(),
+            }];
+            apply_matroska_edits(paths, &edits, limits)
         }
         CopyKey::IsobmffText(key) => {
             if !is_isobmff_format(source_metadata.file_info.format) {
