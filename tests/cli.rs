@@ -211,3 +211,35 @@ fn svg_json_output_exposes_document_metadata() {
             .any(|tag| tag["name"] == "Title" && tag["value"]["string"] == "CLI vector")
     );
 }
+
+#[test]
+fn cli_can_set_and_delete_a_jpeg_comment_atomically() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.file("editable.jpg", &minimal_exif_jpeg());
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "JPEG:Comment=edited from cli",
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+    let after_set = metra::read(&path).expect("rewritten JPEG should remain readable");
+    assert_eq!(
+        after_set.find("JPEG:Comment").unwrap().display_value(),
+        "edited from cli"
+    );
+
+    let delete = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--delete",
+            "JPEG:Comment",
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(delete.status.success(), "stderr: {:?}", delete.stderr);
+    let after_delete = metra::read(&path).expect("rewritten JPEG should remain readable");
+    assert!(after_delete.find("JPEG:Comment").is_none());
+}

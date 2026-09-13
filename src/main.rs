@@ -37,6 +37,24 @@ struct Arguments {
     #[arg(long, conflicts_with_all = ["json", "jsonl", "csv", "toml"])]
     yaml: bool,
 
+    /// Replace the value of a supported writable tag in place.
+    #[arg(
+        long = "set",
+        value_name = "KEY=VALUE",
+        conflicts_with = "delete",
+        conflicts_with_all = ["json", "jsonl", "csv", "toml", "yaml"]
+    )]
+    set: Option<String>,
+
+    /// Delete a supported writable tag in place.
+    #[arg(
+        long,
+        value_name = "KEY",
+        conflicts_with = "set",
+        conflicts_with_all = ["json", "jsonl", "csv", "toml", "yaml"]
+    )]
+    delete: Option<String>,
+
     /// Traverse directories recursively in deterministic path order.
     #[arg(short = 'r', long)]
     recursive: bool,
@@ -59,6 +77,17 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+
+    let edits = match parse_edits(arguments.set.as_deref(), arguments.delete.as_deref()) {
+        Ok(edits) => edits,
+        Err(message) => {
+            eprintln!("metra: {message}");
+            return ExitCode::from(2);
+        }
+    };
+    if !edits.is_empty() {
+        return apply_edits(&paths, &edits);
+    }
 
     let failures = if arguments.json || arguments.toml || arguments.yaml {
         let results = inspect_paths(&paths, arguments.jobs);
@@ -88,6 +117,62 @@ fn main() -> ExitCode {
         })
     };
 
+    if failures == 0 {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
+fn parse_edits(set: Option<&str>, delete: Option<&str>) -> Result<Vec<metra::JpegEdit>, String> {
+    if let Some(assignment) = set {
+        let (key, value) = assignment
+            .split_once('=')
+            .ok_or_else(|| "--set expects KEY=VALUE".to_owned())?;
+        if key != "JPEG:Comment" {
+            return Err(format!(
+                "unsupported writable tag {key}; only JPEG:Comment is currently writable"
+            ));
+        }
+        return Ok(vec![metra::JpegEdit::SetComment(value.to_owned())]);
+    }
+    if let Some(key) = delete {
+        if key != "JPEG:Comment" {
+            return Err(format!(
+                "unsupported writable tag {key}; only JPEG:Comment is currently writable"
+            ));
+        }
+        return Ok(vec![metra::JpegEdit::DeleteComments]);
+    }
+    Ok(Vec::new())
+}
+
+fn apply_edits(paths: &[PathBuf], edits: &[metra::JpegEdit]) -> ExitCode {
+    let mut failures = 0_usize;
+    for path in paths {
+        match metra::read(path) {
+            Ok(metadata) if metadata.file_info.format == metra::FileFormat::Jpeg => {
+                if let Err(error) = metra::rewrite_jpeg_path(path, ParseLimits::default(), edits) {
+                    eprintln!("metra: {}: {error}", path.display());
+                    failures += 1;
+                } else {
+                    println!("updated: {}", path.display());
+                }
+            }
+            Ok(metadata) => {
+                eprintln!(
+                    "metra: {}: {} edits are supported only for JPEG files",
+                    path.display(),
+                    metadata.file_info.format
+                );
+                failures += 1;
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", path.display());
+                failures += 1;
+            }
+        }
+    }
     if failures == 0 {
         ExitCode::SUCCESS
     } else {
