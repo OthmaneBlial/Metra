@@ -15,6 +15,8 @@ before allocating or traversing metadata.
   boundary;
 - recursive CLI traversal uses directory entry file types and does not follow
   symlink directories;
+- XML readers accept predefined and numeric character references only; custom
+  entities and DOCTYPE declarations are rejected;
 - no parser invokes Perl, Python, Node, or another external metadata process.
 
 ## Limits

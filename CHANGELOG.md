@@ -19,6 +19,8 @@ Initial read-first foundation with narrow validated rewrites:
   metadata readers;
 - added bounded SVG XML inspection for root geometry, document text, and safe
   comment extraction without rendering;
+- added shared safe XML character-reference handling for SVG and XMP while
+  rejecting custom entities and DOCTYPE declarations;
 - added validated, lossless JPEG COM replacement/deletion with same-directory
   temporary files, output re-read validation, and atomic replacement;
 - exposed the supported JPEG comment edits through explicit CLI `--set` and
