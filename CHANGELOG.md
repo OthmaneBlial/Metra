@@ -4,6 +4,10 @@
 
 Initial read-first foundation with narrow validated rewrites:
 
+- added bounded TIFF/BigTIFF ASCII rewrites for TIFF-like RAW containers,
+  including DNG, CR2, NEF, ARW, ORF, RW2, and PEF, with explicit rejection of
+  proprietary RAW variants, generic and registry API dispatch, atomic
+  replacement, and CLI `--set`/`--copy` coverage;
 - added bounded Matroska/WebM `SimpleTag` string rewrites with fixed EBML
   layout preservation, generic and registry API dispatch, atomic replacement,
   and CLI `--set`/`--copy` coverage;

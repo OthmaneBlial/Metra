@@ -40,14 +40,14 @@ Implemented today:
 | SVG | Bounded XML detection, root dimensions/version/viewBox, title, description, comments, embedded XMP extraction, nesting/text limits, and safe document-text rewrites |
 | Standalone XMP/ICC | Signature-based standalone XMP packet and ICC profile readers reuse the bounded XML/profile engines and retain the detected file family |
 | PSD/PSB | Big-endian header and dimensions, bounded Photoshop image resources, XMP/IPTC/ICC/embedded EXIF delegation, resolution and common resource fields, preservation of unknown resources as bytes, and bounded replacement of existing PSD XMP resources |
-| RAW | DNG and TIFF-like CR2/NEF/ARW/ORF/RW2/PEF containers reuse the bounded TIFF/EXIF reader with common DNG tags (version, CFA, levels, matrices, white balance, and camera/lens identity); CR3 reuses ISO-BMFF inspection; RAF, legacy Canon CRW, Minolta MRW, and Sigma X3F containers are identified with explicit partial-decoding warnings |
+| RAW | DNG and TIFF-like CR2/NEF/ARW/ORF/RW2/PEF containers reuse the bounded TIFF/EXIF reader with common DNG tags (version, CFA, levels, matrices, white balance, and camera/lens identity) and safe rewrites of existing TIFF ASCII slots; CR3 reuses ISO-BMFF inspection; RAF, legacy Canon CRW, Minolta MRW, and Sigma X3F containers are identified with explicit partial-decoding warnings and remain read-only |
 | AVI | RIFF/AVI validation, bounded `avih` dimensions and frame timing, `strh` stream type/codec/rate/duration/frame bounds, video `strf` bitmap properties, audio `strf` format properties, common `LIST/INFO` text fields without decoding media frames, and safe rewrites of existing `LIST/INFO` values |
 | MKV/WebM | EBML signature and document-type detection, bounded `Info`/`Tracks`/`Tags`/`Chapters`/`Cues`/`Attachments` scanning, typed duration, track, title, codec, chapter, cue, and attachment-descriptor values, without decoding clusters or loading attachment payloads, plus safe rewrites of existing `SimpleTag` strings |
 | Output | Human-readable text, JSON, JSON Lines, CSV, TOML, or YAML; schema version `1` is retained in structured output |
 | Batch | Deterministic path ordering with bounded parallel inspection through `--jobs N`; human, JSON Lines, and CSV modes stream results with a bounded out-of-order buffer |
 | Safety | Checked offsets, bounded reads, recursion and entry limits, deterministic recursive traversal, safe XML entity handling, structured warnings, and platform-aware atomic replacement after output validation |
 
-Generic writing, creation, PSD/PSB/RAW writing, MakerNote tag
+Generic creation, full PSD/PSB/RAW writing, MakerNote tag
 interpretation beyond the bounded Nikon Type 1/2, Canon, Fujifilm, Panasonic, Olympus, legacy Sony, Apple, Pentax, Samsung, and DJI fields, and full media and
 ExifTool compatibility are intentionally not advertised as implemented yet.
 The library now supports validated, lossless
@@ -56,8 +56,9 @@ APP13 resources, PNG `tEXt` and uncompressed `iTXt` XMP, GIF comments, WebP XMP,
 title/description/comments, WAV `LIST/INFO`, FLAC Vorbis Comment, bounded Ogg
 Vorbis/Opus/Ogg-FLAC comment rewrites (including mapping packets), and common ID3v2 text/comment frames, plus existing TIFF/BigTIFF ASCII and ISO-BMFF
 QuickTime text values, existing PDF Info string tokens, and existing PSD XMP
-resources, plus existing AVI `LIST/INFO` strings and Matroska/WebM `SimpleTag`
-strings through format-specific rewrite APIs, and the CLI exposes the same narrow operations through `--set`,
+resources, existing AVI `LIST/INFO` strings, Matroska/WebM `SimpleTag` strings,
+and TIFF ASCII slots in TIFF-like RAW files through format-specific rewrite APIs,
+and the CLI exposes the same narrow operations through `--set`,
 `--delete`, and `--copy`.
 TIFF ASCII values can also be copied from a TIFF-like source into an existing
 TIFF ASCII field when the target field has enough storage.
@@ -113,6 +114,8 @@ cargo run -- --set 'AVI:Title=reviewed' video.avi
 cargo run -- --copy AVI:Title=source.avi target.avi
 cargo run -- --set 'Matroska:Tag:TITLE=reviewed' video.webm
 cargo run -- --copy Matroska:Tag:TITLE=source.webm target.webm
+cargo run -- --set 'TIFF:EXIF:Make=reviewed' capture.dng
+cargo run -- --copy TIFF:EXIF:Make=source.dng target.dng
 cargo run -- --set 'JPEG:XMP=<x:xmpmeta>...</x:xmpmeta>' photo.jpg
 cargo run -- --delete JPEG:XMP photo.jpg
 cargo run -- --copy JPEG:XMP=source.jpg target.jpg
@@ -137,6 +140,9 @@ AVI INFO edits target an existing text chunk and preserve the RIFF layout;
 the replacement must fit its existing payload.
 Matroska/WebM tag edits target an existing `SimpleTag` string and preserve the
 EBML layout; the replacement must fit its existing payload.
+TIFF-like RAW edits target an existing TIFF/BigTIFF ASCII slot; DNG, CR2, NEF,
+ARW, ORF, RW2, and PEF are supported, while proprietary RAW containers remain
+read-only.
 
 Install the local CLI:
 
@@ -299,8 +305,8 @@ et les tests présents ; il ne représente pas un pourcentage de compatibilité 
 2. **52 %** — Ajouter des corpus réels et des tests différentiels JPEG/TIFF/PNG/WebP/Ogg ; le harnais opt-in a été exécuté sur un corpus local de 194 fichiers sans panic, avec 89 fichiers reconnus, 3 303 tags Metra, 1 857 clés et 1 435 valeurs typées alignées, mais 105 fichiers restent hors surface et aucune preuve n’est embarquée dans le dépôt.
 3. **99 %** — Approfondir HEIF/AVIF et les conteneurs média, puis couvrir les lecteurs restants ; les lecteurs ISO-BMFF exposent maintenant les timings `mvhd` et les identifiants/dimensions de pistes `tkhd` en plus des propriétés image bornées courantes, WebP lit les dimensions des bitstreams VP8X, VP8 et VP8L sans décoder les pixels, les lecteurs XMP/ICC autonomes et Ogg/Vorbis/Opus sont disponibles avec détection de signature bornée, FLAC et Ogg-FLAC exposent maintenant `STREAMINFO`, `SEEKTABLE` et `CUESHEET` sous forme structurée, WAV décode maintenant les feuilles iXML et délègue les chunks ID3v2 au parseur borné sans activer les entités externes, AVI expose maintenant les descripteurs `strh` et `strf` bornés sans décoder les frames, les conteneurs Matroska/WebM exposent maintenant chapitres, cues et descripteurs de pièces jointes sans charger leurs payloads, les conteneurs RAW hérités CRW/MRW/X3F sont identifiés explicitement, tandis que les lecteurs PSD/PSB et RAW couvrent leurs en-têtes et métadonnées courantes sans décoder les pixels ou les flux vidéo.
 4. **99 %** — Étendre XMP/IPTC/ICC/ID3 et isoler les espaces MakerNote ; XMP est maintenant réécrit de façon bornée pour JPEG APP1, WebP et PNG, les datasets IPTC-IIM connus peuvent être réécrits dans les ressources Photoshop APP13, les profils ICC fragmentés JPEG, PNG `iCCP` et WebP `ICCP` sont inspectés sous limites avec descriptions texte et valeurs XYZ courantes, les références XML sûres sont décodées sans entités personnalisées, les textes PNG compressés sont déployés sous budget, les champs texte/commentaires ID3v2 courants restent sous limites explicites, SVG extrait les paquets XMP embarqués avec le même parseur borné, et les conteneurs MakerNote courants sont identifiés ; des IFD Nikon Type 1/2, Canon, Fujifilm, Panasonic, Olympus, legacy Sony, Apple et Pentax bornés exposent maintenant leurs champs connus, Apple structure son runtime binary plist, Samsung STMN expose ses champs d’en-tête/preview et conserve son payload sous budget, DJI expose ses champs IFD connus avec sélection d’endianness bornée, et GoPro expose maintenant ses champs APP6 `DEVC`/`STRM` sous limites, tandis que son MakerNote propriétaire reste detection-only.
-5. **76 %** — Concevoir l’écriture read-modify-write avec validation et remplacement atomique ; quinze writers bornés couvrent maintenant JPEG, TIFF/BigTIFF, PNG, GIF, WebP, SVG, WAV, FLAC, Ogg Vorbis/Opus/Ogg-FLAC, ID3v2, les champs texte ISO-BMFF existants, les chaînes Info PDF existantes, les ressources XMP PSD existantes, les chaînes AVI `LIST/INFO` et les `SimpleTag` Matroska/WebM, avec réécriture JPEG EXIF ASCII dans des slots existants ; les writers PDF et PSD conservent les offsets en exigeant une substitution de longueur encodée identique, tandis que les writers AVI et Matroska/WebM conservent les tailles de chunks/éléments ; le registre `FormatHandler::write_metadata` expose ce dispatch sur flux seekable en réutilisant les mêmes validations ; les budgets metadata/valeur sont configurables depuis le CLI. Le score reste volontairement inchangé, car la création, la suppression et la restructuration des conteneurs restent planifiées.
-6. **99 %** — Ajouter `set`/`delete`/`copy` et comparer après les tests round-trip ; les opérations couvrent maintenant JPEG `Comment`/EXIF ASCII existant/`XMP` et datasets IPTC-IIM connus, PNG `tEXt`/`XMP`, GIF `Comment`, WebP `XMP`, SVG `Title`/`Description`/`Comment`, WAV `LIST/INFO`, FLAC et Ogg Vorbis/Opus/Ogg-FLAC Comments, ID3v2 texte/commentaire, les champs texte ISO-BMFF existants, les champs Info PDF existants, les ressources XMP PSD existantes, les chaînes AVI `LIST/INFO`, les `SimpleTag` Matroska/WebM et la copie de champs ASCII TIFF existants via API et CLI, avec comparaison déterministe des valeurs ; l’API publique ajoute aussi des opérations canoniques `MetadataEdit` qui dispatchent vers ces writers validés.
+5. **76 %** — Concevoir l’écriture read-modify-write avec validation et remplacement atomique ; seize writers bornés couvrent maintenant JPEG, TIFF/BigTIFF, PNG, GIF, WebP, SVG, WAV, FLAC, Ogg Vorbis/Opus/Ogg-FLAC, ID3v2, les champs texte ISO-BMFF existants, les chaînes Info PDF existantes, les ressources XMP PSD existantes, les chaînes AVI `LIST/INFO`, les `SimpleTag` Matroska/WebM et les slots TIFF ASCII des RAW TIFF-like, avec réécriture JPEG EXIF ASCII dans des slots existants ; les writers PDF et PSD conservent les offsets en exigeant une substitution de longueur encodée identique, tandis que les writers AVI, Matroska/WebM et RAW conservent les tailles de chunks/éléments/slots ; le registre `FormatHandler::write_metadata` expose ce dispatch sur flux seekable en réutilisant les mêmes validations ; les budgets metadata/valeur sont configurables depuis le CLI. Le score reste volontairement inchangé, car la création, la suppression et la restructuration des conteneurs restent planifiées.
+6. **99 %** — Ajouter `set`/`delete`/`copy` et comparer après les tests round-trip ; les opérations couvrent maintenant JPEG `Comment`/EXIF ASCII existant/`XMP` et datasets IPTC-IIM connus, PNG `tEXt`/`XMP`, GIF `Comment`, WebP `XMP`, SVG `Title`/`Description`/`Comment`, WAV `LIST/INFO`, FLAC et Ogg Vorbis/Opus/Ogg-FLAC Comments, ID3v2 texte/commentaire, les champs texte ISO-BMFF existants, les champs Info PDF existants, les ressources XMP PSD existantes, les chaînes AVI `LIST/INFO`, les `SimpleTag` Matroska/WebM, les slots TIFF ASCII des RAW TIFF-like et la copie de champs ASCII TIFF existants via API et CLI, avec comparaison déterministe des valeurs ; l’API publique ajoute aussi des opérations canoniques `MetadataEdit` qui dispatchent vers ces writers validés.
 7. **82 %** — Ajouter le traitement parallèle contrôlé et le rendu en flux borné ; le scheduler est partagé par l’API Rust et le CLI, conserve l’ordre déterministe, borne les workers et la fenêtre de résultats hors ordre, applique une contre-pression au flux parallèle et gère l’annulation coopérative Ctrl+C avec le code 130. Le benchmark réel du corpus mesure environ 20,6 MiB/s en séquentiel, 106 MiB/s avec quatre workers et 89 MiB/s en streaming borné sur cette machine ; les baselines multi-plateformes et le profiling restent à faire.
 8. **100 %** — Étendre les sorties structurées avec CSV, TOML et YAML versionnés.
 
