@@ -174,8 +174,9 @@ the same dispatch a stream-oriented contract, while `rewrite_metadata_path` keep
 safe writer contract by detecting the input first and delegating to the
 format-specific atomic implementation; `rewrite_metadata_to_vec` provides the
 same dispatch for callers that own the byte buffer. Numeric/binary mutation,
-new metadata block creation, and deletion semantics that require layout
-changes remain intentionally outside this API.
+and `copy_metadata_path` reads the source value before rewriting the target.
+Numeric/binary mutation, new metadata block creation, and deletion semantics
+that require layout changes remain intentionally outside this API.
 
 ## Output contract
 

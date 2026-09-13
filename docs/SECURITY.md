@@ -65,7 +65,7 @@ ID3v2
 unsynchronization, extended headers, and footers are rejected by the writer
 until their round-trip handling is implemented.
 Each writer, including the registry-level `FormatHandler::write_metadata`
-dispatch, reads and validates the source first,
+dispatch and `copy_metadata_path`, reads and validates the source first,
 copies the container through a same-directory temporary file, syncs and
 re-reads the output, preserves source permissions, and replaces the original
 only after validation. Failures remove the temporary file and leave the source

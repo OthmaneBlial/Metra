@@ -64,8 +64,9 @@ when the target value slot has enough storage.
 Repeated IPTC datasets remain typed arrays when read; `--copy` accepts only a
 single-valued source dataset, while `--set` replaces all target occurrences
 with one bounded dataset.
-The public `MetadataEdit::set`/`delete` operations and
-`rewrite_metadata_path`/`rewrite_metadata_to_vec` helpers provide the same
+The public `MetadataEdit::set`/`delete` operations,
+`rewrite_metadata_path`/`rewrite_metadata_to_vec`, and
+`copy_metadata_path` helpers provide the same
 canonical-key surface without requiring callers to depend on a format-specific
 writer enum. They dispatch only to the validated writers available for the
 detected format; typed numeric/binary mutation and metadata creation remain
