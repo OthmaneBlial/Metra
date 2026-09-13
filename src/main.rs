@@ -290,6 +290,7 @@ enum CopyKey {
     PsdXmp,
     AviInfo(String),
     MatroskaTag(String),
+    MatroskaString(String),
     Mp3Text(String),
     Mp3Comment,
     GifComment,
@@ -355,6 +356,14 @@ fn parse_edits(
                 return Ok(Some(EditRequest::DirectMatroska(vec![
                     metra::MatroskaEdit::SetTag {
                         name: name.to_owned(),
+                        value: value.to_owned(),
+                    },
+                ])));
+            }
+            if matroska_info_key(key) {
+                return Ok(Some(EditRequest::DirectMatroska(vec![
+                    metra::MatroskaEdit::SetString {
+                        key: key.to_owned(),
                         value: value.to_owned(),
                     },
                 ])));
@@ -548,6 +557,8 @@ fn parse_edits(
             CopyKey::AviInfo(name.to_owned())
         } else if let Some(name) = matroska_tag_name(key) {
             CopyKey::MatroskaTag(name.to_owned())
+        } else if matroska_info_key(key) {
+            CopyKey::MatroskaString(key.to_owned())
         } else if isobmff_text_key(key) {
             CopyKey::IsobmffText(key.to_owned())
         } else if jpeg_xmp_key(key) {
@@ -638,6 +649,13 @@ fn avi_info_name(key: &str) -> Option<&str> {
 fn matroska_tag_name(key: &str) -> Option<&str> {
     let name = key.strip_prefix("Matroska:Tag:")?;
     (!name.is_empty()).then_some(name)
+}
+
+fn matroska_info_key(key: &str) -> bool {
+    matches!(
+        key,
+        "Matroska:Title" | "Matroska:MuxingApp" | "Matroska:WritingApp"
+    )
 }
 
 fn jpeg_exif_ascii_key(key: &str) -> Option<&str> {
@@ -737,7 +755,7 @@ fn svg_text_key(key: &str) -> Option<SvgTextKey> {
 
 fn unsupported_edit_message(key: &str) -> String {
     format!(
-        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:EXIF:<ASCII tag>, JPEG:XMP, IPTC:<dataset>, TIFF:EXIF:<ASCII tag>, PDF:<Info field>, PSD:XMP, AVI:<INFO field>, Matroska:Tag:<name>, ISOBMFF:<text field>, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, Ogg:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
+        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:EXIF:<ASCII tag>, JPEG:XMP, IPTC:<dataset>, TIFF:EXIF:<ASCII tag>, PDF:<Info field>, PSD:XMP, AVI:<INFO field>, Matroska:Title/MuxingApp/WritingApp, Matroska:Tag:<name>, ISOBMFF:<text field>, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, Ogg:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
     )
 }
 
@@ -1422,6 +1440,32 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path, limits: ParseLimit
             };
             let edits = [metra::MatroskaEdit::SetTag {
                 name,
+                value: value.clone(),
+            }];
+            apply_matroska_edits(paths, &edits, limits)
+        }
+        CopyKey::MatroskaString(key) => {
+            if !matches!(
+                source_metadata.file_info.format,
+                metra::FileFormat::Mkv | metra::FileFormat::Webm
+            ) {
+                eprintln!(
+                    "metra: {}: source format {} is not MKV/WebM",
+                    source.display(),
+                    source_metadata.file_info.format
+                );
+                return ExitCode::from(1);
+            }
+            let Some(tag) = source_metadata.find(&key) else {
+                eprintln!("metra: {}: source does not contain {key}", source.display());
+                return ExitCode::from(1);
+            };
+            let metra::TagValue::String(value) = &tag.value else {
+                eprintln!("metra: {}: {key} is not a string", source.display());
+                return ExitCode::from(1);
+            };
+            let edits = [metra::MatroskaEdit::SetString {
+                key,
                 value: value.clone(),
             }];
             apply_matroska_edits(paths, &edits, limits)

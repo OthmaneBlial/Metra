@@ -227,6 +227,23 @@ fn minimal_webm_with_title(title: &str) -> Vec<u8> {
     [ebml_header, tags].concat()
 }
 
+fn minimal_webm_with_info_title(title: &str) -> Vec<u8> {
+    fn element(id: &[u8], data: &[u8]) -> Vec<u8> {
+        assert!(data.len() < 127);
+        let mut output = id.to_vec();
+        output.push(0x80 | data.len() as u8);
+        output.extend_from_slice(data);
+        output
+    }
+
+    let ebml_header = element(&[0x1A, 0x45, 0xDF, 0xA3], &element(&[0x42, 0x82], b"webm"));
+    let info = element(
+        &[0x15, 0x49, 0xA9, 0x66],
+        &element(&[0x7B, 0xA9], title.as_bytes()),
+    );
+    [ebml_header, info].concat()
+}
+
 fn minimal_dng_with_make(make: &str) -> Vec<u8> {
     let make_length = make.len() as u16;
     let mut bytes = vec![
@@ -1082,6 +1099,53 @@ fn cli_can_set_and_copy_existing_matroska_tag() {
         metra::read(&target)
             .unwrap()
             .find("Matroska:Tag:TITLE")
+            .unwrap()
+            .display_value(),
+        "source"
+    );
+}
+
+#[test]
+fn cli_can_set_and_copy_existing_matroska_info_title() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.file("source-info.webm", &minimal_webm_with_info_title("source"));
+    let target = directory.file("target-info.webm", &minimal_webm_with_info_title("target"));
+
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "Matroska:Title=edited",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("Matroska:Title")
+            .unwrap()
+            .display_value(),
+        "edited"
+    );
+
+    let copy_assignment = format!(
+        "Matroska:Title={}",
+        source.to_str().expect("UTF-8 test path")
+    );
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            copy_assignment.as_str(),
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("Matroska:Title")
             .unwrap()
             .display_value(),
         "source"
