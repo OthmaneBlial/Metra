@@ -62,6 +62,31 @@ struct TagDefinition {
 
 fn tag_definition(namespace: &str, id: u16) -> TagDefinition {
     match (namespace, id) {
+        ("EXIF", 0x0100) => TagDefinition {
+            namespace: "EXIF",
+            name: "ImageWidth",
+            description: "Image width in pixels",
+        },
+        ("EXIF", 0x0101) => TagDefinition {
+            namespace: "EXIF",
+            name: "ImageLength",
+            description: "Image height in pixels",
+        },
+        ("EXIF", 0x0103) => TagDefinition {
+            namespace: "EXIF",
+            name: "Compression",
+            description: "Image compression scheme",
+        },
+        ("EXIF", 0x0106) => TagDefinition {
+            namespace: "EXIF",
+            name: "PhotometricInterpretation",
+            description: "Pixel color interpretation",
+        },
+        ("EXIF", 0x010E) => TagDefinition {
+            namespace: "EXIF",
+            name: "ImageDescription",
+            description: "Image description",
+        },
         ("EXIF", 0x010F) => TagDefinition {
             namespace: "EXIF",
             name: "Make",
@@ -122,6 +147,16 @@ fn tag_definition(namespace: &str, id: u16) -> TagDefinition {
             name: "Copyright",
             description: "Copyright notice",
         },
+        ("EXIF", 0x829A) => TagDefinition {
+            namespace: "EXIF",
+            name: "ExposureTime",
+            description: "Exposure time",
+        },
+        ("EXIF", 0x829D) => TagDefinition {
+            namespace: "EXIF",
+            name: "FNumber",
+            description: "F-number",
+        },
         ("EXIF", 0x8769) => TagDefinition {
             namespace: "EXIF",
             name: "ExifIFDPointer",
@@ -136,6 +171,11 @@ fn tag_definition(namespace: &str, id: u16) -> TagDefinition {
             namespace: "EXIF",
             name: "ISO",
             description: "ISO speed rating",
+        },
+        ("EXIF", 0x8822) => TagDefinition {
+            namespace: "EXIF",
+            name: "ExposureProgram",
+            description: "Exposure program",
         },
         ("EXIF", 0x9000) => TagDefinition {
             namespace: "EXIF",
@@ -206,6 +246,31 @@ fn tag_definition(namespace: &str, id: u16) -> TagDefinition {
             namespace: "EXIF",
             name: "PixelYDimension",
             description: "Image height",
+        },
+        ("EXIF", 0xA001) => TagDefinition {
+            namespace: "EXIF",
+            name: "ColorSpace",
+            description: "Color space information",
+        },
+        ("EXIF", 0xA405) => TagDefinition {
+            namespace: "EXIF",
+            name: "FocalLengthIn35mmFormat",
+            description: "Equivalent focal length in 35mm film",
+        },
+        ("EXIF", 0xA433) => TagDefinition {
+            namespace: "EXIF",
+            name: "LensMake",
+            description: "Lens manufacturer",
+        },
+        ("EXIF", 0xA434) => TagDefinition {
+            namespace: "EXIF",
+            name: "LensModel",
+            description: "Lens model",
+        },
+        ("EXIF", 0xA435) => TagDefinition {
+            namespace: "EXIF",
+            name: "LensSerialNumber",
+            description: "Lens serial number",
         },
         ("GPS", 0x0000) => TagDefinition {
             namespace: "GPS",
@@ -1177,6 +1242,8 @@ mod tests {
             metadata.find("EXIF:DateTimeOriginal").unwrap().value,
             TagValue::String("2026:09:13 12:34:56".into())
         );
+        assert_eq!(tag_definition("EXIF", 0x0100).name, "ImageWidth");
+        assert_eq!(tag_definition("EXIF", 0xA434).name, "LensModel");
     }
 
     #[test]

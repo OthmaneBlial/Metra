@@ -26,6 +26,36 @@ pub struct TagDefinition {
 const TAG_DEFINITIONS: &[TagDefinition] = &[
     TagDefinition {
         namespace: "EXIF",
+        id: 0x0100,
+        name: "ImageWidth",
+        description: "Image width in pixels",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x0101,
+        name: "ImageLength",
+        description: "Image height in pixels",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x0103,
+        name: "Compression",
+        description: "Image compression scheme",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x0106,
+        name: "PhotometricInterpretation",
+        description: "Pixel color interpretation",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x010E,
+        name: "ImageDescription",
+        description: "Image description",
+    },
+    TagDefinition {
+        namespace: "EXIF",
         id: 0x010F,
         name: "Make",
         description: "Camera manufacturer",
@@ -98,6 +128,18 @@ const TAG_DEFINITIONS: &[TagDefinition] = &[
     },
     TagDefinition {
         namespace: "EXIF",
+        id: 0x829A,
+        name: "ExposureTime",
+        description: "Exposure time",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x829D,
+        name: "FNumber",
+        description: "F-number",
+    },
+    TagDefinition {
+        namespace: "EXIF",
         id: 0x8769,
         name: "ExifIFDPointer",
         description: "Offset to the EXIF IFD",
@@ -113,6 +155,12 @@ const TAG_DEFINITIONS: &[TagDefinition] = &[
         id: 0x8827,
         name: "ISO",
         description: "ISO speed rating",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0x8822,
+        name: "ExposureProgram",
+        description: "Exposure program",
     },
     TagDefinition {
         namespace: "EXIF",
@@ -197,6 +245,36 @@ const TAG_DEFINITIONS: &[TagDefinition] = &[
         id: 0xA003,
         name: "PixelYDimension",
         description: "Image height",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0xA001,
+        name: "ColorSpace",
+        description: "Color space information",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0xA405,
+        name: "FocalLengthIn35mmFormat",
+        description: "Equivalent focal length in 35mm film",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0xA433,
+        name: "LensMake",
+        description: "Lens manufacturer",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0xA434,
+        name: "LensModel",
+        description: "Lens model",
+    },
+    TagDefinition {
+        namespace: "EXIF",
+        id: 0xA435,
+        name: "LensSerialNumber",
+        description: "Lens serial number",
     },
     TagDefinition {
         namespace: "GPS",
@@ -980,6 +1058,8 @@ mod tests {
             tag_definition("ICC", u32::from_be_bytes(*b"wtpt")).name,
             "MediaWhitePoint"
         );
+        assert_eq!(tag_definition("EXIF", 0x829A).name, "ExposureTime");
+        assert_eq!(tag_definition("EXIF", 0xA434).name, "LensModel");
 
         let tag = Tag {
             namespace: "EXIF".to_owned(),
