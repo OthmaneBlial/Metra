@@ -1,0 +1,182 @@
+EXIF	0x0100	ImageWidth	Image width in pixels
+EXIF	0x0101	ImageLength	Image height in pixels
+EXIF	0x0102	BitsPerSample	Bits per component
+EXIF	0x0103	Compression	Image compression scheme
+EXIF	0x0106	PhotometricInterpretation	Pixel color interpretation
+EXIF	0x010E	ImageDescription	Image description
+EXIF	0x010F	Make	Camera manufacturer
+EXIF	0x0110	Model	Camera model
+EXIF	0x0112	Orientation	Image orientation
+EXIF	0x0115	SamplesPerPixel	Number of components per pixel
+EXIF	0x0116	RowsPerStrip	Rows per image strip
+EXIF	0x0117	StripByteCounts	Byte counts for image strips
+EXIF	0x011A	XResolution	Horizontal resolution
+EXIF	0x011B	YResolution	Vertical resolution
+EXIF	0x0128	ResolutionUnit	Resolution unit
+EXIF	0x011C	PlanarConfiguration	Planar or chunky component layout
+EXIF	0x012D	TransferFunction	Transfer function table
+EXIF	0x0131	Software	Software used to create the file
+EXIF	0x0132	ModifyDate	File modification date from EXIF
+EXIF	0x013B	Artist	Person who created the image
+EXIF	0x013E	WhitePoint	Chromaticity of the white point
+EXIF	0x013F	PrimaryChromaticities	Chromaticities of the primary colors
+EXIF	0x0152	ExtraSamples	Additional image components
+EXIF	0x014A	SubIFDs	Offsets to sub-image directories
+EXIF	0x0201	JPEGInterchangeFormat	Thumbnail offset
+EXIF	0x0202	JPEGInterchangeFormatLength	Thumbnail length
+EXIF	0x8298	Copyright	Copyright notice
+EXIF	0x829A	ExposureTime	Exposure time
+EXIF	0x829D	FNumber	F-number
+EXIF	0x8769	ExifIFDPointer	Offset to the EXIF IFD
+EXIF	0x8825	GPSInfoIFDPointer	Offset to the GPS IFD
+EXIF	0x8827	ISO	ISO speed rating
+EXIF	0x8830	SensitivityType	Sensitivity type
+EXIF	0x8831	StandardOutputSensitivity	Standard output sensitivity
+EXIF	0x8832	RecommendedExposureIndex	Recommended exposure index
+EXIF	0x8833	ISOSpeed	ISO speed value
+EXIF	0x8834	ISOSpeedLatitudeyyy	ISO speed latitude yyy
+EXIF	0x8835	ISOSpeedLatitudezzz	ISO speed latitude zzz
+EXIF	0x8822	ExposureProgram	Exposure program
+EXIF	0x9000	ExifVersion	EXIF specification version
+EXIF	0x9003	DateTimeOriginal	Original capture date and time
+EXIF	0x9004	CreateDate	Digitized date and time
+EXIF	0x9201	ShutterSpeedValue	Shutter speed value
+EXIF	0x9202	ApertureValue	Aperture value
+EXIF	0x9203	BrightnessValue	Brightness value
+EXIF	0x9204	ExposureCompensation	Exposure bias value
+EXIF	0x9205	MaxApertureValue	Maximum lens aperture
+EXIF	0x9206	SubjectDistance	Distance to the subject
+EXIF	0x9207	MeteringMode	Metering mode
+EXIF	0x9208	LightSource	Light source
+EXIF	0x9209	Flash	Flash status
+EXIF	0x920A	FocalLength	Lens focal length
+EXIF	0x9214	SubjectArea	Subject location and area
+EXIF	0x927C	MakerNote	Manufacturer-specific metadata block
+EXIF	0x9286	UserComment	User comment with an EXIF character-code prefix
+EXIF	0x9291	SubSecTimeOriginal	Sub-second capture time
+EXIF	0x9292	SubSecTimeDigitized	Sub-second digitized time
+EXIF	0x9101	ComponentsConfiguration	Component configuration
+EXIF	0x9102	CompressedBitsPerPixel	Compressed bits per pixel
+EXIF	0xA002	PixelXDimension	Image width
+EXIF	0xA003	PixelYDimension	Image height
+EXIF	0xA001	ColorSpace	Color space information
+EXIF	0xA20E	FocalPlaneXResolution	Focal-plane horizontal resolution
+EXIF	0xA20F	FocalPlaneYResolution	Focal-plane vertical resolution
+EXIF	0xA210	FocalPlaneResolutionUnit	Focal-plane resolution unit
+EXIF	0xA214	SubjectLocation	Subject location
+EXIF	0xA215	ExposureIndex	Exposure index
+EXIF	0xA217	SensingMethod	Sensing method
+EXIF	0xA300	FileSource	Image source
+EXIF	0xA301	SceneType	Scene type
+EXIF	0xA302	CFAPattern	Color filter array pattern
+EXIF	0xA401	CustomRendered	Custom image processing
+EXIF	0xA402	ExposureMode	Exposure mode
+EXIF	0xA403	WhiteBalance	White balance mode
+EXIF	0xA404	DigitalZoomRatio	Digital zoom ratio
+EXIF	0xA405	FocalLengthIn35mmFormat	Equivalent focal length in 35mm film
+EXIF	0xA406	SceneCaptureType	Scene capture type
+EXIF	0xA407	GainControl	Gain control
+EXIF	0xA408	Contrast	Contrast setting
+EXIF	0xA409	Saturation	Saturation setting
+EXIF	0xA40A	Sharpness	Sharpness setting
+EXIF	0xA40C	SubjectDistanceRange	Subject distance range
+EXIF	0xA420	ImageUniqueID	Unique image identifier
+EXIF	0xA430	CameraOwnerName	Camera owner name
+EXIF	0xA431	BodySerialNumber	Camera body serial number
+EXIF	0xA432	LensSpecification	Lens specification
+EXIF	0xA433	LensMake	Lens manufacturer
+EXIF	0xA434	LensModel	Lens model
+EXIF	0xA435	LensSerialNumber	Lens serial number
+EXIF	0xA500	Gamma	Image gamma
+GPS	0x0000	GPSVersionID	GPS metadata version
+GPS	0x0001	GPSLatitudeRef	North or south latitude reference
+GPS	0x0002	GPSLatitude	Latitude in degrees, minutes, seconds
+GPS	0x0003	GPSLongitudeRef	East or west longitude reference
+GPS	0x0004	GPSLongitude	Longitude in degrees, minutes, seconds
+GPS	0x0005	GPSAltitudeRef	Altitude reference
+GPS	0x0006	GPSAltitude	Altitude
+GPS	0x0007	GPSTimeStamp	GPS time of day
+GPS	0x000C	GPSSpeedRef	GPS speed unit
+GPS	0x000D	GPSSpeed	GPS speed
+GPS	0x0010	GPSImgDirectionRef	Image direction reference
+GPS	0x0011	GPSImgDirection	Image direction
+GPS	0x001D	GPSDateStamp	GPS date
+IPTC	3	ObjectName	IPTC object name
+IPTC	5	EditStatus	IPTC edit status
+IPTC	10	Urgency	IPTC urgency
+IPTC	15	Category	IPTC category
+IPTC	20	SupplementalCategories	IPTC supplemental categories
+IPTC	25	Keywords	IPTC keywords
+IPTC	55	DateCreated	IPTC creation date
+IPTC	60	TimeCreated	IPTC creation time
+IPTC	80	Byline	IPTC creator
+IPTC	85	BylineTitle	IPTC creator title
+IPTC	90	City	IPTC city
+IPTC	92	SubLocation	IPTC sub-location
+IPTC	95	ProvinceState	IPTC province or state
+IPTC	101	CountryCode	IPTC country code
+IPTC	102	Country	IPTC country
+IPTC	105	Headline	IPTC headline
+IPTC	110	Credit	IPTC credit
+IPTC	115	Source	IPTC source
+IPTC	116	CopyrightNotice	IPTC copyright notice
+IPTC	120	CaptionAbstract	IPTC caption
+IPTC	122	WriterEditor	IPTC writer or editor
+DNG	0xC612	DNGVersion	DNG specification version
+DNG	0xC613	DNGBackwardVersion	Oldest DNG version supported by the file
+DNG	0xC614	UniqueCameraModel	Unique camera model identifier
+DNG	0xC615	LocalizedCameraModel	Localized camera model name
+DNG	0xC616	CFAPlaneColor	CFA plane color order
+DNG	0xC617	CFALayout	CFA layout pattern
+DNG	0xC618	LinearizationTable	Sensor linearization table
+DNG	0xC619	BlackLevelRepeatDim	Black-level repeat dimensions
+DNG	0xC61A	BlackLevel	Sensor black level
+DNG	0xC61D	WhiteLevel	Sensor white level
+DNG	0xC61E	DefaultScale	Default pixel scale
+DNG	0xC61F	DefaultCropOrigin	Default crop origin
+DNG	0xC620	DefaultCropSize	Default crop size
+DNG	0xC621	ColorMatrix1	First camera color matrix
+DNG	0xC622	ColorMatrix2	Second camera color matrix
+DNG	0xC628	AsShotNeutral	As-shot neutral values
+DNG	0xC629	AsShotWhiteXY	As-shot white point
+DNG	0xC62A	BaselineExposure	Baseline exposure adjustment
+DNG	0xC62F	CameraSerialNumber	Camera serial number
+DNG	0xC630	LensInfo	Lens focal length and aperture range
+DNG	0xC634	DNGPrivateData	Private DNG data block
+DNG	0xC635	MakerNoteSafety	MakerNote safety indicator
+DNG	0xC65A	CalibrationIlluminant1	First calibration illuminant
+DNG	0xC65B	CalibrationIlluminant2	Second calibration illuminant
+ICC	0x6465_7363	Description	ICC profile description
+ICC	0x6370_7274	Copyright	ICC profile copyright
+ICC	0x646D_6E64	ManufacturerDescription	ICC device manufacturer description
+ICC	0x646D_6464	ModelDescription	ICC device model description
+ICC	0x7774_7074	MediaWhitePoint	ICC media white point
+ICC	0x626B_7074	MediaBlackPoint	ICC media black point
+ICC	0x6C75_6D69	Luminance	ICC luminance
+ICC	0x7258_595A	RedMatrixColumn	ICC red matrix column
+ICC	0x6758_595A	GreenMatrixColumn	ICC green matrix column
+ICC	0x6258_595A	BlueMatrixColumn	ICC blue matrix column
+MakerNotes	0x0001	Nikon:Version	Nikon MakerNote version
+MakerNotes	0x0002	Nikon:ISO	Nikon MakerNote ISO speed
+MakerNotes	0x0004	Nikon:Quality	Nikon MakerNote image quality
+MakerNotes	0x0005	Nikon:WhiteBalance	Nikon MakerNote white balance
+MakerNotes	0x0006	Nikon:Sharpness	Nikon MakerNote sharpness
+MakerNotes	0x0007	Nikon:FocusMode	Nikon MakerNote focus mode
+MakerNotes	0x0008	Nikon:FlashSetting	Nikon MakerNote flash setting
+MakerNotes	0x0009	Nikon:FlashType	Nikon MakerNote flash type
+MakerNotes	0x000B	Nikon:WhiteBalanceFineTune	Nikon MakerNote white-balance fine tune
+MakerNotes	0x000C	Nikon:ColorMode	Nikon MakerNote color mode
+MakerNotes	0x0080	Nikon:ImageAdjustment	Nikon MakerNote image adjustment
+MakerNotes	0x0081	Nikon:ToneCompensation	Nikon MakerNote tone compensation
+MakerNotes	0x0082	Nikon:Adapter	Nikon MakerNote adapter
+MakerNotes	0x0083	Nikon:LensType	Nikon MakerNote lens type
+MakerNotes	0x0084	Nikon:Lens	Nikon MakerNote lens
+MakerNotes	0x0085	Nikon:ManualFocusDistance	Nikon MakerNote manual-focus distance
+MakerNotes	0x0086	Nikon:DigitalZoom	Nikon MakerNote digital zoom
+MakerNotes	0x0087	Nikon:FlashMode	Nikon MakerNote flash mode
+MakerNotes	0x0088	Nikon:AFPoint	Nikon MakerNote autofocus point
+MakerNotes	0x0089	Nikon:ShootingMode	Nikon MakerNote shooting mode
+MakerNotes	0x008B	Nikon:LensStops	Nikon MakerNote lens stops
+MakerNotes	0x0093	Nikon:NEFCompression	Nikon MakerNote NEF compression
+MakerNotes	0x0094	Nikon:Saturation	Nikon MakerNote saturation
+Interop	0x0001	InteroperabilityIndex	Interoperability identifier
