@@ -586,11 +586,24 @@ impl Metadata {
         self.tags.iter().find(|tag| tag.key() == key)
     }
 
+    /// Find every tag with the same canonical namespace/name key.
+    pub fn find_all(&self, key: &str) -> Vec<&Tag> {
+        self.tags.iter().filter(|tag| tag.key() == key).collect()
+    }
+
     /// Find a tag by its format-level numeric identifier.
     pub fn find_by_id(&self, namespace: &str, id: u32) -> Option<&Tag> {
         self.tags
             .iter()
             .find(|tag| tag.namespace == namespace && tag.id == Some(id))
+    }
+
+    /// Find every tag with the same format-level numeric identifier.
+    pub fn find_all_by_id(&self, namespace: &str, id: u32) -> Vec<&Tag> {
+        self.tags
+            .iter()
+            .filter(|tag| tag.namespace == namespace && tag.id == Some(id))
+            .collect()
     }
 }
 
@@ -870,5 +883,7 @@ mod tests {
             metadata.find("EXIF:Make").unwrap().identifier().id,
             Some(0x010F)
         );
+        assert_eq!(metadata.find_all("EXIF:Make").len(), 1);
+        assert_eq!(metadata.find_all_by_id("EXIF", 0x010F).len(), 1);
     }
 }
