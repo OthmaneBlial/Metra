@@ -37,7 +37,10 @@ relative to the correct TIFF payload while source offsets can still be
 reported against the containing file. JPEG, PNG, and WebP delegate structured
 XMP to the bounded XML reader; PNG text and `iCCP` chunks use a zlib decoder
 capped by `ParseLimits`; Photoshop resources delegate IPTC IIM parsing,
-and ICC payloads delegate bounded profile-header, typed illuminant, and tag-table inspection. The ISO-BMFF
+and ICC payloads delegate bounded profile-header, typed illuminant, and tag-table inspection. TIFF
+also derives GPS decimal coordinates, signed altitude, image direction, and
+seconds since midnight only after validating their rational values and ranges.
+The ISO-BMFF
 reader walks bounded boxes and exposes brands, image properties, direct
 XMP/EXIF boxes, and a conservative subset of QuickTime-style `ilst` text items.
 The MP3 reader handles bounded ID3v2 frame tables, ID3v1 fixed fields, and a
