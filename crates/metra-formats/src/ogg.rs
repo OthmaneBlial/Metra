@@ -7,13 +7,21 @@ use metra_core::{
 };
 
 const OGG_PAGE_HEADER_LENGTH: usize = 27;
-const MAX_PACKETS_PER_STREAM: usize = 3;
+const MAX_PACKETS_PER_STREAM: usize = 8;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StreamCodec {
+    Vorbis,
+    Opus,
+    OggFlac,
+}
 
 #[derive(Debug, Default)]
 struct StreamState {
     pending: Vec<u8>,
     packet_offset: Option<u64>,
     packets_seen: usize,
+    codec: Option<StreamCodec>,
     exhausted: bool,
 }
 
@@ -273,22 +281,41 @@ fn process_page(
                 let packet = std::mem::take(&mut state.pending);
                 let packet_offset = state.packet_offset.take().unwrap_or(page.body_start);
                 state.packets_seen += 1;
-                parse_packet(&packet, packet_offset, metadata, limits);
+                let detected_codec = if state.packets_seen == 1 {
+                    parse_packet(&packet, packet_offset, metadata, limits)
+                } else if state.codec == Some(StreamCodec::OggFlac) {
+                    parse_ogg_flac_metadata_packet(&packet, packet_offset, metadata, limits);
+                    None
+                } else {
+                    parse_packet(&packet, packet_offset, metadata, limits)
+                };
+                if state.codec.is_none() {
+                    state.codec = detected_codec;
+                }
             }
         }
         body_cursor = segment_end;
     }
 }
 
-fn parse_packet(packet: &[u8], offset: u64, metadata: &mut Metadata, limits: ParseLimits) {
+fn parse_packet(
+    packet: &[u8],
+    offset: u64,
+    metadata: &mut Metadata,
+    limits: ParseLimits,
+) -> Option<StreamCodec> {
     if packet.starts_with(b"OpusHead") {
         parse_opus_head(packet, offset, metadata);
+        Some(StreamCodec::Opus)
     } else if packet.starts_with(b"OpusTags") {
         parse_comments(packet, 8, offset, metadata, limits, "OpusTags");
+        None
     } else if packet.starts_with(&[1]) && packet.get(1..7) == Some(b"vorbis") {
         parse_vorbis_identification(packet, offset, metadata);
+        Some(StreamCodec::Vorbis)
     } else if packet.starts_with(&[3]) && packet.get(1..7) == Some(b"vorbis") {
         parse_comments(packet, 7, offset, metadata, limits, "VORBIS_COMMENT");
+        None
     } else if packet.starts_with(&[0x7F]) && packet.get(1..5) == Some(b"FLAC") {
         add_tag(
             metadata,
@@ -299,11 +326,19 @@ fn parse_packet(packet: &[u8], offset: u64, metadata: &mut Metadata, limits: Par
             offset,
             packet.len() as u64,
         );
-        parse_ogg_flac_mapping(packet, offset, metadata);
+        parse_ogg_flac_mapping(packet, offset, metadata, limits);
+        Some(StreamCodec::OggFlac)
+    } else {
+        None
     }
 }
 
-fn parse_ogg_flac_mapping(packet: &[u8], offset: u64, metadata: &mut Metadata) {
+fn parse_ogg_flac_mapping(
+    packet: &[u8],
+    offset: u64,
+    metadata: &mut Metadata,
+    limits: ParseLimits,
+) {
     if packet.len() < 13 || packet.get(9..13) != Some(b"fLaC") {
         metadata.add_warning(
             Warning::new(
@@ -315,6 +350,7 @@ fn parse_ogg_flac_mapping(packet: &[u8], offset: u64, metadata: &mut Metadata) {
         return;
     }
     let mut cursor = 13_usize;
+    let mut found_streaminfo = false;
     while let Some(header) = packet.get(cursor..cursor.saturating_add(4)) {
         let block_type = header[0] & 0x7F;
         let block_length =
@@ -342,20 +378,76 @@ fn parse_ogg_flac_mapping(packet: &[u8], offset: u64, metadata: &mut Metadata) {
         };
         if block_type == 0 {
             parse_ogg_flac_streaminfo(data, offset + data_start as u64, metadata);
-            return;
+            found_streaminfo = true;
+        } else if block_type == 4 {
+            parse_comments(
+                data,
+                0,
+                offset + data_start as u64,
+                metadata,
+                limits,
+                "FLAC_COMMENT",
+            );
         }
         cursor = data_end;
         if header[0] & 0x80 != 0 {
             break;
         }
     }
-    metadata.add_warning(
-        Warning::new(
-            "missing-ogg-flac-streaminfo",
-            "Ogg-FLAC streaminfo block is missing",
-        )
-        .at(offset),
-    );
+    if !found_streaminfo {
+        metadata.add_warning(
+            Warning::new(
+                "missing-ogg-flac-streaminfo",
+                "Ogg-FLAC streaminfo block is missing",
+            )
+            .at(offset),
+        );
+    }
+}
+
+fn parse_ogg_flac_metadata_packet(
+    packet: &[u8],
+    offset: u64,
+    metadata: &mut Metadata,
+    limits: ParseLimits,
+) {
+    let mut cursor = 0_usize;
+    let mut blocks = Vec::new();
+    while let Some(header) = packet.get(cursor..cursor.saturating_add(4)) {
+        let block_type = header[0] & 0x7F;
+        if block_type > 6 {
+            return;
+        }
+        let block_length =
+            (usize::from(header[1]) << 16) | (usize::from(header[2]) << 8) | usize::from(header[3]);
+        let data_start = cursor + 4;
+        let Some(data_end) = data_start.checked_add(block_length) else {
+            return;
+        };
+        let Some(_) = packet.get(data_start..data_end) else {
+            return;
+        };
+        blocks.push((block_type, data_start, data_end));
+        cursor = data_end;
+        if header[0] & 0x80 != 0 {
+            break;
+        }
+    }
+    if blocks.is_empty() || cursor != packet.len() {
+        return;
+    }
+    for (block_type, data_start, data_end) in blocks {
+        if block_type == 4 {
+            parse_comments(
+                &packet[data_start..data_end],
+                0,
+                offset + data_start as u64,
+                metadata,
+                limits,
+                "FLAC_COMMENT",
+            );
+        }
+    }
 }
 
 fn parse_ogg_flac_streaminfo(data: &[u8], offset: u64, metadata: &mut Metadata) {
@@ -906,7 +998,23 @@ mod tests {
         packet.extend_from_slice(b"fLaC");
         packet.extend_from_slice(&[0, 0, 0, 34]);
         packet.extend_from_slice(&streaminfo);
-        let bytes = page(9, 0, 0x02, &packet);
+        let comment = b"TITLE=Ogg FLAC demo";
+        let mut comments = Vec::new();
+        comments.extend_from_slice(&5_u32.to_le_bytes());
+        comments.extend_from_slice(b"Metra");
+        comments.extend_from_slice(&1_u32.to_le_bytes());
+        comments.extend_from_slice(&(comment.len() as u32).to_le_bytes());
+        comments.extend_from_slice(comment);
+        let mut comment_packet = vec![0x84];
+        comment_packet.extend_from_slice(&[
+            ((comments.len() >> 16) & 0xFF) as u8,
+            ((comments.len() >> 8) & 0xFF) as u8,
+            (comments.len() & 0xFF) as u8,
+        ]);
+        comment_packet.extend_from_slice(&comments);
+
+        let mut bytes = page(9, 0, 0x02, &packet);
+        bytes.extend_from_slice(&page(9, 1, 0, &comment_packet));
         let metadata = read_ogg(
             &mut Cursor::new(bytes.clone()),
             info(&bytes),
@@ -928,6 +1036,14 @@ mod tests {
         assert_eq!(
             metadata.find("Ogg:TotalSamples").unwrap().value,
             TagValue::Unsigned(100)
+        );
+        assert_eq!(
+            metadata.find("Ogg:Title").unwrap().display_value(),
+            "Ogg FLAC demo"
+        );
+        assert_eq!(
+            metadata.find("Ogg:Vendor").unwrap().display_value(),
+            "Metra"
         );
     }
 
