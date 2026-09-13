@@ -68,6 +68,79 @@ pub(crate) fn parse_icc_profile(
         data_offset + 20,
         4,
     );
+    add_tag(
+        metadata,
+        "DeviceClass",
+        TagValue::String(signature(&bytes[12..16])),
+        ValueType::String,
+        data_offset + 12,
+        4,
+    );
+    add_tag(
+        metadata,
+        "Platform",
+        TagValue::String(signature(&bytes[40..44])),
+        ValueType::String,
+        data_offset + 40,
+        4,
+    );
+    add_tag(
+        metadata,
+        "Manufacturer",
+        TagValue::String(signature(&bytes[48..52])),
+        ValueType::String,
+        data_offset + 48,
+        4,
+    );
+    add_tag(
+        metadata,
+        "Model",
+        TagValue::String(signature(&bytes[52..56])),
+        ValueType::String,
+        data_offset + 52,
+        4,
+    );
+    add_tag(
+        metadata,
+        "CreationDate",
+        TagValue::String(parse_datetime(&bytes[24..36])),
+        ValueType::String,
+        data_offset + 24,
+        12,
+    );
+    add_tag(
+        metadata,
+        "RenderingIntent",
+        TagValue::Unsigned(u64::from(u32::from_be_bytes(
+            bytes[64..68].try_into().expect("rendering intent"),
+        ))),
+        ValueType::UnsignedInteger,
+        data_offset + 64,
+        4,
+    );
+    add_tag(
+        metadata,
+        "Illuminant",
+        TagValue::Array(
+            [68..72, 72..76, 76..80]
+                .into_iter()
+                .map(|range| TagValue::Float(parse_fixed(&bytes[range])))
+                .collect(),
+        ),
+        ValueType::Array,
+        data_offset + 68,
+        12,
+    );
+    if bytes[84..100].iter().any(|byte| *byte != 0) {
+        add_tag(
+            metadata,
+            "ProfileID",
+            TagValue::Bytes(bytes[84..100].to_vec()),
+            ValueType::Bytes,
+            data_offset + 84,
+            16,
+        );
+    }
 
     let tag_count = u32::from_be_bytes(bytes[128..132].try_into().expect("tag count"));
     let tag_count_usize =
@@ -180,6 +253,26 @@ fn signature(bytes: &[u8]) -> String {
         .to_owned()
 }
 
+fn parse_datetime(bytes: &[u8]) -> String {
+    let values = bytes
+        .chunks_exact(2)
+        .map(|chunk| u16::from_be_bytes([chunk[0], chunk[1]]))
+        .collect::<Vec<_>>();
+    if values.len() == 6 {
+        format!(
+            "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+            values[0], values[1], values[2], values[3], values[4], values[5]
+        )
+    } else {
+        "unknown".to_owned()
+    }
+}
+
+fn parse_fixed(bytes: &[u8]) -> f64 {
+    let value = i32::from_be_bytes(bytes.try_into().expect("ICC fixed-point value"));
+    f64::from(value) / 65_536.0
+}
+
 fn parse_desc(bytes: &[u8]) -> Option<String> {
     if bytes.len() < 12 || &bytes[..4] != b"desc" {
         return None;
@@ -236,6 +329,16 @@ mod tests {
         bytes[9] = 0x30;
         bytes[16..20].copy_from_slice(b"RGB ");
         bytes[20..24].copy_from_slice(b"XYZ ");
+        bytes[12..16].copy_from_slice(b"mntr");
+        bytes[24..36].copy_from_slice(&[0x07, 0xEA, 0, 9, 0, 13, 0, 12, 0, 34, 0, 56]);
+        bytes[40..44].copy_from_slice(b"APPL");
+        bytes[48..52].copy_from_slice(b"TEST");
+        bytes[52..56].copy_from_slice(b"MODL");
+        bytes[64..68].copy_from_slice(&1_u32.to_be_bytes());
+        bytes[68..72].copy_from_slice(&(((95_047_i64 * 65_536) / 100_000) as i32).to_be_bytes());
+        bytes[72..76].copy_from_slice(&(((100_000_i64 * 65_536) / 100_000) as i32).to_be_bytes());
+        bytes[76..80].copy_from_slice(&(((108_883_i64 * 65_536) / 100_000) as i32).to_be_bytes());
+        bytes[84] = 1;
         bytes[36..40].copy_from_slice(b"acsp");
         bytes[128..132].copy_from_slice(&1_u32.to_be_bytes());
         bytes[132..136].copy_from_slice(b"desc");
@@ -256,5 +359,28 @@ mod tests {
             metadata.find("ICC:Description").unwrap().display_value(),
             "Metra"
         );
+        assert_eq!(
+            metadata.find("ICC:DeviceClass").unwrap().display_value(),
+            "mntr"
+        );
+        assert_eq!(
+            metadata.find("ICC:CreationDate").unwrap().display_value(),
+            "2026-09-13 12:34:56"
+        );
+        assert_eq!(
+            metadata
+                .find("ICC:RenderingIntent")
+                .unwrap()
+                .display_value(),
+            "1"
+        );
+        assert!(matches!(
+            metadata.find("ICC:Illuminant").unwrap().value,
+            TagValue::Array(_)
+        ));
+        assert!(matches!(
+            metadata.find("ICC:ProfileID").unwrap().value,
+            TagValue::Bytes(_)
+        ));
     }
 }
