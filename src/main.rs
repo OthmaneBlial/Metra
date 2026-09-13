@@ -137,8 +137,15 @@ fn main() -> ExitCode {
 }
 
 enum EditRequest {
-    Direct(Vec<metra::JpegEdit>),
-    CopyComment { source: PathBuf },
+    DirectJpeg(Vec<metra::JpegEdit>),
+    DirectPng(Vec<metra::PngEdit>),
+    Copy { key: CopyKey, source: PathBuf },
+}
+
+#[derive(Debug)]
+enum CopyKey {
+    JpegComment,
+    PngText(String),
 }
 
 fn parse_edits(
@@ -151,21 +158,32 @@ fn parse_edits(
             .split_once('=')
             .ok_or_else(|| "--set expects KEY=VALUE".to_owned())?;
         if key != "JPEG:Comment" {
-            return Err(format!(
-                "unsupported writable tag {key}; only JPEG:Comment is currently writable"
-            ));
+            if let Some(keyword) = png_text_keyword(key) {
+                return Ok(Some(EditRequest::DirectPng(vec![
+                    metra::PngEdit::SetText {
+                        keyword: keyword.to_owned(),
+                        value: value.to_owned(),
+                    },
+                ])));
+            }
+            return Err(unsupported_edit_message(key));
         }
-        return Ok(Some(EditRequest::Direct(vec![
+        return Ok(Some(EditRequest::DirectJpeg(vec![
             metra::JpegEdit::SetComment(value.to_owned()),
         ])));
     }
     if let Some(key) = delete {
         if key != "JPEG:Comment" {
-            return Err(format!(
-                "unsupported writable tag {key}; only JPEG:Comment is currently writable"
-            ));
+            if let Some(keyword) = png_text_keyword(key) {
+                return Ok(Some(EditRequest::DirectPng(vec![
+                    metra::PngEdit::DeleteText {
+                        keyword: keyword.to_owned(),
+                    },
+                ])));
+            }
+            return Err(unsupported_edit_message(key));
         }
-        return Ok(Some(EditRequest::Direct(vec![
+        return Ok(Some(EditRequest::DirectJpeg(vec![
             metra::JpegEdit::DeleteComments,
         ])));
     }
@@ -173,29 +191,42 @@ fn parse_edits(
         let (key, source) = assignment
             .split_once('=')
             .ok_or_else(|| "--copy expects KEY=SOURCE".to_owned())?;
-        if key != "JPEG:Comment" {
-            return Err(format!(
-                "unsupported copied tag {key}; only JPEG:Comment is currently supported"
-            ));
-        }
         if source.is_empty() {
             return Err("--copy requires a non-empty source path".to_owned());
         }
-        return Ok(Some(EditRequest::CopyComment {
+        let key = if key == "JPEG:Comment" {
+            CopyKey::JpegComment
+        } else if let Some(keyword) = png_text_keyword(key) {
+            CopyKey::PngText(keyword.to_owned())
+        } else {
+            return Err(unsupported_edit_message(key));
+        };
+        return Ok(Some(EditRequest::Copy {
+            key,
             source: PathBuf::from(source),
         }));
     }
     Ok(None)
 }
 
+fn png_text_keyword(key: &str) -> Option<&str> {
+    let keyword = key.strip_prefix("PNG:Text:")?;
+    (!keyword.is_empty()).then_some(keyword)
+}
+
+fn unsupported_edit_message(key: &str) -> String {
+    format!("unsupported metadata key {key}; writable keys are JPEG:Comment or PNG:Text:<keyword>")
+}
+
 fn apply_request(paths: &[PathBuf], request: EditRequest) -> ExitCode {
     match request {
-        EditRequest::Direct(edits) => apply_direct_edits(paths, &edits),
-        EditRequest::CopyComment { source } => apply_comment_copy(paths, &source),
+        EditRequest::DirectJpeg(edits) => apply_jpeg_edits(paths, &edits),
+        EditRequest::DirectPng(edits) => apply_png_edits(paths, &edits),
+        EditRequest::Copy { key, source } => apply_copy(paths, key, &source),
     }
 }
 
-fn apply_direct_edits(paths: &[PathBuf], edits: &[metra::JpegEdit]) -> ExitCode {
+fn apply_jpeg_edits(paths: &[PathBuf], edits: &[metra::JpegEdit]) -> ExitCode {
     let mut failures = 0_usize;
     for path in paths {
         match metra::read(path) {
@@ -228,35 +259,96 @@ fn apply_direct_edits(paths: &[PathBuf], edits: &[metra::JpegEdit]) -> ExitCode 
     }
 }
 
-fn apply_comment_copy(paths: &[PathBuf], source: &Path) -> ExitCode {
-    let source_metadata = match metra::read(source) {
-        Ok(metadata) if metadata.file_info.format == metra::FileFormat::Jpeg => metadata,
-        Ok(metadata) => {
-            eprintln!(
-                "metra: {}: source format {} is not JPEG",
-                source.display(),
-                metadata.file_info.format
-            );
-            return ExitCode::from(1);
+fn apply_png_edits(paths: &[PathBuf], edits: &[metra::PngEdit]) -> ExitCode {
+    let mut failures = 0_usize;
+    for path in paths {
+        match metra::read(path) {
+            Ok(metadata) if metadata.file_info.format == metra::FileFormat::Png => {
+                if let Err(error) = metra::rewrite_png_path(path, ParseLimits::default(), edits) {
+                    eprintln!("metra: {}: {error}", path.display());
+                    failures += 1;
+                } else {
+                    println!("updated: {}", path.display());
+                }
+            }
+            Ok(metadata) => {
+                eprintln!(
+                    "metra: {}: {} edits are supported only for PNG files",
+                    path.display(),
+                    metadata.file_info.format
+                );
+                failures += 1;
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", path.display());
+                failures += 1;
+            }
         }
+    }
+    if failures == 0 {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
+fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path) -> ExitCode {
+    let source_metadata = match metra::read(source) {
+        Ok(metadata) => metadata,
         Err(error) => {
             eprintln!("metra: {}: {error}", source.display());
             return ExitCode::from(1);
         }
     };
-    let Some(comment) = source_metadata.find("JPEG:Comment") else {
-        eprintln!(
-            "metra: {}: source does not contain JPEG:Comment",
-            source.display()
-        );
-        return ExitCode::from(1);
-    };
-    let metra::TagValue::String(comment) = &comment.value else {
-        eprintln!("metra: {}: JPEG:Comment is not a string", source.display());
-        return ExitCode::from(1);
-    };
-    let edits = [metra::JpegEdit::SetComment(comment.clone())];
-    apply_direct_edits(paths, &edits)
+    match key {
+        CopyKey::JpegComment => {
+            if source_metadata.file_info.format != metra::FileFormat::Jpeg {
+                eprintln!(
+                    "metra: {}: source format {} is not JPEG",
+                    source.display(),
+                    source_metadata.file_info.format
+                );
+                return ExitCode::from(1);
+            }
+            let Some(comment) = source_metadata.find("JPEG:Comment") else {
+                eprintln!(
+                    "metra: {}: source does not contain JPEG:Comment",
+                    source.display()
+                );
+                return ExitCode::from(1);
+            };
+            let metra::TagValue::String(comment) = &comment.value else {
+                eprintln!("metra: {}: JPEG:Comment is not a string", source.display());
+                return ExitCode::from(1);
+            };
+            let edits = [metra::JpegEdit::SetComment(comment.clone())];
+            apply_jpeg_edits(paths, &edits)
+        }
+        CopyKey::PngText(keyword) => {
+            if source_metadata.file_info.format != metra::FileFormat::Png {
+                eprintln!(
+                    "metra: {}: source format {} is not PNG",
+                    source.display(),
+                    source_metadata.file_info.format
+                );
+                return ExitCode::from(1);
+            }
+            let key = format!("PNG:Text:{keyword}");
+            let Some(text) = source_metadata.find(&key) else {
+                eprintln!("metra: {}: source does not contain {key}", source.display());
+                return ExitCode::from(1);
+            };
+            let metra::TagValue::String(text) = &text.value else {
+                eprintln!("metra: {}: {key} is not a string", source.display());
+                return ExitCode::from(1);
+            };
+            let edits = [metra::PngEdit::SetText {
+                keyword,
+                value: text.clone(),
+            }];
+            apply_png_edits(paths, &edits)
+        }
+    }
 }
 
 fn parse_jobs(value: &str) -> std::result::Result<usize, String> {

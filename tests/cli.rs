@@ -65,6 +65,38 @@ fn minimal_svg() -> Vec<u8> {
         .to_vec()
 }
 
+fn png_crc(kind: &[u8; 4], data: &[u8]) -> u32 {
+    let mut crc = 0xFFFF_FFFF_u32;
+    for byte in kind.iter().chain(data.iter()) {
+        crc ^= u32::from(*byte);
+        for _ in 0..8 {
+            let mask = 0_u32.wrapping_sub(crc & 1);
+            crc = (crc >> 1) ^ (0xEDB8_8320 & mask);
+        }
+    }
+    !crc
+}
+
+fn png_chunk(kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
+    let mut chunk = Vec::new();
+    chunk.extend_from_slice(&(data.len() as u32).to_be_bytes());
+    chunk.extend_from_slice(kind);
+    chunk.extend_from_slice(data);
+    chunk.extend_from_slice(&png_crc(kind, data).to_be_bytes());
+    chunk
+}
+
+fn minimal_png(comment: &str) -> Vec<u8> {
+    let mut bytes = b"\x89PNG\r\n\x1A\n".to_vec();
+    bytes.extend_from_slice(&png_chunk(b"IHDR", &[0; 13]));
+    bytes.extend_from_slice(&png_chunk(
+        b"tEXt",
+        format!("Comment\0{comment}").as_bytes(),
+    ));
+    bytes.extend_from_slice(&png_chunk(b"IEND", &[]));
+    bytes
+}
+
 fn run(args: &[&Path]) -> std::process::Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_metra"));
     for path in args {
@@ -272,5 +304,67 @@ fn cli_can_copy_a_jpeg_comment_between_files() {
     assert_eq!(
         metadata.find("JPEG:Comment").unwrap().display_value(),
         "copied value"
+    );
+}
+
+#[test]
+fn cli_can_edit_and_copy_a_png_text_chunk() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.file("source.png", &minimal_png("source value"));
+    let target = directory.file("target.png", &minimal_png("target value"));
+
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "PNG:Text:Comment=edited value",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("PNG:Text:Comment")
+            .unwrap()
+            .display_value(),
+        "edited value"
+    );
+
+    let delete = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--delete",
+            "PNG:Text:Comment",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(delete.status.success(), "stderr: {:?}", delete.stderr);
+    assert!(
+        metra::read(&target)
+            .unwrap()
+            .find("PNG:Text:Comment")
+            .is_none()
+    );
+
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            &format!(
+                "PNG:Text:Comment={}",
+                source.to_str().expect("UTF-8 test path")
+            ),
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("PNG:Text:Comment")
+            .unwrap()
+            .display_value(),
+        "source value"
     );
 }
