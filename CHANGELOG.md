@@ -78,6 +78,8 @@ Initial read-first foundation with narrow validated rewrites:
   deterministic ordering and bounded out-of-order buffering;
 - added `--validate` to fail automation on recoverable parser warnings while
   retaining parsed metadata and warning evidence;
+- exposed configurable `--max-metadata-bytes` and `--max-value-bytes` budgets,
+  including during source and rewritten-output validation;
 - added value-level `Metadata::diff` and CLI `--compare` for deterministic
   additions, removals, and changes;
 - added opt-in local corpus and oracle-differential harnesses without counting

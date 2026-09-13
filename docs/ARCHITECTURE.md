@@ -74,6 +74,10 @@ Every untrusted size or offset must satisfy all of the following before use:
 3. the allocation is within `ParseLimits`;
 4. recursion, entry, chunk, or segment counters remain within their limits.
 
+The library exposes these budgets through `ParseLimits`; the CLI can override
+the total metadata and per-value budgets per invocation. Rewrite operations pass
+the same limits through source parsing, transformation, and output validation.
+
 Malformed embedded metadata is recoverable at the container layer when safe:
 the reader adds a warning and retains tags already extracted from other blocks.
 Standalone TIFF parsing returns a structured error for an invalid root header or
