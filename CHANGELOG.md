@@ -16,9 +16,9 @@ Initial read-first foundation with narrow validated rewrites:
   and zero-fill deletion with fixed EBML layout preservation, generic and
   registry API dispatch, atomic replacement, and CLI `--set`/`--delete`/`--copy`
   coverage;
-- added bounded AVI `LIST/INFO` string rewrites with fixed chunk-size
-  preservation, generic and registry API dispatch, atomic replacement, and CLI
-  `--set`/`--copy` coverage;
+- added bounded AVI `LIST/INFO` string rewrites and zero-fill deletion with
+  fixed chunk-size preservation, generic and registry API dispatch, atomic
+  replacement, and CLI `--set`/`--delete`/`--copy` coverage;
 - added bounded PSD XMP resource rewrites with fixed packet-size validation,
   generic and registry API dispatch, atomic replacement, and CLI `--set`/`--copy`
   coverage;

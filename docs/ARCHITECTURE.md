@@ -176,7 +176,8 @@ byte span, so it never creates objects, rewrites xref tables, or moves unrelated
 PDF bytes.
 The AVI writer accepts existing known `LIST/INFO` string chunks, writes only
 within their allocated payloads, preserves a NUL terminator when space exists,
-and never changes RIFF chunk sizes or media data.
+and never changes RIFF chunk sizes or media data. Delete operations zero-fill
+the selected payload so the reader no longer exposes that field.
 The Matroska/WebM writer accepts existing `Info` title/app strings and
 `SimpleTag` string values, writes only within their allocated EBML payloads, and
 never changes element widths, tag names, or media payloads. Set operations replace
