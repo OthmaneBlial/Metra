@@ -28,6 +28,7 @@ pub enum FileFormat {
     Pdf,
     Gif,
     Mp3,
+    Flac,
     Unknown,
 }
 
@@ -46,6 +47,7 @@ impl FileFormat {
             Self::Pdf => Some("application/pdf"),
             Self::Gif => Some("image/gif"),
             Self::Mp3 => Some("audio/mpeg"),
+            Self::Flac => Some("audio/flac"),
             Self::Unknown => None,
         }
     }
@@ -66,6 +68,7 @@ impl fmt::Display for FileFormat {
             Self::Pdf => "PDF",
             Self::Gif => "GIF",
             Self::Mp3 => "MP3",
+            Self::Flac => "FLAC",
             Self::Unknown => "Unknown",
         })
     }

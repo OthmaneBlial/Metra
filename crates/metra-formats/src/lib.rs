@@ -10,6 +10,7 @@ use std::path::Path;
 
 use metra_core::{FileFormat, FileInfo, Metadata, MetraError, ParseLimits, Result};
 
+mod flac;
 mod gif;
 mod icc;
 mod id3;
@@ -21,6 +22,7 @@ mod tiff;
 mod webp;
 mod xmp;
 
+pub use flac::read_flac;
 pub use gif::read_gif;
 pub use id3::read_mp3;
 pub use isobmff::read_isobmff;
@@ -85,6 +87,11 @@ pub fn detect_format(bytes: &[u8]) -> Option<DetectedFormat> {
             format: FileFormat::Mp3,
             signature: "ID3 header",
         })
+    } else if bytes.starts_with(b"fLaC") {
+        Some(DetectedFormat {
+            format: FileFormat::Flac,
+            signature: "FLAC signature",
+        })
     } else if bytes.len() >= 2 && bytes[0] == 0xFF && bytes[1] & 0xE0 == 0xE0 {
         Some(DetectedFormat {
             format: FileFormat::Mp3,
@@ -142,6 +149,7 @@ pub fn read_path_with_limits(path: impl AsRef<Path>, limits: ParseLimits) -> Res
         | FileFormat::Mov
         | FileFormat::M4a => isobmff::read_isobmff(&mut file, file_info, limits),
         FileFormat::Mp3 => id3::read_mp3(&mut file, file_info, limits),
+        FileFormat::Flac => flac::read_flac(&mut file, file_info, limits),
         format => Err(MetraError::UnsupportedFormat {
             description: format!("{format} is detected but its reader is not implemented yet"),
         }),
