@@ -19,6 +19,8 @@ Initial read-only foundation:
   metadata readers;
 - added bounded SVG XML inspection for root geometry, document text, and safe
   comment extraction without rendering;
+- added validated, lossless JPEG COM replacement/deletion with same-directory
+  temporary files, output re-read validation, and atomic replacement;
 - added bounded `--jobs` batch inspection with deterministic result ordering;
 - expanded ISO-BMFF inspection with `ispe` dimensions, item/handler fields,
   and direct XMP/EXIF decoding when the metadata boxes are available;

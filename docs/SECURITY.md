@@ -24,12 +24,15 @@ read-only release. Library callers can select stricter values for untrusted
 batch jobs. Any new decompression or XML implementation must add its own
 expansion and nesting limits before being enabled.
 
-## Future write safety
+## Current rewrite safety
 
-Writing is not implemented in this release. Before it is enabled, a writer
-must write to a temporary file, validate the rewritten metadata and container,
-and replace the original atomically when the platform permits. An explicit
-overwrite policy and failure recovery path are required.
+Only JPEG comment replacement/deletion is implemented, through the library API;
+the CLI does not mutate files. The writer reads and validates the source first,
+copies the container through a same-directory temporary file, syncs and
+re-reads the output, preserves source permissions, and replaces the original
+only after validation. Failures remove the temporary file and leave the source
+untouched. Generic tag writes and other formats remain disabled until their
+round-trip and recovery tests exist.
 
 Security reports should include the smallest reproducible input and the exact
 Metra version. Do not include private media or secrets in an issue.

@@ -65,6 +65,16 @@ the reader adds a warning and retains tags already extracted from other blocks.
 Standalone TIFF parsing returns a structured error for an invalid root header or
 out-of-range required read.
 
+## Rewrite boundary
+
+The current writer surface is deliberately limited to JPEG COM segments. The
+library validates the source through the JPEG reader before writing, streams
+the original container while preserving untargeted bytes, validates the
+temporary output with the reader again, syncs it, and atomically renames a
+same-directory temporary file. `SetComment` and `DeleteComments` are exposed
+through the library API; generic tag mutation, copy operations, and CLI
+mutation flags remain deferred until their round-trip acceptance tests exist.
+
 ## Output contract
 
 JSON documents include `schema_version`. The schema is intentionally small and
