@@ -175,6 +175,7 @@
     "set": "partial",
     "delete": "partial",
     "copy": "partial",
+    "create_tiff_seed": "partial",
     "validate": "supported",
     "compare": "supported",
     "exiftool_compatibility_mode": "planned"
