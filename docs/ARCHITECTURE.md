@@ -59,9 +59,12 @@ rational values, units, and ranges.
 The PSD reader validates PSD/PSB sections, emits typed header properties, and
 delegates bounded XMP, IPTC, ICC, and embedded EXIF resources to the shared
 readers. Unknown Photoshop resources remain available as bounded byte values;
-layer and pixel data are skipped. The ISO-BMFF
-reader walks bounded boxes and exposes brands, image properties, direct
-XMP/EXIF boxes, and a conservative subset of QuickTime-style `ilst` text items.
+layer and pixel data are skipped. The ISO-BMFF reader walks bounded boxes and
+exposes brands, dimensions, channel depths, orientation, pixel aspect ratio,
+nclx color properties, auxiliary item types, direct XMP/EXIF boxes, and a
+conservative subset of QuickTime-style `ilst` text items. HEIF/AVIF property
+containers (`iprp`/`ipco`) are traversed with the same recursion and payload
+budgets as top-level boxes.
 The AVI reader scans RIFF lists with checked boundaries, exposes typed `avih`
 timing/dimension fields and common `LIST/INFO` text, and skips video payloads.
 The Matroska reader validates the EBML signature and document type, walks bounded
