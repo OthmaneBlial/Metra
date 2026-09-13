@@ -831,6 +831,54 @@ fn add_gps_decimal_tags(metadata: &mut Metadata) {
             writable: false,
         });
     }
+    if let Some(value) = gps_altitude_meters(metadata) {
+        add_derived_gps_tag(
+            metadata,
+            "AltitudeMeters",
+            "Altitude converted to meters",
+            TagValue::Float(value),
+            ValueType::Float,
+        );
+    }
+    if let Some(value) = gps_direction_degrees(metadata) {
+        add_derived_gps_tag(
+            metadata,
+            "ImageDirectionDegrees",
+            "Image direction in degrees",
+            TagValue::Float(value),
+            ValueType::Float,
+        );
+    }
+    if let Some(value) = gps_time_seconds(metadata) {
+        add_derived_gps_tag(
+            metadata,
+            "TimeOfDaySeconds",
+            "GPS time converted to seconds since midnight",
+            TagValue::Float(value),
+            ValueType::Float,
+        );
+    }
+}
+
+fn add_derived_gps_tag(
+    metadata: &mut Metadata,
+    name: &str,
+    description: &str,
+    value: TagValue,
+    value_type: ValueType,
+) {
+    metadata.add_tag(Tag {
+        namespace: "GPS".to_owned(),
+        group: "Derived".to_owned(),
+        id: None,
+        name: name.to_owned(),
+        description: Some(description.to_owned()),
+        raw_value: None,
+        value,
+        value_type,
+        source: Source::new("derived/GPS", None, None),
+        writable: false,
+    });
 }
 
 fn gps_decimal(
@@ -871,11 +919,94 @@ fn gps_decimal(
             _ => return None,
         };
     }
-    let mut decimal = parts[0] + parts[1] / 60.0 + parts[2] / 3_600.0;
-    if matches!(reference, 'S' | 'W' | 's' | 'w') {
-        decimal = -decimal;
+    if parts.iter().any(|part| *part < 0.0) || parts[1] >= 60.0 || parts[2] >= 60.0 {
+        return None;
+    }
+    let sign = match reference {
+        'N' | 'n' | 'E' | 'e' => 1.0,
+        'S' | 's' | 'W' | 'w' => -1.0,
+        _ => return None,
+    };
+    let decimal = sign * (parts[0] + parts[1] / 60.0 + parts[2] / 3_600.0);
+    let maximum = if matches!(reference, 'N' | 'n' | 'S' | 's') {
+        90.0
+    } else {
+        180.0
+    };
+    if decimal.abs() > maximum {
+        return None;
     }
     Some((decimal, Source::new("derived/GPS", None, None)))
+}
+
+fn gps_altitude_meters(metadata: &Metadata) -> Option<f64> {
+    let altitude = metadata
+        .tags
+        .iter()
+        .find(|tag| tag.namespace == "GPS" && tag.name == "GPSAltitude")
+        .and_then(|tag| scalar_number(&tag.value))?;
+    let reference = metadata
+        .tags
+        .iter()
+        .find(|tag| tag.namespace == "GPS" && tag.name == "GPSAltitudeRef")
+        .and_then(|tag| match &tag.value {
+            TagValue::Unsigned(value) if *value <= 1 => Some(*value),
+            _ => None,
+        })?;
+    if altitude < 0.0 {
+        return None;
+    }
+    Some(if reference == 1 { -altitude } else { altitude })
+}
+
+fn gps_direction_degrees(metadata: &Metadata) -> Option<f64> {
+    let direction = metadata
+        .tags
+        .iter()
+        .find(|tag| tag.namespace == "GPS" && tag.name == "GPSImgDirection")
+        .and_then(|tag| scalar_number(&tag.value))?;
+    (0.0..=360.0).contains(&direction).then_some(direction)
+}
+
+fn gps_time_seconds(metadata: &Metadata) -> Option<f64> {
+    let timestamp = metadata
+        .tags
+        .iter()
+        .find(|tag| tag.namespace == "GPS" && tag.name == "GPSTimeStamp")?;
+    let TagValue::Array(values) = &timestamp.value else {
+        return None;
+    };
+    if values.len() != 3 {
+        return None;
+    }
+    let hours = scalar_number(&values[0])?;
+    let minutes = scalar_number(&values[1])?;
+    let seconds = scalar_number(&values[2])?;
+    if !(0.0..24.0).contains(&hours)
+        || !(0.0..60.0).contains(&minutes)
+        || !(0.0..60.0).contains(&seconds)
+    {
+        return None;
+    }
+    Some(hours * 3_600.0 + minutes * 60.0 + seconds)
+}
+
+fn scalar_number(value: &TagValue) -> Option<f64> {
+    let number = match value {
+        TagValue::Unsigned(value) => *value as f64,
+        TagValue::Signed(value) => *value as f64,
+        TagValue::Float(value) => *value,
+        TagValue::Rational {
+            numerator,
+            denominator,
+        } if *denominator != 0 => *numerator as f64 / *denominator as f64,
+        TagValue::UnsignedRational {
+            numerator,
+            denominator,
+        } if *denominator != 0 => *numerator as f64 / *denominator as f64,
+        _ => return None,
+    };
+    number.is_finite().then_some(number)
 }
 
 #[cfg(test)]
@@ -883,7 +1014,22 @@ mod tests {
     use std::io::Cursor;
 
     use super::*;
-    use metra_core::{FileFormat, FileInfo, TagValue};
+    use metra_core::{FileFormat, FileInfo, Tag, TagValue, ValueType};
+
+    fn gps_tag(name: &str, value: TagValue, value_type: ValueType) -> Tag {
+        Tag {
+            namespace: "GPS".to_owned(),
+            group: "GPS".to_owned(),
+            id: None,
+            name: name.to_owned(),
+            description: None,
+            raw_value: None,
+            value,
+            value_type,
+            source: Source::default(),
+            writable: false,
+        }
+    }
 
     fn little_endian_tiff() -> Vec<u8> {
         let mut bytes = vec![
@@ -932,6 +1078,135 @@ mod tests {
         assert_eq!(
             metadata.find("EXIF:DateTimeOriginal").unwrap().value,
             TagValue::String("2026:09:13 12:34:56".into())
+        );
+    }
+
+    #[test]
+    fn derives_gps_altitude_direction_and_time_without_losing_signs() {
+        let mut metadata = Metadata::new(FileInfo::new("gps.tif".into(), 0, FileFormat::Tiff));
+        metadata.add_tag(gps_tag(
+            "GPSLatitude",
+            TagValue::Array(vec![
+                TagValue::UnsignedRational {
+                    numerator: 48,
+                    denominator: 1,
+                },
+                TagValue::UnsignedRational {
+                    numerator: 51,
+                    denominator: 1,
+                },
+                TagValue::UnsignedRational {
+                    numerator: 24,
+                    denominator: 1,
+                },
+            ]),
+            ValueType::Array,
+        ));
+        metadata.add_tag(gps_tag(
+            "GPSLatitudeRef",
+            TagValue::String("S".to_owned()),
+            ValueType::String,
+        ));
+        metadata.add_tag(gps_tag(
+            "GPSLongitude",
+            TagValue::Array(vec![
+                TagValue::UnsignedRational {
+                    numerator: 2,
+                    denominator: 1,
+                },
+                TagValue::UnsignedRational {
+                    numerator: 20,
+                    denominator: 1,
+                },
+                TagValue::UnsignedRational {
+                    numerator: 0,
+                    denominator: 1,
+                },
+            ]),
+            ValueType::Array,
+        ));
+        metadata.add_tag(gps_tag(
+            "GPSLongitudeRef",
+            TagValue::String("E".to_owned()),
+            ValueType::String,
+        ));
+        metadata.add_tag(gps_tag(
+            "GPSAltitude",
+            TagValue::UnsignedRational {
+                numerator: 125,
+                denominator: 1,
+            },
+            ValueType::UnsignedRational,
+        ));
+        metadata.add_tag(gps_tag(
+            "GPSAltitudeRef",
+            TagValue::Unsigned(1),
+            ValueType::UnsignedInteger,
+        ));
+        metadata.add_tag(gps_tag(
+            "GPSImgDirection",
+            TagValue::UnsignedRational {
+                numerator: 270,
+                denominator: 1,
+            },
+            ValueType::UnsignedRational,
+        ));
+        metadata.add_tag(gps_tag(
+            "GPSTimeStamp",
+            TagValue::Array(vec![
+                TagValue::UnsignedRational {
+                    numerator: 12,
+                    denominator: 1,
+                },
+                TagValue::UnsignedRational {
+                    numerator: 34,
+                    denominator: 1,
+                },
+                TagValue::UnsignedRational {
+                    numerator: 56,
+                    denominator: 1,
+                },
+            ]),
+            ValueType::Array,
+        ));
+
+        add_gps_decimal_tags(&mut metadata);
+
+        assert!(
+            (metadata
+                .find("GPS:LatitudeDecimal")
+                .unwrap()
+                .display_value()
+                .parse::<f64>()
+                .unwrap()
+                + 48.8566666667)
+                .abs()
+                < 0.000001
+        );
+        assert_eq!(
+            metadata
+                .find("GPS:LongitudeDecimal")
+                .unwrap()
+                .display_value(),
+            "2.3333333333333335"
+        );
+        assert_eq!(
+            metadata.find("GPS:AltitudeMeters").unwrap().display_value(),
+            "-125"
+        );
+        assert_eq!(
+            metadata
+                .find("GPS:ImageDirectionDegrees")
+                .unwrap()
+                .display_value(),
+            "270"
+        );
+        assert_eq!(
+            metadata
+                .find("GPS:TimeOfDaySeconds")
+                .unwrap()
+                .display_value(),
+            "45296"
         );
     }
 
