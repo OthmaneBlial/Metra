@@ -187,6 +187,29 @@ fn oracle_key_candidates(tag: &metra::Tag) -> Vec<String> {
             };
             vec![format!("{group}:{name}")]
         }
+        "Ogg" => match tag.name.as_str() {
+            "Channels" => vec![
+                "Vorbis:AudioChannels".to_owned(),
+                "Opus:AudioChannels".to_owned(),
+            ],
+            "SampleRate" => vec!["Vorbis:SampleRate".to_owned(), "Opus:SampleRate".to_owned()],
+            "Vendor" => vec!["Vorbis:Vendor".to_owned()],
+            "Encoder" => vec!["Vorbis:Encoder".to_owned()],
+            "OutputGain" => vec!["Opus:OutputGain".to_owned()],
+            name if name.starts_with("Comment:") => {
+                let comment_name = &name["Comment:".len()..];
+                match comment_name {
+                    "COVERARTMIME" => vec!["Vorbis:CoverArtMIMEType".to_owned()],
+                    "MEDIAJUKEBOX:DATE" => vec!["Vorbis:MediajukeboxDate".to_owned()],
+                    "MEDIAJUKEBOX:TOOL NAME" => vec!["Vorbis:MediajukeboxToolName".to_owned()],
+                    "MEDIAJUKEBOX:TOOL VERSION" => {
+                        vec!["Vorbis:MediajukeboxToolVersion".to_owned()]
+                    }
+                    _ => vec![format!("Vorbis:{comment_name}")],
+                }
+            }
+            name => vec![format!("Vorbis:{name}")],
+        },
         "JPEG" if tag.group == "COM" => vec![format!("File:{name}")],
         "JFIF" => vec![format!("JFIF:{name}")],
         "ISOBMFF" => vec![format!("QuickTime:{name}"), format!("{name}")],
