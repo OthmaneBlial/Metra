@@ -113,6 +113,8 @@ order as workers finish, retaining only out-of-order results. JSON, TOML, and
 YAML intentionally aggregate successful documents because their output is one
 complete document or collection. Errors are sent to stderr and produce a
 non-zero exit code.
+The CLI `--validate` flag additionally treats any recoverable warning as a
+non-zero validation result while retaining the warning in the emitted metadata.
 
 ## Planned seams
 

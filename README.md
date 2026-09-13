@@ -70,6 +70,7 @@ cargo run -- --jsonl --jobs 4 -r photos/
 cargo run -- --csv -r photos/
 cargo run -- --toml photo.jpg
 cargo run -- --yaml photo.jpg
+cargo run -- --validate --json photo.jpg
 cargo run -- --set 'JPEG:Comment=reviewed' photo.jpg
 cargo run -- --delete JPEG:Comment photo.jpg
 cargo run -- --copy JPEG:Comment=source.jpg target.jpg
@@ -187,6 +188,10 @@ For batch output, human-readable, JSON Lines, and CSV modes render as results
 arrive while preserving deterministic input-path order. JSON, TOML, and YAML
 need a complete document or collection, so they intentionally retain their
 successful results until serialization.
+
+`--validate` keeps the normal metadata output but exits non-zero when a file
+produces one or more recoverable parser warnings, which makes corruption checks
+usable in scripts without hiding the parsed evidence.
 
 GitHub Actions automatic push and pull-request triggers are currently disabled;
 the workflow remains available for a deliberate manual run. The commands above
