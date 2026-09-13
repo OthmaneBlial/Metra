@@ -28,6 +28,14 @@ struct Arguments {
     #[arg(long, conflicts_with_all = ["json", "jsonl"])]
     csv: bool,
 
+    /// Emit TOML metadata (a `files` table is used for multiple inputs).
+    #[arg(long, conflicts_with_all = ["json", "jsonl", "csv", "yaml"])]
+    toml: bool,
+
+    /// Emit YAML metadata (a `files` list is used for multiple inputs).
+    #[arg(long, conflicts_with_all = ["json", "jsonl", "csv", "toml"])]
+    yaml: bool,
+
     /// Traverse directories recursively in deterministic path order.
     #[arg(short = 'r', long)]
     recursive: bool,
@@ -56,6 +64,10 @@ fn main() -> ExitCode {
     let failures = results.iter().filter(|(_, result)| result.is_err()).count();
     if arguments.csv {
         emit_csv(&results);
+    } else if arguments.toml {
+        emit_toml(&results);
+    } else if arguments.yaml {
+        emit_yaml(&results);
     } else if arguments.json || arguments.jsonl {
         emit_json(&results, arguments.jsonl);
     } else {
@@ -250,6 +262,53 @@ fn emit_csv(results: &[(PathBuf, metra::Result<Metadata>)]) {
                 csv_field(&format!("{:?}", tag.value_type)),
                 csv_field(&value)
             );
+        }
+    }
+}
+
+#[derive(serde::Serialize)]
+struct DocumentCollection<'a> {
+    files: Vec<&'a Metadata>,
+}
+
+fn emit_toml(results: &[(PathBuf, metra::Result<Metadata>)]) {
+    let successful = results
+        .iter()
+        .filter_map(|(_, result)| result.as_ref().ok())
+        .collect::<Vec<_>>();
+    let serialized = if successful.len() == 1 {
+        toml::to_string_pretty(successful[0])
+    } else {
+        toml::to_string_pretty(&DocumentCollection { files: successful })
+    };
+    match serialized {
+        Ok(document) => print!("{document}"),
+        Err(error) => eprintln!("metra: cannot serialize TOML output: {error}"),
+    }
+    emit_errors(results);
+}
+
+fn emit_yaml(results: &[(PathBuf, metra::Result<Metadata>)]) {
+    let successful = results
+        .iter()
+        .filter_map(|(_, result)| result.as_ref().ok())
+        .collect::<Vec<_>>();
+    let serialized = if successful.len() == 1 {
+        serde_yaml::to_string(successful[0])
+    } else {
+        serde_yaml::to_string(&DocumentCollection { files: successful })
+    };
+    match serialized {
+        Ok(document) => print!("{document}"),
+        Err(error) => eprintln!("metra: cannot serialize YAML output: {error}"),
+    }
+    emit_errors(results);
+}
+
+fn emit_errors(results: &[(PathBuf, metra::Result<Metadata>)]) {
+    for (path, result) in results {
+        if let Err(error) = result {
+            eprintln!("metra: {}: {error}", path.display());
         }
     }
 }

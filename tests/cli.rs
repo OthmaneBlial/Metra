@@ -168,3 +168,19 @@ fn csv_output_contains_typed_tag_rows() {
     assert!(stdout.contains("\"Make\""));
     assert!(stdout.contains("\"String\""));
 }
+
+#[test]
+fn toml_and_yaml_outputs_keep_schema_version() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.file("camera.jpg", &minimal_exif_jpeg());
+    for format in ["--toml", "--yaml"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+            .args([format, path.to_str().expect("UTF-8 test path")])
+            .output()
+            .expect("Metra CLI should start");
+        assert!(output.status.success(), "stderr: {:?}", output.stderr);
+        let text = String::from_utf8(output.stdout).expect("structured output should be UTF-8");
+        assert!(text.contains("schema_version"));
+        assert!(text.contains("Sony"));
+    }
+}

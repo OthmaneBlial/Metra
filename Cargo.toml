@@ -24,6 +24,8 @@ metra-core = { path = "crates/metra-core" }
 metra-formats = { path = "crates/metra-formats" }
 serde.workspace = true
 serde_json.workspace = true
+serde_yaml.workspace = true
+toml.workspace = true
 
 [workspace.package]
 version = "0.1.0"
@@ -36,3 +38,5 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"
 quick-xml = "0.38"
+serde_yaml = "0.9"
+toml = "0.9"
