@@ -217,6 +217,10 @@ The parallel PNG seam exposes `PngCreateOptions` and `--create-png KEY=VALUE`.
 It emits a 1x1 RGBA image with CRC-checked `tEXt` chunks, validates the PNG by
 reading it back, and applies the same no-overwrite destination rule.
 
+Standalone XMP creation exposes `create_xmp_to_vec` and `create_xmp_path`.
+Callers provide the XML packet directly; Metra applies the same bounded XML
+reader and only creates a new destination after successful validation.
+
 Legacy read queries are handled by a thin argument normalizer: selected
 single-dash aliases such as `-Make` and `-GPSLatitude` become `--tag` selectors,
 while `-json` and `-jsonl` become the corresponding Metra output flags. The

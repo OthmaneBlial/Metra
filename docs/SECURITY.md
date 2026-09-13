@@ -111,5 +111,10 @@ accepts only printable ASCII `tEXt` keywords, rejects NUL bytes and duplicate
 keywords, compresses one fixed scanline, validates chunk CRCs through the PNG
 reader, and removes its temporary file if path creation fails.
 
+Standalone XMP creation does not synthesize or execute XML; it validates the
+caller-provided packet with the bounded entity-safe XMP reader, enforces both
+metadata and value budgets, and writes only after validation. Existing paths
+are refused and temporary output is removed on failure.
+
 Security reports should include the smallest reproducible input and the exact
 Metra version. Do not include private media or secrets in an issue.
