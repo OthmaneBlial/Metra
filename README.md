@@ -49,7 +49,12 @@ Implemented today:
 
 Broader creation and full PSD/PSB/RAW writing, MakerNote tag
 interpretation beyond the bounded Nikon Type 1/2, Canon, Fujifilm, Panasonic, Olympus, legacy Sony, Apple, Pentax, Samsung, and DJI fields, and full media and
-ExifTool compatibility are intentionally not advertised as implemented yet.
+complete ExifTool compatibility are intentionally not advertised as implemented yet.
+The compatibility layer currently translates a bounded set of legacy query
+aliases (`-json`, `-jsonl`, `-Make`, `-Model`, `-Artist`, `-Copyright`,
+`-Software`, `-ImageDescription`, `-GPSLatitude`, `-GPSLongitude`,
+`-GPSAltitude`, and `-DateTimeOriginal`) into canonical Metra selection and
+output; the resulting structured output keeps Metra schema version `1`.
 The library now supports validated, lossless
 JPEG comment, existing APP1 EXIF ASCII fields, bounded APP1 XMP, and selected IPTC-IIM datasets in Photoshop
 APP13 resources, PNG `tEXt` and uncompressed `iTXt` XMP, GIF comments, WebP XMP, SVG
@@ -106,6 +111,8 @@ cargo run -- --delete JPEG:Comment photo.jpg
 cargo run -- --copy JPEG:Comment=source.jpg target.jpg
 cargo run -- --create-tiff 'EXIF:Make=Metra' --create-tiff 'EXIF:Artist=Othmane' new.tif
 cargo run -- --create-png 'Comment=Metra' --create-png 'Author=Othmane' new.png
+cargo run -- -Make photo.jpg
+cargo run -- -json photo.jpg
 cargo run -- --set 'JPEG:EXIF:Make=Sony' photo.jpg
 cargo run -- --copy JPEG:EXIF:Make=source.jpg target.jpg
 cargo run -- --copy TIFF:EXIF:Make=source.tif target.tif
