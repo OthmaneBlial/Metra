@@ -4,6 +4,9 @@
 
 Initial read-first foundation with narrow validated rewrites:
 
+- added bounded Matroska/WebM `SimpleTag` string rewrites with fixed EBML
+  layout preservation, generic and registry API dispatch, atomic replacement,
+  and CLI `--set`/`--copy` coverage;
 - added bounded AVI `LIST/INFO` string rewrites with fixed chunk-size
   preservation, generic and registry API dispatch, atomic replacement, and CLI
   `--set`/`--copy` coverage;

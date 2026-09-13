@@ -76,6 +76,9 @@ atomic replacement.
 AVI INFO writes are limited to existing known text chunks and bounded payloads;
 the replacement is zero-padded within the original chunk, so RIFF sizes and
 media bytes remain unchanged before the validated atomic replacement.
+Matroska/WebM writes are limited to existing `SimpleTag` string payloads and
+zero-pad within the original EBML element, so element sizes, names, and media
+bytes remain unchanged before the validated atomic replacement.
 Ogg rewrites retain page boundaries, recalculate CRCs, preserve opaque packet
 bytes, and refuse packet growth unless the existing bounded packet can hold it.
 ID3v2

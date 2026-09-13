@@ -153,7 +153,8 @@ XMP packets, and known IPTC-IIM datasets inside Photoshop APP13 resources, PNG
 `tEXt` chunks and uncompressed `iTXt` XMP chunks, GIF comment extensions, WebP `XMP ` chunks,
 SVG title/description/comment nodes, WAV `LIST/INFO` fields, FLAC Vorbis
 Comment key/value pairs, Ogg Vorbis/Opus comment packets, common ID3v2 text/comment frames,
-and existing PDF Info literal or hexadecimal string tokens. Ogg
+and existing PDF Info literal or hexadecimal string tokens, and existing Matroska/WebM
+`SimpleTag` string values. Ogg
 rewrites preserve the existing packet size and page layout, recompute page CRCs, and refuse
 growth that cannot fit in the original packet; deletions use bounded Vorbis padding when
 available. Ogg-FLAC comment blocks, whether embedded in the mapping packet or in a
@@ -175,6 +176,9 @@ PDF bytes.
 The AVI writer accepts existing known `LIST/INFO` string chunks, writes only
 within their allocated payloads, preserves a NUL terminator when space exists,
 and never changes RIFF chunk sizes or media data.
+The Matroska/WebM writer accepts existing `SimpleTag` string values, writes only
+within their allocated EBML payloads, and never changes element widths, tag
+names, or media payloads.
 The SVG writer validates the source XML, escapes replacement text, rejects
 unsafe comment delimiters, and preserves unrelated source ranges. The ID3 writer requires a tag without
 unsynchronization, extended-header, or footer flags. Each library writer
@@ -187,8 +191,8 @@ backpressure-bounded `read_many_streaming` helpers, plus cancellation-aware
 variants; the CLI uses these same batch APIs before rendering. The CLI exposes
 `--set`/`--delete`/`--copy` for
 `JPEG:Comment`, `JPEG:EXIF:<ASCII tag>`, `IPTC:<dataset>`, `PNG:XMP`, `PNG:Text:<keyword>`, `SVG:Title`/`Description`/`Comment`, `WAV:<INFO field>`,
-`FLAC:<Vorbis field>`, `ID3:<text field>`, `ISOBMFF:<text field>`, `PDF:<Info field>`, `GIF:Comment`, `WebP:XMP`, and
-existing `TIFF:EXIF:<ASCII tag>` values; generic
+`FLAC:<Vorbis field>`, `ID3:<text field>`, `ISOBMFF:<text field>`, `PDF:<Info field>`, `GIF:Comment`, `WebP:XMP`,
+`Matroska:Tag:<name>`, and existing `TIFF:EXIF:<ASCII tag>` values; generic
 tag mutation and other format writers remain deferred until their round-trip
 acceptance tests exist.
 
