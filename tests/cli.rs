@@ -1274,6 +1274,24 @@ fn cli_can_set_and_copy_existing_tiff_like_raw_ascii() {
 }
 
 #[test]
+fn cli_can_delete_existing_tiff_like_raw_ascii() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.file("editable.dng", &minimal_dng_with_make("Canon\0"));
+    let delete = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--delete",
+            "TIFF:EXIF:Make",
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(delete.status.success(), "stderr: {:?}", delete.stderr);
+    let metadata = metra::read(&path).expect("deleted DNG should remain readable");
+    assert_eq!(metadata.find("RAW:Variant").unwrap().display_value(), "DNG");
+    assert!(metadata.find("EXIF:Make").is_none());
+}
+
+#[test]
 fn cli_can_set_and_copy_existing_isobmff_text() {
     let directory = TemporaryDirectory::new();
     let source = directory.file("source.mp4", &minimal_isobmff("Origin"));

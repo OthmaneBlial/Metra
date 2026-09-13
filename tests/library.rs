@@ -483,6 +483,34 @@ fn public_generic_edit_api_rewrites_and_revalidates_tiff_like_raw() {
 }
 
 #[test]
+fn public_generic_edit_api_deletes_existing_tiff_like_raw_ascii() {
+    let bytes = minimal_dng_with_make("Canon\0");
+    let output = metra::rewrite_metadata_to_vec(
+        &bytes,
+        metra::FileInfo::new(
+            "memory.dng".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::delete("TIFF:EXIF:Make")],
+    )
+    .expect("generic TIFF-like RAW deletion should validate its rewritten bytes");
+
+    let metadata = metra::read_from(
+        &mut std::io::Cursor::new(output),
+        metra::FileInfo::new(
+            "memory.dng".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+    )
+    .expect("deleted DNG should remain readable");
+    assert_eq!(metadata.find("RAW:Variant").unwrap().display_value(), "DNG");
+    assert!(metadata.find("EXIF:Make").is_none());
+}
+
+#[test]
 fn public_generic_edit_api_rewrites_and_revalidates_cr3_text() {
     let bytes = minimal_cr3_with_title("old");
     let output = metra::rewrite_metadata_to_vec(
