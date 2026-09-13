@@ -102,7 +102,7 @@ pub fn detect_format(bytes: &[u8]) -> Option<DetectedFormat> {
             format: FileFormat::Png,
             signature: "PNG signature",
         })
-    } else if bytes.starts_with(b"II*\0") || bytes.starts_with(b"MM\0*") {
+    } else if raw::is_tiff_header(bytes) {
         Some(DetectedFormat {
             format: FileFormat::Tiff,
             signature: "TIFF header",
@@ -323,6 +323,10 @@ mod tests {
         );
         assert_eq!(
             detect_format(b"II*\0rest").unwrap().format,
+            FileFormat::Tiff
+        );
+        assert_eq!(
+            detect_format(b"II+\0rest").unwrap().format,
             FileFormat::Tiff
         );
         assert_eq!(

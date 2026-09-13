@@ -13,6 +13,35 @@ enum Endian {
     Big,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TiffVariant {
+    Classic,
+    Big,
+}
+
+impl TiffVariant {
+    const fn count_size(self) -> usize {
+        match self {
+            Self::Classic => 2,
+            Self::Big => 8,
+        }
+    }
+
+    const fn entry_size(self) -> usize {
+        match self {
+            Self::Classic => 12,
+            Self::Big => 20,
+        }
+    }
+
+    const fn inline_value_size(self) -> usize {
+        match self {
+            Self::Classic => 4,
+            Self::Big => 8,
+        }
+    }
+}
+
 impl Endian {
     fn u16(self, bytes: &[u8]) -> u16 {
         let bytes: [u8; 2] = bytes.try_into().expect("caller validates length");
@@ -51,6 +80,14 @@ impl Endian {
         match self {
             Self::Little => u64::from_le_bytes(bytes),
             Self::Big => u64::from_be_bytes(bytes),
+        }
+    }
+
+    fn i64(self, bytes: &[u8]) -> i64 {
+        let bytes: [u8; 8] = bytes.try_into().expect("caller validates length");
+        match self {
+            Self::Little => i64::from_le_bytes(bytes),
+            Self::Big => i64::from_be_bytes(bytes),
         }
     }
 }
@@ -390,6 +427,7 @@ pub(crate) fn parse_tiff_from_reader<R: Read + Seek>(
         absolute_start,
         limits,
         endian: Endian::Little,
+        variant: TiffVariant::Classic,
         bytes_read: 0,
         visited_ifds: HashSet::new(),
     };
@@ -403,6 +441,7 @@ struct TiffParser<'a, R> {
     absolute_start: u64,
     limits: ParseLimits,
     endian: Endian,
+    variant: TiffVariant,
     bytes_read: usize,
     visited_ifds: HashSet<u64>,
 }
@@ -421,13 +460,33 @@ impl<R: Read + Seek> TiffParser<'_, R> {
             }
         };
         let magic = self.endian.u16(&header[2..4]);
-        if magic != 42 {
-            return Err(MetraError::InvalidHeader {
-                context: "TIFF".to_owned(),
-                message: format!("expected magic 42, got {magic}"),
-            });
-        }
-        let first_ifd = u64::from(self.endian.u32(&header[4..8]));
+        let (variant, first_ifd) = match magic {
+            42 => (
+                TiffVariant::Classic,
+                u64::from(self.endian.u32(&header[4..8])),
+            ),
+            43 => {
+                let big_header = self.read_at(4, 12, "BigTIFF header")?;
+                let offset_size = self.endian.u16(&big_header[..2]);
+                let reserved = self.endian.u16(&big_header[2..4]);
+                if offset_size != 8 || reserved != 0 {
+                    return Err(MetraError::InvalidHeader {
+                        context: "BigTIFF".to_owned(),
+                        message: format!(
+                            "expected 8-byte offsets and zero reserved field, got {offset_size} and {reserved}"
+                        ),
+                    });
+                }
+                (TiffVariant::Big, self.endian.u64(&big_header[4..12]))
+            }
+            _ => {
+                return Err(MetraError::InvalidHeader {
+                    context: "TIFF".to_owned(),
+                    message: format!("expected magic 42 or BigTIFF magic 43, got {magic}"),
+                });
+            }
+        };
+        self.variant = variant;
         if first_ifd != 0 {
             self.parse_ifd(first_ifd, "EXIF", "IFD0", 0, metadata)?;
         } else {
@@ -470,10 +529,14 @@ impl<R: Read + Seek> TiffParser<'_, R> {
             return Ok(());
         }
 
-        let count_bytes = self.read_at(offset, 2, "IFD entry count")?;
-        let count = usize::from(self.endian.u16(&count_bytes));
-        let count_to_read = count.min(self.limits.max_ifd_entries);
-        if count > count_to_read {
+        let count_bytes = self.read_at(offset, self.variant.count_size(), "IFD entry count")?;
+        let count = match self.variant {
+            TiffVariant::Classic => u64::from(self.endian.u16(&count_bytes)),
+            TiffVariant::Big => self.endian.u64(&count_bytes),
+        };
+        let max_entries = u64::try_from(self.limits.max_ifd_entries).unwrap_or(u64::MAX);
+        let count_to_read = usize::try_from(count.min(max_entries)).unwrap_or(usize::MAX);
+        if count > count_to_read as u64 {
             metadata.add_warning(
                 Warning::new(
                     "ifd-entry-limit",
@@ -483,10 +546,12 @@ impl<R: Read + Seek> TiffParser<'_, R> {
             );
         }
 
-        let entries_start = offset.checked_add(2).ok_or(MetraError::InvalidOffset {
-            context: "IFD entries".to_owned(),
-            offset,
-        })?;
+        let entries_start = offset.checked_add(self.variant.count_size() as u64).ok_or(
+            MetraError::InvalidOffset {
+                context: "IFD entries".to_owned(),
+                offset,
+            },
+        )?;
         for index in 0..count_to_read {
             let index_offset = u64::try_from(index).map_err(|_| MetraError::InvalidOffset {
                 context: "IFD entry index".to_owned(),
@@ -495,7 +560,7 @@ impl<R: Read + Seek> TiffParser<'_, R> {
             let entry_offset = entries_start
                 .checked_add(
                     index_offset
-                        .checked_mul(12)
+                        .checked_mul(self.variant.entry_size() as u64)
                         .ok_or(MetraError::InvalidOffset {
                             context: "IFD entry offset".to_owned(),
                             offset: index_offset,
@@ -505,7 +570,7 @@ impl<R: Read + Seek> TiffParser<'_, R> {
                     context: "IFD entry offset".to_owned(),
                     offset: entries_start,
                 })?;
-            let entry = self.read_at(entry_offset, 12, "IFD entry")?;
+            let entry = self.read_at(entry_offset, self.variant.entry_size(), "IFD entry")?;
             self.parse_entry(&entry, entry_offset, namespace, group, depth, metadata)?;
         }
 
@@ -516,7 +581,7 @@ impl<R: Read + Seek> TiffParser<'_, R> {
                         context: "next IFD pointer".to_owned(),
                         offset,
                     })?
-                    .checked_mul(12)
+                    .checked_mul(self.variant.entry_size() as u64)
                     .ok_or(MetraError::InvalidOffset {
                         context: "next IFD pointer".to_owned(),
                         offset,
@@ -526,9 +591,16 @@ impl<R: Read + Seek> TiffParser<'_, R> {
                 context: "next IFD pointer".to_owned(),
                 offset,
             })?;
-        if count == count_to_read {
-            let next = self.read_at(next_offset_position, 4, "next IFD pointer")?;
-            let next = u64::from(self.endian.u32(&next));
+        if count == count_to_read as u64 {
+            let next = self.read_at(
+                next_offset_position,
+                self.variant.inline_value_size(),
+                "next IFD pointer",
+            )?;
+            let next = match self.variant {
+                TiffVariant::Classic => u64::from(self.endian.u32(&next)),
+                TiffVariant::Big => self.endian.u64(&next),
+            };
             if next != 0 {
                 self.parse_ifd(next, namespace, "IFD-next", depth, metadata)?;
             }
@@ -547,7 +619,16 @@ impl<R: Read + Seek> TiffParser<'_, R> {
     ) -> Result<()> {
         let id = self.endian.u16(&entry[..2]);
         let type_id = self.endian.u16(&entry[2..4]);
-        let count = u64::from(self.endian.u32(&entry[4..8]));
+        let count = match self.variant {
+            TiffVariant::Classic => u64::from(self.endian.u32(&entry[4..8])),
+            TiffVariant::Big => self.endian.u64(&entry[4..12]),
+        };
+        let value_offset_start = match self.variant {
+            TiffVariant::Classic => 8,
+            TiffVariant::Big => 12,
+        };
+        let inline_value_size = self.variant.inline_value_size();
+        let entry_size = self.variant.entry_size();
         let definition = tag_definition(namespace, id);
         let Some(item_size) = type_size(type_id) else {
             metadata.add_warning(
@@ -580,7 +661,7 @@ impl<R: Read + Seek> TiffParser<'_, R> {
                 source: Source::new(
                     format!("TIFF/{group}"),
                     Some(self.absolute_start.saturating_add(entry_offset)),
-                    Some(12),
+                    Some(entry_size as u64),
                 ),
                 writable: false,
             });
@@ -624,10 +705,18 @@ impl<R: Read + Seek> TiffParser<'_, R> {
                         resource: "tag value".to_owned(),
                         limit: self.limits.max_value_bytes,
                     })?;
-                let value_bytes = if total_size_usize <= 4 {
-                    entry[8..8 + total_size_usize].to_vec()
+                let value_bytes = if total_size_usize <= inline_value_size {
+                    entry[value_offset_start..value_offset_start + total_size_usize].to_vec()
                 } else {
-                    let value_offset = u64::from(self.endian.u32(&entry[8..12]));
+                    let value_offset = match self.variant {
+                        TiffVariant::Classic => u64::from(
+                            self.endian
+                                .u32(&entry[value_offset_start..value_offset_start + 4]),
+                        ),
+                        TiffVariant::Big => self.endian.u64(
+                            &entry[value_offset_start..value_offset_start + inline_value_size],
+                        ),
+                    };
                     self.read_at(value_offset, total_size_usize, "tag value")?
                 };
                 let value = decode_value(type_id, count, &value_bytes, self.endian)?;
@@ -644,10 +733,17 @@ impl<R: Read + Seek> TiffParser<'_, R> {
         let maker_note = if namespace == "EXIF" && id == 0x927C {
             match &value {
                 TagValue::Bytes(bytes) => {
-                    let value_offset = if total_size <= 4 {
-                        entry_offset.saturating_add(8)
+                    let value_offset = if total_size <= inline_value_size as u64 {
+                        entry_offset.saturating_add(value_offset_start as u64)
                     } else {
-                        u64::from(self.endian.u32(&entry[8..12]))
+                        match self.variant {
+                            TiffVariant::Classic => u64::from(self.endian.u32(
+                                &entry[value_offset_start..value_offset_start + inline_value_size],
+                            )),
+                            TiffVariant::Big => self.endian.u64(
+                                &entry[value_offset_start..value_offset_start + inline_value_size],
+                            ),
+                        }
                     };
                     Some((
                         bytes.clone(),
@@ -671,7 +767,7 @@ impl<R: Read + Seek> TiffParser<'_, R> {
             source: Source::new(
                 format!("TIFF/{group}"),
                 Some(self.absolute_start.saturating_add(entry_offset)),
-                Some(12),
+                Some(entry_size as u64),
             ),
             writable: false,
         });
@@ -763,7 +859,7 @@ fn type_size(type_id: u16) -> Option<usize> {
         1 | 2 | 6 | 7 => Some(1),
         3 | 8 => Some(2),
         4 | 9 | 11 | 13 => Some(4),
-        5 | 10 | 12 => Some(8),
+        5 | 10 | 12 | 16 | 17 | 18 => Some(8),
         _ => None,
     }
 }
@@ -792,6 +888,10 @@ fn decode_value(type_id: u16, count: u64, bytes: &[u8], endian: Endian) -> Resul
             .chunks_exact(4)
             .map(|chunk| TagValue::Unsigned(u64::from(endian.u32(chunk))))
             .collect::<Vec<_>>(),
+        16 | 18 => bytes
+            .chunks_exact(8)
+            .map(|chunk| TagValue::Unsigned(endian.u64(chunk)))
+            .collect::<Vec<_>>(),
         5 => bytes
             .chunks_exact(8)
             .map(|chunk| TagValue::UnsignedRational {
@@ -818,6 +918,10 @@ fn decode_value(type_id: u16, count: u64, bytes: &[u8], endian: Endian) -> Resul
                 numerator: i64::from(endian.i32(&chunk[..4])),
                 denominator: i64::from(endian.i32(&chunk[4..8])),
             })
+            .collect::<Vec<_>>(),
+        17 => bytes
+            .chunks_exact(8)
+            .map(|chunk| TagValue::Signed(endian.i64(chunk)))
             .collect::<Vec<_>>(),
         11 => bytes
             .chunks_exact(4)
@@ -1239,6 +1343,28 @@ mod tests {
         bytes
     }
 
+    fn little_endian_big_tiff() -> Vec<u8> {
+        let mut bytes = vec![b'I', b'I', 43, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0];
+        bytes.extend_from_slice(&1_u64.to_le_bytes());
+        bytes.extend_from_slice(&0x010F_u16.to_le_bytes());
+        bytes.extend_from_slice(&2_u16.to_le_bytes());
+        bytes.extend_from_slice(&5_u64.to_le_bytes());
+        bytes.extend_from_slice(b"Sony\0\0\0\0");
+        bytes.extend_from_slice(&0_u64.to_le_bytes());
+        bytes
+    }
+
+    fn big_endian_big_tiff() -> Vec<u8> {
+        let mut bytes = vec![b'M', b'M', 0, 43, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16];
+        bytes.extend_from_slice(&1_u64.to_be_bytes());
+        bytes.extend_from_slice(&0x0100_u16.to_be_bytes());
+        bytes.extend_from_slice(&16_u16.to_be_bytes());
+        bytes.extend_from_slice(&1_u64.to_be_bytes());
+        bytes.extend_from_slice(&640_u64.to_be_bytes());
+        bytes.extend_from_slice(&0_u64.to_be_bytes());
+        bytes
+    }
+
     #[test]
     fn parses_nested_ifd_and_typed_values() {
         let bytes = little_endian_tiff();
@@ -1268,6 +1394,40 @@ mod tests {
         );
         assert_eq!(tag_definition("EXIF", 0x0100).name, "ImageWidth");
         assert_eq!(tag_definition("EXIF", 0xA434).name, "LensModel");
+    }
+
+    #[test]
+    fn parses_little_endian_bigtiff_ascii_values() {
+        let bytes = little_endian_big_tiff();
+        let info = FileInfo::new(
+            "fixture.bigtiff".into(),
+            bytes.len() as u64,
+            FileFormat::Tiff,
+        );
+        let metadata = read_tiff(&mut Cursor::new(bytes), info, ParseLimits::default())
+            .expect("little-endian BigTIFF should parse");
+        let make = metadata
+            .find("EXIF:Make")
+            .expect("BigTIFF Make should be present");
+        assert_eq!(make.value, TagValue::String("Sony".into()));
+        assert_eq!(make.raw_value.as_deref(), Some(b"Sony\0".as_slice()));
+        assert_eq!(make.source.length, Some(20));
+    }
+
+    #[test]
+    fn parses_big_endian_bigtiff_64_bit_values() {
+        let bytes = big_endian_big_tiff();
+        let info = FileInfo::new(
+            "fixture.bigtiff".into(),
+            bytes.len() as u64,
+            FileFormat::Tiff,
+        );
+        let metadata = read_tiff(&mut Cursor::new(bytes), info, ParseLimits::default())
+            .expect("big-endian BigTIFF should parse");
+        assert_eq!(
+            metadata.find("EXIF:ImageWidth").unwrap().value,
+            TagValue::Unsigned(640)
+        );
     }
 
     #[test]

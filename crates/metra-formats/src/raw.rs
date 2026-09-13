@@ -7,6 +7,8 @@ use metra_core::{
 
 const TIFF_LITTLE_ENDIAN: &[u8; 4] = b"II*\0";
 const TIFF_BIG_ENDIAN: &[u8; 4] = b"MM\0*";
+const BIG_TIFF_LITTLE_ENDIAN: &[u8; 4] = b"II+\0";
+const BIG_TIFF_BIG_ENDIAN: &[u8; 4] = b"MM\0+";
 const RAF_SIGNATURE: &[u8; 16] = b"FUJIFILMCCD-RAW ";
 
 pub fn read_raw<R: Read + Seek>(
@@ -66,7 +68,10 @@ pub fn read_raw<R: Read + Seek>(
 }
 
 pub(crate) fn is_tiff_header(bytes: &[u8]) -> bool {
-    bytes.starts_with(TIFF_LITTLE_ENDIAN) || bytes.starts_with(TIFF_BIG_ENDIAN)
+    bytes.starts_with(TIFF_LITTLE_ENDIAN)
+        || bytes.starts_with(TIFF_BIG_ENDIAN)
+        || bytes.starts_with(BIG_TIFF_LITTLE_ENDIAN)
+        || bytes.starts_with(BIG_TIFF_BIG_ENDIAN)
 }
 
 pub(crate) fn is_cr3_header(bytes: &[u8]) -> bool {
