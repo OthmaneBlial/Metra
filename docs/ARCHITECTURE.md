@@ -180,9 +180,12 @@ and never changes RIFF chunk sizes or media data.
 The Matroska/WebM writer accepts existing `Info` title/app strings and
 `SimpleTag` string values, writes only within their allocated EBML payloads, and never changes element widths, tag
 names, or media payloads.
-The RAW adapter accepts only TIFF-like variants (DNG, CR2, NEF, ARW, ORF, RW2,
-and PEF), delegates slot validation to the TIFF writer, and revalidates through
-the RAW reader; CR3 and proprietary RAW containers remain unsupported for writes.
+The RAW adapter accepts TIFF-like variants (DNG, CR2, NEF, ARW, ORF, RW2, and
+PEF), delegates slot validation to the TIFF writer, and revalidates through the
+RAW reader. A separate CR3 adapter requires the RAW reader to identify the
+container as CR3, delegates existing ISO-BMFF text-slot validation, and then
+revalidates through the RAW reader; RAF, CRW, MRW, and X3F remain unsupported for
+writes.
 The SVG writer validates the source XML, escapes replacement text, rejects
 unsafe comment delimiters, and preserves unrelated source ranges. The ID3 writer requires a tag without
 unsynchronization, extended-header, or footer flags. Each library writer
