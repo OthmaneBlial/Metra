@@ -227,6 +227,41 @@ fn minimal_webm_with_title(title: &str) -> Vec<u8> {
     [ebml_header, tags].concat()
 }
 
+fn minimal_dng_with_make(make: &str) -> Vec<u8> {
+    let make_length = make.len() as u16;
+    let mut bytes = vec![
+        b'I',
+        b'I',
+        42,
+        0,
+        8,
+        0,
+        0,
+        0,
+        1,
+        0, // one IFD0 entry
+        0x0F,
+        0x01,
+        2,
+        0,
+        (make_length & 0xFF) as u8,
+        (make_length >> 8) as u8,
+        0,
+        0,
+        26,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0, // no next IFD
+    ];
+    assert_eq!(bytes.len(), 26);
+    bytes.extend_from_slice(make.as_bytes());
+    bytes
+}
+
 fn minimal_svg_document(title: &str, description: &str, comment: &str) -> Vec<u8> {
     format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\"><!-- {comment} --><title>{title}</title><desc>{description}</desc><rect width=\"2\" height=\"2\"/></svg>"
@@ -1050,6 +1085,53 @@ fn cli_can_set_and_copy_existing_matroska_tag() {
             .unwrap()
             .display_value(),
         "source"
+    );
+}
+
+#[test]
+fn cli_can_set_and_copy_existing_tiff_like_raw_ascii() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.file("source.dng", &minimal_dng_with_make("Canon\0"));
+    let target = directory.file("target.dng", &minimal_dng_with_make("Nikon\0"));
+
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "TIFF:EXIF:Make=Sony",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("EXIF:Make")
+            .unwrap()
+            .display_value(),
+        "Sony"
+    );
+
+    let copy_assignment = format!(
+        "TIFF:EXIF:Make={}",
+        source.to_str().expect("UTF-8 test path")
+    );
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            copy_assignment.as_str(),
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("EXIF:Make")
+            .unwrap()
+            .display_value(),
+        "Canon"
     );
 }
 

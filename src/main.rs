@@ -906,8 +906,18 @@ fn apply_tiff_edits(paths: &[PathBuf], edits: &[metra::TiffEdit], limits: ParseL
     let mut failures = 0_usize;
     for path in paths {
         match metra::read_with_limits(path, limits) {
-            Ok(metadata) if metadata.file_info.format == metra::FileFormat::Tiff => {
-                if let Err(error) = metra::rewrite_tiff_path(path, limits, edits) {
+            Ok(metadata)
+                if matches!(
+                    metadata.file_info.format,
+                    metra::FileFormat::Tiff | metra::FileFormat::Raw
+                ) =>
+            {
+                let result = if metadata.file_info.format == metra::FileFormat::Raw {
+                    metra::rewrite_raw_tiff_path(path, limits, edits)
+                } else {
+                    metra::rewrite_tiff_path(path, limits, edits)
+                };
+                if let Err(error) = result {
                     eprintln!("metra: {}: {error}", path.display());
                     failures += 1;
                 } else {
@@ -916,7 +926,7 @@ fn apply_tiff_edits(paths: &[PathBuf], edits: &[metra::TiffEdit], limits: ParseL
             }
             Ok(metadata) => {
                 eprintln!(
-                    "metra: {}: {} edits are supported only for TIFF files",
+                    "metra: {}: {} edits are supported only for TIFF or TIFF-like RAW files",
                     path.display(),
                     metadata.file_info.format
                 );
