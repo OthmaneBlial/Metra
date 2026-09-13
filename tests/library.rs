@@ -401,6 +401,33 @@ fn public_generic_edit_api_rewrites_and_revalidates_matroska_info_title() {
 }
 
 #[test]
+fn public_generic_edit_api_deletes_existing_matroska_text() {
+    let bytes = minimal_webm_with_info_title("old");
+    let output = metra::rewrite_metadata_to_vec(
+        &bytes,
+        metra::FileInfo::new(
+            "memory.webm".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::delete("Matroska:Title")],
+    )
+    .expect("generic Matroska deletion should validate its rewritten bytes");
+
+    let metadata = metra::read_from(
+        &mut std::io::Cursor::new(output),
+        metra::FileInfo::new(
+            "memory.webm".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+    )
+    .expect("deleted WebM should remain readable");
+    assert!(metadata.find("Matroska:Title").is_none());
+}
+
+#[test]
 fn public_generic_edit_api_rewrites_and_revalidates_tiff_like_raw() {
     let bytes = minimal_dng_with_make("Canon\0");
     let output = metra::rewrite_metadata_to_vec(

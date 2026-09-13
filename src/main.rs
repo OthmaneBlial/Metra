@@ -368,20 +368,6 @@ fn parse_edits(
                     },
                 ])));
             }
-            if let Some(name) = matroska_tag_name(key) {
-                return Ok(Some(EditRequest::DirectMatroska(vec![
-                    metra::MatroskaEdit::DeleteTag {
-                        name: name.to_owned(),
-                    },
-                ])));
-            }
-            if matroska_info_key(key) {
-                return Ok(Some(EditRequest::DirectMatroska(vec![
-                    metra::MatroskaEdit::DeleteString {
-                        key: key.to_owned(),
-                    },
-                ])));
-            }
             if isobmff_text_key(key) {
                 return Ok(Some(EditRequest::DirectIsobmff(vec![
                     metra::IsobmffEdit::SetText {
@@ -505,6 +491,20 @@ fn parse_edits(
                 return Ok(Some(EditRequest::DirectWav(vec![
                     metra::WavEdit::DeleteInfo {
                         name: name.to_owned(),
+                    },
+                ])));
+            }
+            if let Some(name) = matroska_tag_name(key) {
+                return Ok(Some(EditRequest::DirectMatroska(vec![
+                    metra::MatroskaEdit::DeleteTag {
+                        name: name.to_owned(),
+                    },
+                ])));
+            }
+            if matroska_info_key(key) {
+                return Ok(Some(EditRequest::DirectMatroska(vec![
+                    metra::MatroskaEdit::DeleteString {
+                        key: key.to_owned(),
                     },
                 ])));
             }

@@ -1165,6 +1165,52 @@ fn cli_can_set_and_copy_existing_matroska_info_title() {
 }
 
 #[test]
+fn cli_can_delete_existing_matroska_text() {
+    let directory = TemporaryDirectory::new();
+    let info_path = directory.file("info.webm", &minimal_webm_with_info_title("Title"));
+    let info_delete = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--delete",
+            "Matroska:Title",
+            info_path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(
+        info_delete.status.success(),
+        "stderr: {:?}",
+        info_delete.stderr
+    );
+    assert!(
+        metra::read(&info_path)
+            .unwrap()
+            .find("Matroska:Title")
+            .is_none()
+    );
+
+    let tag_path = directory.file("tag.webm", &minimal_webm());
+    let tag_delete = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--delete",
+            "Matroska:Tag:TITLE",
+            tag_path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(
+        tag_delete.status.success(),
+        "stderr: {:?}",
+        tag_delete.stderr
+    );
+    assert!(
+        metra::read(&tag_path)
+            .unwrap()
+            .find("Matroska:Tag:TITLE")
+            .is_none()
+    );
+}
+
+#[test]
 fn cli_can_set_and_copy_existing_tiff_like_raw_ascii() {
     let directory = TemporaryDirectory::new();
     let source = directory.file("source.dng", &minimal_dng_with_make("Canon\0"));
