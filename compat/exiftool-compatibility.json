@@ -42,7 +42,7 @@
     "MOV": { "read": "partial", "write": "planned", "streaming": "partial" },
     "M4A": { "read": "partial", "write": "planned", "streaming": "partial" },
     "PDF": { "read": "planned", "write": "planned" },
-    "MP3": { "read": "planned", "write": "planned" },
+    "MP3": { "read": "partial", "write": "planned", "streaming": "partial" },
     "FLAC": { "read": "planned", "write": "planned" }
   },
   "metadata_families": {
@@ -54,7 +54,7 @@
     "ICC": "partial",
     "Photoshop_IRB": "partial",
     "MakerNotes": "planned",
-    "ID3": "planned",
+    "ID3": "partial",
     "QuickTime": "partial"
   },
   "cli": {

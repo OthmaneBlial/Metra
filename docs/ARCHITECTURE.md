@@ -38,6 +38,8 @@ XMP to the bounded XML reader; Photoshop resources delegate IPTC IIM parsing,
 and ICC payloads delegate profile-header/tag-table inspection. The ISO-BMFF
 reader walks bounded boxes and exposes brands plus a conservative subset of
 QuickTime-style `ilst` text items.
+The MP3 reader handles bounded ID3v2 frame tables, ID3v1 fixed fields, and a
+single MPEG frame header without decoding audio payloads.
 
 ## Parser invariants
 
