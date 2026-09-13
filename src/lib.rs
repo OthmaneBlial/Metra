@@ -11,8 +11,8 @@ pub use metra_core::{
     ValueType, Warning,
 };
 pub use metra_formats::{
-    DetectedFormat, JpegEdit, detect_format, read_path_with_limits, rewrite_jpeg,
-    rewrite_jpeg_path, rewrite_jpeg_to_vec,
+    DetectedFormat, JpegEdit, PngEdit, detect_format, read_path_with_limits, rewrite_jpeg,
+    rewrite_jpeg_path, rewrite_jpeg_to_vec, rewrite_png, rewrite_png_path, rewrite_png_to_vec,
 };
 
 /// Read metadata from a path using the default defensive parser limits.

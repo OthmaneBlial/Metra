@@ -8,7 +8,7 @@ use metra_core::{
 use crate::tiff::parse_tiff_from_reader;
 use crate::xmp::parse_xmp;
 
-const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1A\n";
+pub(crate) const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1A\n";
 
 pub fn read_png<R: Read + Seek>(
     reader: &mut R,
@@ -353,7 +353,7 @@ fn parse_phys_chunk(data: &[u8], data_offset: u64, metadata: &mut Metadata) {
     });
 }
 
-fn crc32(chunk_type: &[u8; 4], data: &[u8]) -> u32 {
+pub(crate) fn crc32(chunk_type: &[u8; 4], data: &[u8]) -> u32 {
     let mut crc = 0xFFFF_FFFF_u32;
     for byte in chunk_type.iter().chain(data.iter()) {
         crc ^= u32::from(*byte);
