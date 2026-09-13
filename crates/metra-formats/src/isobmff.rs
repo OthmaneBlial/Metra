@@ -580,7 +580,7 @@ fn find_tiff_offset(data: &[u8]) -> Option<usize> {
 }
 
 fn is_tiff_header(bytes: &[u8]) -> bool {
-    bytes.starts_with(b"II*\0") || bytes.starts_with(b"MM\0*")
+    crate::raw::is_tiff_header(bytes)
 }
 
 fn add_tag(metadata: &mut Metadata, name: &str, value: TagValue, offset: u64, length: u64) {
