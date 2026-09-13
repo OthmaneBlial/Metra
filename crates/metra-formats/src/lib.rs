@@ -11,10 +11,14 @@ use std::path::Path;
 use metra_core::{FileFormat, FileInfo, Metadata, MetraError, ParseLimits, Result};
 
 mod jpeg;
+mod png;
 mod tiff;
+mod webp;
 
 pub use jpeg::read_jpeg;
+pub use png::read_png;
 pub use tiff::read_tiff;
+pub use webp::read_webp;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DetectedFormat {
@@ -98,6 +102,8 @@ pub fn read_path_with_limits(path: impl AsRef<Path>, limits: ParseLimits) -> Res
     match detected.format {
         FileFormat::Jpeg => jpeg::read_jpeg(&mut file, file_info, limits),
         FileFormat::Tiff => tiff::read_tiff(&mut file, file_info, limits),
+        FileFormat::Png => png::read_png(&mut file, file_info, limits),
+        FileFormat::Webp => webp::read_webp(&mut file, file_info, limits),
         format => Err(MetraError::UnsupportedFormat {
             description: format!("{format} is detected but its reader is not implemented yet"),
         }),
