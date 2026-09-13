@@ -145,6 +145,9 @@ declared byte length in `FileInfo`.
 For collections, `metra::read_many` returns deterministic results with bounded
 worker concurrency, while `metra::read_many_streaming` emits results in input
 order with bounded backpressure for large batches.
+Long-running callers can pass a `CancellationToken` to the corresponding
+`*_with_cancellation` helpers; the CLI maps Ctrl+C to cooperative cancellation
+and exits with status 130 after bounded in-flight reads finish.
 
 The model keeps namespaces explicit (`EXIF`, `GPS`, `PNG`, `WebP`, `JFIF`,
 `XMP`, `IPTC`, `ICC`, and `ISOBMFF`),
@@ -218,8 +221,10 @@ the corpus axis below remains at its conservative 30 %.
 
 For batch output, human-readable, JSON Lines, and CSV modes render as results
 arrive while preserving deterministic input-path order. The parallel streaming
-path uses a bounded synchronous channel so a slow early file cannot retain an
-unbounded completed-result map. JSON, TOML, and YAML
+path uses a bounded in-flight work window so a slow early file cannot retain an
+unbounded completed-result map. Ctrl+C requests cooperative cancellation;
+bounded in-flight reads finish, remaining paths are reported as cancelled, and
+the CLI exits with status 130. JSON, TOML, and YAML
 need a complete document or collection, so they intentionally retain their
 successful results until serialization.
 
@@ -237,7 +242,7 @@ are the local validation gate.
 
 ## Roadmap
 
-Avancement global vérifié : **85 %**. Ce chiffre est une moyenne indicative des
+Avancement global vérifié : **86 %**. Ce chiffre est une moyenne indicative des
 huit axes ci-dessous, calculée uniquement sur le code et les tests présents ; il
 ne représente pas un pourcentage de compatibilité ExifTool.
 
@@ -247,7 +252,7 @@ ne représente pas un pourcentage de compatibilité ExifTool.
 4. **98 %** — Étendre XMP/IPTC/ICC/ID3 et isoler les espaces MakerNote ; XMP est maintenant réécrit de façon bornée pour JPEG APP1, WebP et PNG, les datasets IPTC-IIM connus peuvent être réécrits dans les ressources Photoshop APP13, les profils ICC fragmentés JPEG, PNG `iCCP` et WebP `ICCP` sont inspectés sous limites avec descriptions texte et valeurs XYZ courantes, les références XML sûres sont décodées sans entités personnalisées, les textes PNG compressés sont déployés sous budget, les champs texte/commentaires ID3v2 courants restent sous limites explicites, et les conteneurs MakerNote courants sont identifiés ; des IFD Nikon Type 2 et Canon bornés exposent maintenant leurs champs connus et conservent les valeurs inconnues décodables, avec offsets de source absolus testés.
 5. **72 %** — Concevoir l’écriture read-modify-write avec validation et remplacement atomique ; dix writers bornés couvrent maintenant JPEG, TIFF/BigTIFF, PNG, GIF, WebP, SVG, WAV, FLAC, ID3v2 et les champs texte ISO-BMFF existants, et les budgets metadata/valeur sont configurables depuis le CLI.
 6. **97 %** — Ajouter `set`/`delete`/`copy` et comparer après les tests round-trip ; les opérations couvrent maintenant JPEG `Comment`/`XMP` et datasets IPTC-IIM connus, PNG `tEXt`/`XMP`, GIF `Comment`, WebP `XMP`, SVG `Title`/`Description`/`Comment`, WAV `LIST/INFO`, FLAC Vorbis Comments, ID3v2 texte/commentaire, les champs texte ISO-BMFF existants et la copie de champs ASCII TIFF existants via API et CLI, avec comparaison déterministe des valeurs.
-7. **72 %** — Ajouter le traitement parallèle contrôlé et le rendu en flux borné ; le scheduler est maintenant partagé par l’API Rust et le CLI, conserve l’ordre déterministe, borne les workers et applique une contre-pression au flux parallèle, tandis que les benchmarks sur collections réelles et l’annulation Ctrl+C restent à faire.
+7. **78 %** — Ajouter le traitement parallèle contrôlé et le rendu en flux borné ; le scheduler est partagé par l’API Rust et le CLI, conserve l’ordre déterministe, borne les workers et la fenêtre de résultats hors ordre, applique une contre-pression au flux parallèle et gère l’annulation coopérative Ctrl+C avec le code 130, tandis que les benchmarks sur collections réelles restent à faire.
 8. **100 %** — Étendre les sorties structurées avec CSV, TOML et YAML versionnés.
 
 ## License

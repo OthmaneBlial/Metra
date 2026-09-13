@@ -5,8 +5,8 @@
 Metra is designed as a Rust library first. The binary in `src/main.rs` reads
 files through the public root facade and only owns argument parsing, traversal,
 bounded worker scheduling, rendering, and exit status. The same facade
-dispatches `Read + Seek` streams and bounded batch scheduling for library
-callers. Format code must not
+dispatches `Read + Seek` streams, bounded batch scheduling, and cooperative
+batch cancellation for library callers. Format code must not
 shell out to an external metadata executable.
 
 ## Current boundaries
@@ -133,8 +133,9 @@ validates its source through the reader before writing, streams the original
 container while preserving untargeted bytes, validates the temporary output
 with the reader again, syncs it, and atomically renames a same-directory
 temporary file. The public facade also exposes deterministic `read_many` and
-backpressure-bounded `read_many_streaming` helpers; the CLI uses these same
-batch APIs before rendering. The CLI exposes `--set`/`--delete`/`--copy` for
+backpressure-bounded `read_many_streaming` helpers, plus cancellation-aware
+variants; the CLI uses these same batch APIs before rendering. The CLI exposes
+`--set`/`--delete`/`--copy` for
 `JPEG:Comment`, `IPTC:<dataset>`, `PNG:XMP`, `PNG:Text:<keyword>`, `SVG:Title`/`Description`/`Comment`, `WAV:<INFO field>`,
 `FLAC:<Vorbis field>`, `ID3:<text field>`, `ISOBMFF:<text field>`, `GIF:Comment`, `WebP:XMP`, and
 existing `TIFF:EXIF:<ASCII tag>` values; generic

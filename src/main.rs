@@ -124,15 +124,22 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    if let Some(reference) = arguments.compare.as_deref() {
-        return compare_paths(&paths, reference, limits);
-    }
     if let Some(request) = request {
         return apply_request(&paths, request, limits);
     }
 
+    let cancellation = metra::CancellationToken::new();
+    let handler_token = cancellation.clone();
+    if let Err(error) = ctrlc::set_handler(move || handler_token.cancel()) {
+        eprintln!("metra: cannot install Ctrl+C handler: {error}");
+        return ExitCode::from(2);
+    }
+    if let Some(reference) = arguments.compare.as_deref() {
+        return compare_paths(&paths, reference, limits, &cancellation);
+    }
+
     let failures = if arguments.json || arguments.toml || arguments.yaml {
-        let results = inspect_paths(&paths, arguments.jobs, limits);
+        let results = inspect_paths(&paths, arguments.jobs, limits, &cancellation);
         let failures = results
             .iter()
             .filter(|(_, result)| result_is_failure(result, arguments.validate))
@@ -154,6 +161,7 @@ fn main() -> ExitCode {
             arguments.jobs,
             arguments.validate,
             limits,
+            &cancellation,
             |path, result| {
                 if arguments.csv {
                     emit_csv_record(&path, &result);
@@ -168,14 +176,21 @@ fn main() -> ExitCode {
         )
     };
 
-    if failures == 0 {
+    if cancellation.is_cancelled() {
+        ExitCode::from(130)
+    } else if failures == 0 {
         ExitCode::SUCCESS
     } else {
         ExitCode::from(1)
     }
 }
 
-fn compare_paths(paths: &[PathBuf], reference: &Path, limits: ParseLimits) -> ExitCode {
+fn compare_paths(
+    paths: &[PathBuf],
+    reference: &Path,
+    limits: ParseLimits,
+    cancellation: &metra::CancellationToken,
+) -> ExitCode {
     let baseline = match metra::read_with_limits(reference, limits) {
         Ok(metadata) => metadata,
         Err(error) => {
@@ -185,6 +200,10 @@ fn compare_paths(paths: &[PathBuf], reference: &Path, limits: ParseLimits) -> Ex
     };
     let mut failures = 0_usize;
     for path in paths {
+        if cancellation.is_cancelled() {
+            eprintln!("metra: operation cancelled");
+            return ExitCode::from(130);
+        }
         match metra::read_with_limits(path, limits) {
             Ok(metadata) => {
                 let diff = baseline.diff(&metadata);
@@ -1440,8 +1459,9 @@ fn inspect_paths(
     paths: &[PathBuf],
     jobs: usize,
     limits: ParseLimits,
+    cancellation: &metra::CancellationToken,
 ) -> Vec<(PathBuf, metra::Result<Metadata>)> {
-    metra::read_many(paths, metra::BatchOptions { jobs, limits })
+    metra::read_many_with_cancellation(paths, metra::BatchOptions { jobs, limits }, cancellation)
         .into_iter()
         .map(|item| (item.path, item.result))
         .collect()
@@ -1452,6 +1472,7 @@ fn inspect_paths_streaming<F>(
     jobs: usize,
     validate: bool,
     limits: ParseLimits,
+    cancellation: &metra::CancellationToken,
     mut emit: F,
 ) -> usize
 where
@@ -1459,12 +1480,17 @@ where
 {
     let mut failures = 0_usize;
 
-    metra::read_many_streaming(paths, metra::BatchOptions { jobs, limits }, |item| {
-        if result_is_failure(&item.result, validate) {
-            failures += 1;
-        }
-        emit(item.path, item.result);
-    });
+    metra::read_many_streaming_with_cancellation(
+        paths,
+        metra::BatchOptions { jobs, limits },
+        cancellation,
+        |item| {
+            if result_is_failure(&item.result, validate) {
+                failures += 1;
+            }
+            emit(item.path, item.result);
+        },
+    );
     failures
 }
 

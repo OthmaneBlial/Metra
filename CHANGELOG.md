@@ -112,4 +112,6 @@ Initial read-first foundation with narrow validated rewrites:
   streams through `metra::read_from` and `metra::read_from_with_limits`;
 - moved deterministic batch inspection into the public facade with bounded
   `read_many` and backpressure-bounded `read_many_streaming` helpers used by the CLI;
+- added cooperative batch cancellation through `CancellationToken`, structured
+  `MetraError::Cancelled` results, and CLI Ctrl+C handling with exit status 130;
 - documented the verified surface and remaining compatibility boundaries.
