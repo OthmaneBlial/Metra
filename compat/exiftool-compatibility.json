@@ -22,7 +22,7 @@
     "PNG": {
       "read": "partial",
       "write": "partial",
-      "create": "planned",
+      "create": "partial",
       "delete": "partial",
       "lossless_rewrite": "partial",
       "streaming": "partial"
@@ -176,6 +176,7 @@
     "delete": "partial",
     "copy": "partial",
     "create_tiff_seed": "partial",
+    "create_png_seed": "partial",
     "validate": "supported",
     "compare": "supported",
     "exiftool_compatibility_mode": "planned"
