@@ -1027,6 +1027,45 @@ fn cli_can_create_minimal_wav_seed_without_overwrite() {
 }
 
 #[test]
+fn cli_can_create_standalone_icc_without_overwrite() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.path.join("created.icc");
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--create-icc",
+            "Description=Metra",
+            "--create-icc",
+            "Copyright=Othmane",
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let metadata = metra::read(&path).expect("created ICC should remain readable");
+    assert_eq!(metadata.file_info.format, metra::FileFormat::Icc);
+    assert_eq!(
+        metadata.find("ICC:Description").unwrap().display_value(),
+        "Metra"
+    );
+    assert_eq!(
+        metadata.find("ICC:Copyright").unwrap().display_value(),
+        "Othmane"
+    );
+
+    let second = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--create-icc",
+            "Description=Other",
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(!second.status.success());
+    assert!(String::from_utf8_lossy(&second.stderr).contains("refusing to overwrite"));
+}
+
+#[test]
 fn cli_can_create_standalone_xmp_without_overwrite() {
     let directory = TemporaryDirectory::new();
     let path = directory.path.join("created.xmp");

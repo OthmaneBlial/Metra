@@ -48,6 +48,7 @@ struct Arguments {
             "create_png",
             "create_xmp",
             "create_wav",
+            "create_icc",
             "compare"
         ]
     )]
@@ -91,6 +92,7 @@ struct Arguments {
             "create_png",
             "create_xmp",
             "create_wav",
+            "create_icc",
             "json",
             "jsonl",
             "csv",
@@ -114,6 +116,7 @@ struct Arguments {
             "create_tiff",
             "create_xmp",
             "create_wav",
+            "create_icc",
             "json",
             "jsonl",
             "csv",
@@ -136,6 +139,7 @@ struct Arguments {
             "create_tiff",
             "create_png",
             "create_wav",
+            "create_icc",
             "json",
             "jsonl",
             "csv",
@@ -160,6 +164,7 @@ struct Arguments {
             "create_tiff",
             "create_png",
             "create_xmp",
+            "create_icc",
             "json",
             "jsonl",
             "csv",
@@ -171,6 +176,31 @@ struct Arguments {
         ]
     )]
     create_wav: Vec<String>,
+
+    /// Create a new minimal RGB ICC profile with one or more text tags.
+    #[arg(
+        long = "create-icc",
+        value_name = "KEY=VALUE",
+        action = clap::ArgAction::Append,
+        conflicts_with_all = [
+            "set",
+            "delete",
+            "copy",
+            "create_tiff",
+            "create_png",
+            "create_xmp",
+            "create_wav",
+            "json",
+            "jsonl",
+            "csv",
+            "toml",
+            "yaml",
+            "tag",
+            "validate",
+            "compare"
+        ]
+    )]
+    create_icc: Vec<String>,
 
     /// Validate inputs and return a failure when any warning is produced.
     #[arg(long, conflicts_with_all = ["set", "delete", "copy"])]
@@ -293,6 +323,29 @@ fn main() -> ExitCode {
             }
         };
         return match metra::create_wav_path(&arguments.files[0], &options, limits) {
+            Ok(()) => {
+                println!("created: {}", arguments.files[0].display());
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", arguments.files[0].display());
+                ExitCode::from(1)
+            }
+        };
+    }
+    if !arguments.create_icc.is_empty() {
+        if arguments.files.len() != 1 {
+            eprintln!("metra: --create-icc requires exactly one destination path");
+            return ExitCode::from(2);
+        }
+        let options = match parse_icc_create(&arguments.create_icc) {
+            Ok(options) => options,
+            Err(message) => {
+                eprintln!("metra: {message}");
+                return ExitCode::from(2);
+            }
+        };
+        return match metra::create_icc_path(&arguments.files[0], &options, limits) {
             Ok(()) => {
                 println!("created: {}", arguments.files[0].display());
                 ExitCode::SUCCESS
@@ -497,6 +550,20 @@ fn parse_wav_create(entries: &[String]) -> Result<metra::WavCreateOptions, Strin
             return Err("--create-wav requires a non-empty KEY".to_owned());
         }
         options.push_info(key, value);
+    }
+    Ok(options)
+}
+
+fn parse_icc_create(entries: &[String]) -> Result<metra::IccCreateOptions, String> {
+    let mut options = metra::IccCreateOptions::new();
+    for assignment in entries {
+        let (key, value) = assignment
+            .split_once('=')
+            .ok_or_else(|| "--create-icc expects KEY=VALUE".to_owned())?;
+        if key.is_empty() {
+            return Err("--create-icc requires a non-empty KEY".to_owned());
+        }
+        options.push_text(key, value);
     }
     Ok(options)
 }
