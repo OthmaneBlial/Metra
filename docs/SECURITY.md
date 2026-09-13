@@ -81,11 +81,12 @@ Matroska/WebM writes are limited to existing `Info` title/app and `SimpleTag`
 string payloads and zero-pad within the original EBML element; ISO-BMFF text
 deletion similarly zero-fills only the existing value span. Element/box sizes,
 names, and media bytes remain unchanged before the validated atomic replacement.
-RAW TIFF-like writes are limited to existing TIFF/BigTIFF ASCII slots. CR3
-writes are limited to existing ISO-BMFF text slots after the RAW reader has
-identified the container; both paths preserve the original payload layout and
-re-read the result before replacement. RAF, CRW, MRW, and X3F are rejected before
-any write is attempted.
+RAW TIFF-like writes are limited to existing TIFF/BigTIFF ASCII slots; set and
+delete operations only replace or zero-fill those slots, so the payload layout
+remains unchanged. CR3 writes are limited to existing ISO-BMFF text slots after
+the RAW reader has identified the container; both paths re-read the result
+before replacement. RAF, CRW, MRW, and X3F are rejected before any write is
+attempted.
 Ogg rewrites retain page boundaries, recalculate CRCs, preserve opaque packet
 bytes, and refuse packet growth unless the existing bounded packet can hold it.
 ID3v2

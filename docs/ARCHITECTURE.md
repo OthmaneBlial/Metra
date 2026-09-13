@@ -155,7 +155,8 @@ SVG title/description/comment nodes, WAV `LIST/INFO` fields, FLAC Vorbis
 Comment key/value pairs, Ogg Vorbis/Opus comment packets, common ID3v2 text/comment frames,
 and existing PDF Info literal or hexadecimal string tokens, existing Matroska/WebM
 `Info` title/app strings and `SimpleTag` string values, and existing TIFF/BigTIFF ASCII slots in TIFF-like
-RAW containers. Ogg
+RAW containers. Set and delete operations only replace or zero-fill those
+existing value spans; Ogg
 rewrites preserve the existing packet size and page layout, recompute page CRCs, and refuse
 growth that cannot fit in the original packet; deletions use bounded Vorbis padding when
 available. Ogg-FLAC comment blocks, whether embedded in the mapping packet or in a

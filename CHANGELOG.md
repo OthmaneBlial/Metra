@@ -8,6 +8,8 @@ Initial read-first foundation with narrow validated rewrites:
   RAW-variant validation, including generic API, registry, atomic path, and CLI
   `--set`/`--delete`/`--copy`
   coverage while retaining read-only boundaries for RAF, CRW, MRW, and X3F;
+- added zero-fill deletion for existing TIFF/BigTIFF ASCII slots, including
+  TIFF-like RAW containers, with generic API and CLI round-trip coverage;
 - added bounded TIFF/BigTIFF ASCII rewrites for TIFF-like RAW containers,
   including DNG, CR2, NEF, ARW, ORF, RW2, and PEF, with explicit rejection of
   proprietary RAW variants, generic and registry API dispatch, atomic
