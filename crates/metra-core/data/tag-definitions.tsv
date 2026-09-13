@@ -210,3 +210,32 @@ MakerNotes	0x200A	Sony:HDR	Sony MakerNote HDR mode
 MakerNotes	0x200B	Sony:MultiFrameNoiseReduction	Sony MakerNote multi-frame noise reduction
 MakerNotes	0x200E	Sony:PictureEffect	Sony MakerNote picture effect
 Interop	0x0001	InteroperabilityIndex	Interoperability identifier
+GoPro	0x44564944	DeviceID	GoPro device identifier
+GoPro	0x44564E4D	DeviceName	GoPro device name
+GoPro	0x5449434B	GoPro_TICK	GoPro tick counter
+GoPro	0x54534D50	TotalSamples	GoPro total sample count
+GoPro	0x464D5752	FirmwareVersion	GoPro firmware version
+GoPro	0x4C494E46	GoPro_LINF	GoPro line information
+GoPro	0x43494E46	GoPro_CINF	GoPro camera information bytes
+GoPro	0x4341534E	CameraSerialNumber	GoPro camera serial number
+GoPro	0x4D494E46	Model	GoPro camera model
+GoPro	0x4D554944	MediaUniqueID	GoPro media unique identifier
+GoPro	0x434D4F44	GoPro_CMOD	GoPro camera mode
+GoPro	0x4D545950	GoPro_MTYP	GoPro media type
+GoPro	0x4F52454E	AutoRotation	GoPro auto-rotation setting
+GoPro	0x445A4F4D	DigitalZoomOn	GoPro digital zoom switch
+GoPro	0x445A5354	DigitalZoom	GoPro digital zoom value
+GoPro	0x534D5452	SpotMeter	GoPro spot meter setting
+GoPro	0x5052544E	Protune	GoPro Protune setting
+GoPro	0x50545742	WhiteBalance	GoPro white-balance setting
+GoPro	0x50545348	Sharpness	GoPro sharpness setting
+GoPro	0x5054434C	ColorMode	GoPro color mode
+GoPro	0x45585054	ExposureType	GoPro exposure type
+GoPro	0x50494D58	AutoISOMax	GoPro automatic ISO maximum
+GoPro	0x50494D4E	AutoISOMin	GoPro automatic ISO minimum
+GoPro	0x50544556	ExposureCompensation	GoPro exposure compensation
+GoPro	0x52415445	Rate	GoPro capture rate
+GoPro	0x50524553	PhotoResolution	GoPro photo resolution
+GoPro	0x50484452	HDRSetting	GoPro HDR setting
+GoPro	0x50524157	RawSetting	GoPro raw setting
+GoPro	0x48464C47	HighlightFlag	GoPro highlight flag

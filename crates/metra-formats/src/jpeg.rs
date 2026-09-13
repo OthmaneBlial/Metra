@@ -1194,6 +1194,9 @@ fn process_segment(
             }
         }
         0xE2 if data.starts_with(ICC_PREFIX) => icc.add(data, data_offset, metadata, limits),
+        0xE6 if data.starts_with(b"GoPro\0") => {
+            parse_gopro_app6(data, data_offset, metadata, limits);
+        }
         0xED if data.starts_with(b"Photoshop 3.0\0") => {
             if let Err(error) = parse_photoshop_resources(data, data_offset, metadata, limits) {
                 metadata.add_warning(
@@ -1220,6 +1223,297 @@ fn process_segment(
         _ => {}
     }
     Ok(())
+}
+
+fn parse_gopro_app6(data: &[u8], data_offset: u64, metadata: &mut Metadata, limits: ParseLimits) {
+    const HEADER_SIZE: usize = 14;
+    if data.len() < HEADER_SIZE {
+        metadata.add_warning(
+            Warning::new(
+                "gopro-app6-header",
+                "GoPro APP6 segment is shorter than its DEVC header",
+            )
+            .at(data_offset),
+        );
+        return;
+    }
+    if &data[6..10] != b"DEVC" {
+        metadata.add_warning(
+            Warning::new(
+                "gopro-app6-header",
+                "GoPro APP6 segment does not contain a DEVC container",
+            )
+            .at(data_offset.saturating_add(6)),
+        );
+        return;
+    }
+
+    let mut record_count = 0_usize;
+    let mut context = GoProParseContext {
+        data_offset,
+        metadata,
+        limits,
+        record_count: &mut record_count,
+    };
+    parse_gopro_records(
+        data,
+        HEADER_SIZE,
+        data.len(),
+        "APP6/DEVC".to_owned(),
+        0,
+        &mut context,
+    );
+}
+
+struct GoProParseContext<'a> {
+    data_offset: u64,
+    metadata: &'a mut Metadata,
+    limits: ParseLimits,
+    record_count: &'a mut usize,
+}
+
+fn parse_gopro_records(
+    data: &[u8],
+    start: usize,
+    end: usize,
+    group: String,
+    depth: usize,
+    context: &mut GoProParseContext<'_>,
+) {
+    if depth >= context.limits.max_recursion_depth {
+        context.metadata.add_warning(
+            Warning::new(
+                "gopro-app6-depth-limit",
+                format!(
+                    "GoPro APP6 nesting reached the depth limit {}",
+                    context.limits.max_recursion_depth
+                ),
+            )
+            .at(context.data_offset.saturating_add(start as u64)),
+        );
+        return;
+    }
+
+    let mut cursor = start;
+    while cursor < end {
+        if *context.record_count >= context.limits.max_ifd_entries {
+            context.metadata.add_warning(
+                Warning::new(
+                    "gopro-app6-record-limit",
+                    format!(
+                        "GoPro APP6 record limit {} reached",
+                        context.limits.max_ifd_entries
+                    ),
+                )
+                .at(context.data_offset.saturating_add(cursor as u64)),
+            );
+            return;
+        }
+        if end.saturating_sub(cursor) < 8 {
+            context.metadata.add_warning(
+                Warning::new(
+                    "gopro-app6-truncated",
+                    "GoPro APP6 record header extends beyond the segment",
+                )
+                .at(context.data_offset.saturating_add(cursor as u64)),
+            );
+            return;
+        }
+
+        let record_offset = cursor;
+        let fourcc: [u8; 4] = data[cursor..cursor + 4]
+            .try_into()
+            .expect("bounded GoPro record fourcc");
+        let record_type = data[cursor + 4];
+        let element_size = usize::from(data[cursor + 5]);
+        let count = usize::from(u16::from_be_bytes([data[cursor + 6], data[cursor + 7]]));
+        let Some(payload_length) = element_size.checked_mul(count) else {
+            context.metadata.add_warning(
+                Warning::new(
+                    "gopro-app6-value-overflow",
+                    format!(
+                        "GoPro APP6 record {} value size overflows",
+                        fourcc_text(&fourcc)
+                    ),
+                )
+                .at(context.data_offset.saturating_add(record_offset as u64)),
+            );
+            return;
+        };
+        let payload_start = record_offset + 8;
+        let Some(payload_end) = payload_start.checked_add(payload_length) else {
+            context.metadata.add_warning(
+                Warning::new(
+                    "gopro-app6-value-overflow",
+                    format!(
+                        "GoPro APP6 record {} extends beyond addressable data",
+                        fourcc_text(&fourcc)
+                    ),
+                )
+                .at(context.data_offset.saturating_add(record_offset as u64)),
+            );
+            return;
+        };
+        if payload_end > end {
+            context.metadata.add_warning(
+                Warning::new(
+                    "gopro-app6-truncated",
+                    format!(
+                        "GoPro APP6 record {} payload is truncated",
+                        fourcc_text(&fourcc)
+                    ),
+                )
+                .at(context.data_offset.saturating_add(record_offset as u64)),
+            );
+            return;
+        }
+        *context.record_count += 1;
+        cursor = payload_end;
+        let absolute_remainder = (context.data_offset % 4 + cursor as u64 % 4) % 4;
+        let padding = usize::try_from((4 - absolute_remainder) % 4).expect("small alignment");
+        if let Some(aligned_cursor) = cursor.checked_add(padding)
+            && aligned_cursor <= end
+            && data[cursor..aligned_cursor].iter().all(|byte| *byte == 0)
+        {
+            cursor = aligned_cursor;
+        }
+
+        let payload = &data[payload_start..payload_end];
+        if record_type == 0 || fourcc == *b"STRM" {
+            let nested_group = format!("{group}/{}", fourcc_text(&fourcc));
+            parse_gopro_records(
+                data,
+                payload_start,
+                payload_end,
+                nested_group,
+                depth + 1,
+                context,
+            );
+            continue;
+        }
+        if payload_length > context.limits.max_value_bytes {
+            context.metadata.add_warning(
+                Warning::new(
+                    "gopro-app6-value-limit",
+                    format!(
+                        "GoPro APP6 record {} payload exceeds the {}-byte value limit",
+                        fourcc_text(&fourcc),
+                        context.limits.max_value_bytes
+                    ),
+                )
+                .at(context.data_offset.saturating_add(payload_start as u64)),
+            );
+            continue;
+        }
+
+        let (value, value_type) = parse_gopro_value(record_type, element_size, count, payload);
+        let id = u32::from_be_bytes(fourcc);
+        let (name, description) = gopro_tag_definition(&fourcc).map_or_else(
+            || {
+                (
+                    format!("GoPro_0x{id:08X}"),
+                    format!("Unknown GoPro APP6 field {}", fourcc_text(&fourcc)),
+                )
+            },
+            |(name, description)| (name.to_owned(), description.to_owned()),
+        );
+        context.metadata.add_tag(Tag {
+            namespace: "GoPro".to_owned(),
+            group: group.clone(),
+            id: Some(id),
+            name,
+            description: Some(description),
+            raw_value: Some(payload.to_vec()),
+            value,
+            value_type,
+            source: Source::new(
+                "JPEG/APP6/GoPro",
+                Some(context.data_offset.saturating_add(payload_start as u64)),
+                Some(payload_length as u64),
+            ),
+            writable: false,
+        });
+    }
+}
+
+fn parse_gopro_value(
+    record_type: u8,
+    element_size: usize,
+    count: usize,
+    payload: &[u8],
+) -> (TagValue, ValueType) {
+    match (record_type, element_size) {
+        (b'c', 1) => (
+            TagValue::String(
+                String::from_utf8_lossy(payload)
+                    .trim_end_matches('\0')
+                    .to_owned(),
+            ),
+            ValueType::String,
+        ),
+        (b'L', 4) => {
+            let values = payload
+                .chunks_exact(4)
+                .map(|chunk| {
+                    TagValue::Unsigned(u64::from(u32::from_be_bytes([
+                        chunk[0], chunk[1], chunk[2], chunk[3],
+                    ])))
+                })
+                .collect::<Vec<_>>();
+            if count == 1 {
+                match values.into_iter().next() {
+                    Some(value) => (value, ValueType::UnsignedInteger),
+                    None => (TagValue::Array(Vec::new()), ValueType::Array),
+                }
+            } else {
+                (TagValue::Array(values), ValueType::Array)
+            }
+        }
+        (b'B', 1) if count == 1 => (
+            TagValue::Unsigned(u64::from(payload.first().copied().unwrap_or_default())),
+            ValueType::UnsignedInteger,
+        ),
+        _ => (TagValue::Bytes(payload.to_vec()), ValueType::Bytes),
+    }
+}
+
+fn fourcc_text(fourcc: &[u8; 4]) -> String {
+    String::from_utf8_lossy(fourcc).into_owned()
+}
+
+fn gopro_tag_definition(fourcc: &[u8; 4]) -> Option<(&'static str, &'static str)> {
+    Some(match fourcc {
+        b"DVID" => ("DeviceID", "GoPro device identifier"),
+        b"DVNM" => ("DeviceName", "GoPro device name"),
+        b"TICK" => ("GoPro_TICK", "GoPro tick counter"),
+        b"TSMP" => ("TotalSamples", "GoPro total sample count"),
+        b"FMWR" => ("FirmwareVersion", "GoPro firmware version"),
+        b"LINF" => ("GoPro_LINF", "GoPro line information"),
+        b"CINF" => ("GoPro_CINF", "GoPro camera information bytes"),
+        b"CASN" => ("CameraSerialNumber", "GoPro camera serial number"),
+        b"MINF" => ("Model", "GoPro camera model"),
+        b"MUID" => ("MediaUniqueID", "GoPro media unique identifier"),
+        b"CMOD" => ("GoPro_CMOD", "GoPro camera mode"),
+        b"MTYP" => ("GoPro_MTYP", "GoPro media type"),
+        b"OREN" => ("AutoRotation", "GoPro auto-rotation setting"),
+        b"DZOM" => ("DigitalZoomOn", "GoPro digital zoom switch"),
+        b"DZST" => ("DigitalZoom", "GoPro digital zoom value"),
+        b"SMTR" => ("SpotMeter", "GoPro spot meter setting"),
+        b"PRTN" => ("Protune", "GoPro Protune setting"),
+        b"PTWB" => ("WhiteBalance", "GoPro white-balance setting"),
+        b"PTSH" => ("Sharpness", "GoPro sharpness setting"),
+        b"PTCL" => ("ColorMode", "GoPro color mode"),
+        b"EXPT" => ("ExposureType", "GoPro exposure type"),
+        b"PIMX" => ("AutoISOMax", "GoPro automatic ISO maximum"),
+        b"PIMN" => ("AutoISOMin", "GoPro automatic ISO minimum"),
+        b"PTEV" => ("ExposureCompensation", "GoPro exposure compensation"),
+        b"RATE" => ("Rate", "GoPro capture rate"),
+        b"PRES" => ("PhotoResolution", "GoPro photo resolution"),
+        b"PHDR" => ("HDRSetting", "GoPro HDR setting"),
+        b"PRAW" => ("RawSetting", "GoPro raw setting"),
+        b"HFLG" => ("HighlightFlag", "GoPro highlight flag"),
+        _ => return None,
+    })
 }
 
 fn parse_jfif(data: &[u8], data_offset: u64, metadata: &mut Metadata) {
@@ -1434,6 +1728,48 @@ mod tests {
         bytes
     }
 
+    fn gopro_record(
+        fourcc: &[u8; 4],
+        record_type: u8,
+        element_size: u8,
+        count: u16,
+        payload: &[u8],
+    ) -> Vec<u8> {
+        assert_eq!(
+            payload.len(),
+            usize::from(element_size) * usize::from(count)
+        );
+        let mut record = fourcc.to_vec();
+        record.extend_from_slice(&[record_type, element_size]);
+        record.extend_from_slice(&count.to_be_bytes());
+        record.extend_from_slice(payload);
+        record
+    }
+
+    fn jpeg_with_gopro_app6() -> Vec<u8> {
+        let mut stream = Vec::new();
+        stream.extend_from_slice(&gopro_record(b"PRTN", b'c', 1, 1, b"Y"));
+        stream.extend_from_slice(&gopro_record(
+            b"MUID",
+            b'L',
+            4,
+            2,
+            &[0, 0, 0, 7, 0, 0, 0, 9],
+        ));
+
+        let mut app6 = b"GoPro\0DEVC".to_vec();
+        app6.extend_from_slice(&[0, 1, 2, 0]);
+        app6.extend_from_slice(&gopro_record(b"DVNM", b'c', 1, 9, b"MetraCam\0"));
+        app6.extend_from_slice(&gopro_record(b"STRM", 0, 1, stream.len() as u16, &stream));
+
+        let length = u16::try_from(app6.len() + 2).unwrap();
+        let mut bytes = vec![0xFF, 0xD8, 0xFF, 0xE6];
+        bytes.extend_from_slice(&length.to_be_bytes());
+        bytes.extend_from_slice(&app6);
+        bytes.extend_from_slice(&[0xFF, 0xD9]);
+        bytes
+    }
+
     fn jpeg_with_fragmented_icc() -> Vec<u8> {
         let mut profile = [0_u8; 132];
         let profile_size = profile.len() as u32;
@@ -1490,6 +1826,55 @@ mod tests {
         assert_eq!(
             metadata.find("XMP:dc:format").unwrap().display_value(),
             "image/jpeg"
+        );
+    }
+
+    #[test]
+    fn reads_bounded_gopro_app6_records_without_decoding_media() {
+        let bytes = jpeg_with_gopro_app6();
+        let metadata = read_jpeg(
+            &mut Cursor::new(bytes.clone()),
+            FileInfo::new("gopro.jpg".into(), bytes.len() as u64, FileFormat::Jpeg),
+            ParseLimits::default(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            metadata.find("GoPro:DeviceName").unwrap().display_value(),
+            "MetraCam"
+        );
+        assert_eq!(metadata.find("GoPro:Protune").unwrap().display_value(), "Y");
+        assert_eq!(
+            metadata.find("GoPro:MediaUniqueID").unwrap().value,
+            TagValue::Array(vec![TagValue::Unsigned(7), TagValue::Unsigned(9)])
+        );
+        let protune = metadata.find("GoPro:Protune").unwrap();
+        assert_eq!(protune.group, "APP6/DEVC/STRM");
+        assert_eq!(protune.source.container, "JPEG/APP6/GoPro");
+        assert!(metadata.warnings.is_empty());
+    }
+
+    #[test]
+    fn bounds_gopro_app6_value_materialization() {
+        let bytes = jpeg_with_gopro_app6();
+        let limits = ParseLimits {
+            max_value_bytes: 4,
+            ..ParseLimits::default()
+        };
+        let metadata = read_jpeg(
+            &mut Cursor::new(bytes),
+            FileInfo::new("gopro.jpg".into(), 0, FileFormat::Jpeg),
+            limits,
+        )
+        .unwrap();
+
+        assert!(metadata.find("GoPro:DeviceName").is_none());
+        assert!(metadata.find("GoPro:Protune").is_some());
+        assert!(
+            metadata
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "gopro-app6-value-limit")
         );
     }
 
