@@ -100,5 +100,11 @@ only after validation. Failures remove the temporary file and leave the source
 untouched. Generic tag writes and other formats remain disabled until their
 round-trip and recovery tests exist.
 
+The TIFF creation API is bounded separately from read-modify-write: it accepts
+only an allowlisted set of EXIF ASCII tags, rejects NUL bytes and duplicates,
+enforces metadata/value limits, emits a fixed 1x1 seed image, and validates the
+result through the TIFF reader before returning it. Its path helper refuses an
+existing destination and removes its temporary file on failure.
+
 Security reports should include the smallest reproducible input and the exact
 Metra version. Do not include private media or secrets in an issue.

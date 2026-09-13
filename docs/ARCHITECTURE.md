@@ -217,7 +217,10 @@ format-specific atomic implementation; `rewrite_metadata_to_vec` provides the
 same dispatch for callers that own the byte buffer, and `copy_metadata_path`
 reads the source value before rewriting the target.
 Numeric/binary mutation, new metadata block creation, and deletion semantics
-that require layout changes remain intentionally outside this API.
+that require layout changes remain intentionally outside this API. The first
+creation seam is intentionally separate: `TiffCreateOptions` can build a
+minimal classic 1x1 TIFF with bounded EXIF ASCII seed fields, validate it by
+reading it back, and create a new path without overwriting an existing file.
 
 ## Output contract
 
