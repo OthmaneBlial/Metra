@@ -17,12 +17,16 @@ use crate::iptc_writer::{
 use crate::tiff::parse_tiff_from_reader;
 use crate::xmp::parse_xmp;
 
+const XMP_PREFIX: &[u8] = b"http://ns.adobe.com/xap/1.0/\0";
+
 /// The first rewrite surface is intentionally narrow: JPEG COM segments are
 /// self-contained, bounded, and can be changed without re-encoding pixels.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum JpegEdit {
     SetComment(String),
     DeleteComments,
+    SetXmp(String),
+    DeleteXmp,
     SetIptc { name: String, value: String },
     DeleteIptc { name: String },
 }
@@ -237,6 +241,12 @@ enum CommentAction {
     Delete,
 }
 
+#[derive(Debug)]
+enum XmpAction {
+    Set(Vec<u8>),
+    Delete,
+}
+
 fn rewrite_jpeg_stream<R: Read, W: Write>(
     reader: &mut R,
     writer: &mut W,
@@ -246,6 +256,7 @@ fn rewrite_jpeg_stream<R: Read, W: Write>(
 ) -> Result<()> {
     let comment = comment_action(edits)?;
     let iptc = iptc_action(edits, limits)?;
+    let xmp = xmp_action(edits, limits)?;
     let mut soi = [0_u8; 2];
     read_exact(reader, &mut soi, path)?;
     if soi != [0xFF, 0xD8] {
@@ -260,6 +271,7 @@ fn rewrite_jpeg_stream<R: Read, W: Write>(
     let mut metadata_bytes = 0_usize;
     let mut comment_inserted = false;
     let mut iptc_inserted = false;
+    let mut xmp_inserted = false;
     loop {
         if segments >= limits.max_jpeg_segments {
             return Err(MetraError::ResourceLimitExceeded {
@@ -284,6 +296,11 @@ fn rewrite_jpeg_stream<R: Read, W: Write>(
             {
                 let segment = new_photoshop_app13(iptc.as_ref().expect("IPTC action"), limits)?;
                 write_all(writer, &segment)?;
+            }
+            if let Some(XmpAction::Set(value)) = xmp.as_ref()
+                && !xmp_inserted
+            {
+                write_xmp(writer, value)?;
             }
             write_all(writer, &marker_bytes)?;
             if marker == 0xDA {
@@ -328,6 +345,22 @@ fn rewrite_jpeg_stream<R: Read, W: Write>(
                     write_all(writer, &length_bytes)?;
                     write_all(writer, &data)?;
                 }
+            }
+        } else if marker == 0xE1 && data.starts_with(XMP_PREFIX) {
+            if let Some(action) = xmp.as_ref() {
+                match action {
+                    XmpAction::Set(value) if !xmp_inserted => {
+                        write_xmp(writer, value)?;
+                        xmp_inserted = true;
+                    }
+                    XmpAction::Set(_) | XmpAction::Delete => {
+                        xmp_inserted = true;
+                    }
+                }
+            } else {
+                write_all(writer, &marker_bytes)?;
+                write_all(writer, &length_bytes)?;
+                write_all(writer, &data)?;
             }
         } else if marker == 0xED {
             if let Some(iptc_action) = iptc.as_ref() {
@@ -374,6 +407,7 @@ fn comment_action(edits: &[JpegEdit]) -> Result<Option<CommentAction>> {
                 action = Some(CommentAction::Set(bytes));
             }
             JpegEdit::DeleteComments => action = Some(CommentAction::Delete),
+            JpegEdit::SetXmp(_) | JpegEdit::DeleteXmp => {}
             JpegEdit::SetIptc { .. } | JpegEdit::DeleteIptc { .. } => {}
         }
     }
@@ -390,8 +424,41 @@ fn iptc_action(edits: &[JpegEdit], limits: ParseLimits) -> Result<Option<IptcAct
             JpegEdit::DeleteIptc { name } => {
                 action = Some(delete_iptc_action(name)?);
             }
-            JpegEdit::SetComment(_) | JpegEdit::DeleteComments => {}
+            JpegEdit::SetComment(_)
+            | JpegEdit::DeleteComments
+            | JpegEdit::SetXmp(_)
+            | JpegEdit::DeleteXmp => {}
         }
+    }
+    Ok(action)
+}
+
+fn xmp_action(edits: &[JpegEdit], limits: ParseLimits) -> Result<Option<XmpAction>> {
+    let mut action = None;
+    for edit in edits {
+        action = Some(match edit {
+            JpegEdit::SetXmp(value) => {
+                let bytes = value.as_bytes().to_vec();
+                if bytes.len() > limits.max_value_bytes {
+                    return Err(MetraError::ResourceLimitExceeded {
+                        resource: "JPEG XMP packet".to_owned(),
+                        limit: limits.max_value_bytes,
+                    });
+                }
+                let mut validation = Metadata::new(FileInfo::new(
+                    PathBuf::from("<memory>"),
+                    bytes.len() as u64,
+                    FileFormat::Jpeg,
+                ));
+                parse_xmp(&bytes, 0, "JPEG/XMP", &mut validation, limits)?;
+                XmpAction::Set(bytes)
+            }
+            JpegEdit::DeleteXmp => XmpAction::Delete,
+            JpegEdit::SetComment(_)
+            | JpegEdit::DeleteComments
+            | JpegEdit::SetIptc { .. }
+            | JpegEdit::DeleteIptc { .. } => continue,
+        });
     }
     Ok(action)
 }
@@ -403,6 +470,28 @@ fn write_comment<W: Write>(writer: &mut W, comment: &[u8]) -> Result<()> {
     write_all(writer, &[0xFF, 0xFE])?;
     write_all(writer, &length.to_be_bytes())?;
     write_all(writer, comment)
+}
+
+fn write_xmp<W: Write>(writer: &mut W, value: &[u8]) -> Result<()> {
+    let data_length =
+        XMP_PREFIX
+            .len()
+            .checked_add(value.len())
+            .ok_or_else(|| MetraError::WriteFailure {
+                message: "JPEG XMP packet length overflowed".to_owned(),
+            })?;
+    let segment_length = data_length
+        .checked_add(2)
+        .ok_or_else(|| MetraError::WriteFailure {
+            message: "JPEG XMP segment length overflowed".to_owned(),
+        })?;
+    let segment_length = u16::try_from(segment_length).map_err(|_| MetraError::WriteFailure {
+        message: "JPEG XMP packet exceeds the 65533-byte segment limit".to_owned(),
+    })?;
+    write_all(writer, &[0xFF, 0xE1])?;
+    write_all(writer, &segment_length.to_be_bytes())?;
+    write_all(writer, XMP_PREFIX)?;
+    write_all(writer, value)
 }
 
 fn write_app13_payload<W: Write>(writer: &mut W, data: &[u8]) -> Result<()> {
@@ -552,8 +641,8 @@ fn process_segment(
                 );
             }
         }
-        0xE1 if data.starts_with(b"http://ns.adobe.com/xap/1.0/\0") => {
-            let prefix_len = b"http://ns.adobe.com/xap/1.0/\0".len();
+        0xE1 if data.starts_with(XMP_PREFIX) => {
+            let prefix_len = XMP_PREFIX.len();
             if let Err(error) = parse_xmp(
                 &data[prefix_len..],
                 data_offset.saturating_add(prefix_len as u64),
@@ -798,6 +887,20 @@ mod tests {
         bytes
     }
 
+    fn jpeg_with_xmp(format: &str) -> Vec<u8> {
+        let packet = format!(
+            "<x:xmpmeta><rdf:RDF><rdf:Description xmlns:dc=\"urn:dc\" dc:format=\"{format}\"/></rdf:RDF></x:xmpmeta>"
+        );
+        let mut app1 = XMP_PREFIX.to_vec();
+        app1.extend_from_slice(packet.as_bytes());
+        let length = u16::try_from(app1.len() + 2).unwrap();
+        let mut bytes = vec![0xFF, 0xD8, 0xFF, 0xE1];
+        bytes.extend_from_slice(&length.to_be_bytes());
+        bytes.extend_from_slice(&app1);
+        bytes.extend_from_slice(&[0xFF, 0xD9]);
+        bytes
+    }
+
     #[test]
     fn reads_jpeg_comment_without_decoding_pixels() {
         let bytes = jpeg_with_comment();
@@ -825,6 +928,82 @@ mod tests {
             metadata.find("XMP:dc:format").unwrap().display_value(),
             "image/jpeg"
         );
+    }
+
+    #[test]
+    fn replaces_deletes_and_inserts_jpeg_xmp() {
+        let bytes = jpeg_with_xmp("before");
+        let replacement = r#"<x:xmpmeta><rdf:RDF><rdf:Description xmlns:dc="urn:dc" dc:format="after"/></rdf:RDF></x:xmpmeta>"#;
+        let output = rewrite_jpeg_to_vec(
+            &bytes,
+            FileInfo::new("xmp.jpg".into(), bytes.len() as u64, FileFormat::Jpeg),
+            ParseLimits::default(),
+            &[JpegEdit::SetXmp(replacement.to_owned())],
+        )
+        .unwrap();
+        assert!(
+            !output
+                .windows(b"before".len())
+                .any(|window| window == b"before")
+        );
+        let metadata = read_jpeg(
+            &mut Cursor::new(output),
+            FileInfo::new("xmp.jpg".into(), 0, FileFormat::Jpeg),
+            ParseLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            metadata.find("XMP:dc:format").unwrap().display_value(),
+            "after"
+        );
+
+        let deleted = rewrite_jpeg_to_vec(
+            &bytes,
+            FileInfo::new("xmp.jpg".into(), bytes.len() as u64, FileFormat::Jpeg),
+            ParseLimits::default(),
+            &[JpegEdit::DeleteXmp],
+        )
+        .unwrap();
+        assert!(
+            !deleted
+                .windows(XMP_PREFIX.len())
+                .any(|window| window == XMP_PREFIX)
+        );
+        assert!(
+            read_jpeg(
+                &mut Cursor::new(deleted),
+                FileInfo::new("xmp.jpg".into(), 0, FileFormat::Jpeg),
+                ParseLimits::default(),
+            )
+            .unwrap()
+            .find("XMP:Packet")
+            .is_none()
+        );
+
+        let inserted = rewrite_jpeg_to_vec(
+            &[0xFF, 0xD8, 0xFF, 0xD9],
+            FileInfo::new("new-xmp.jpg".into(), 4, FileFormat::Jpeg),
+            ParseLimits::default(),
+            &[JpegEdit::SetXmp(replacement.to_owned())],
+        )
+        .unwrap();
+        assert!(
+            inserted
+                .windows(XMP_PREFIX.len())
+                .any(|window| window == XMP_PREFIX)
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_jpeg_xmp_before_writing() {
+        let error = rewrite_jpeg_to_vec(
+            &[0xFF, 0xD8, 0xFF, 0xD9],
+            FileInfo::new("xmp.jpg".into(), 4, FileFormat::Jpeg),
+            ParseLimits::default(),
+            &[JpegEdit::SetXmp("<broken>".to_owned())],
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("XML"));
     }
 
     #[test]
