@@ -35,7 +35,7 @@ Implemented today:
 | FLAC | `STREAMINFO`, Vorbis comments, embedded-picture properties/data, and bounded metadata-block validation |
 | PDF | Header/version, bounded Info dictionaries, PDF string decoding, and embedded XMP packets when directly available |
 | WAV | RIFF/WAVE chunks, `fmt ` audio properties, `LIST/INFO`, Broadcast Wave `bext`, and bounded validation |
-| Output | Human-readable text, JSON, JSON Lines, or CSV; schema version `1` for structured JSON |
+| Output | Human-readable text, JSON, JSON Lines, CSV, TOML, or YAML; schema version `1` is retained in structured output |
 | Batch | Deterministic path ordering with bounded parallel inspection through `--jobs N` |
 | Safety | Checked offsets, bounded reads, recursion and entry limits, deterministic recursive traversal, and structured warnings |
 
@@ -56,6 +56,8 @@ cargo run -- --json photo.jpg
 cargo run -- --jsonl -r photos/
 cargo run -- --jsonl --jobs 4 -r photos/
 cargo run -- --csv -r photos/
+cargo run -- --toml photo.jpg
+cargo run -- --yaml photo.jpg
 ```
 
 Install the local CLI:
@@ -148,7 +150,7 @@ are the local validation gate.
 
 ## Roadmap
 
-Avancement global vérifié : **46 %**. Ce chiffre est une moyenne indicative des
+Avancement global vérifié : **51 %**. Ce chiffre est une moyenne indicative des
 huit axes ci-dessous, calculée uniquement sur le code et les tests présents ; il
 ne représente pas un pourcentage de compatibilité ExifTool.
 
@@ -159,7 +161,7 @@ ne représente pas un pourcentage de compatibilité ExifTool.
 5. **0 %** — Concevoir l’écriture read-modify-write avec validation et remplacement atomique.
 6. **0 %** — Ajouter `set`/`delete`/`copy` après les tests round-trip.
 7. **45 %** — Ajouter le traitement parallèle contrôlé et les benchmarks sur collections réelles.
-8. **60 %** — Étendre les sorties structurées avec CSV, TOML et YAML versionnés.
+8. **100 %** — Étendre les sorties structurées avec CSV, TOML et YAML versionnés.
 
 ## License
 

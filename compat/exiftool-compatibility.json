@@ -66,6 +66,8 @@
     "json": "supported",
     "jsonl": "supported",
     "csv": "supported",
+    "toml": "supported",
+    "yaml": "supported",
     "parallel_batch": "partial",
     "set": "planned",
     "delete": "planned",

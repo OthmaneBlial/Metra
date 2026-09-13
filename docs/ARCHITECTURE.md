@@ -69,9 +69,10 @@ typed rather than a flattened map. A future schema change must either preserve
 version `1` semantics or increment the version and document the migration.
 
 For multiple files, `--json` emits an array of successful metadata documents;
-`--jsonl` emits one document per successful file; and `--csv` emits one row per
-tag with the typed value serialized as JSON. Errors are sent to stderr and
-produce a non-zero exit code.
+`--jsonl` emits one document per successful file; `--csv` emits one row per tag
+with the typed value serialized as JSON; and `--toml`/`--yaml` serialize the
+same versioned model. Errors are sent to stderr and produce a non-zero exit
+code.
 
 ## Planned seams
 
