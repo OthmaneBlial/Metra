@@ -216,8 +216,11 @@ compatibility tests are separate follow-up gates; passing these local tests does
 not claim complete ExifTool compatibility.
 
 The opt-in corpus checks live in [`tests/corpus.rs`](tests/corpus.rs) and require
-an explicit local corpus; because no real corpus or oracle run is bundled here,
-the corpus axis below remains at its conservative 30 %.
+an explicit local corpus and oracle; no corpus is bundled in the repository. A
+local 194-file run completed without panics: 69 files were recognized, with
+2,483 Metra tags compared to the oracle, 1,266 stable-key matches, and 1,045
+typed-value matches. The corpus axis remains conservative because 125 files
+were outside the current format surface and the differential test is opt-in.
 
 For batch output, human-readable, JSON Lines, and CSV modes render as results
 arrive while preserving deterministic input-path order. The parallel streaming
@@ -242,12 +245,12 @@ are the local validation gate.
 
 ## Roadmap
 
-Avancement global vérifié : **86 %**. Ce chiffre est une moyenne indicative des
+Avancement global vérifié : **84 %**. Ce chiffre est une moyenne indicative des
 huit axes ci-dessous, calculée uniquement sur le code et les tests présents ; il
 ne représente pas un pourcentage de compatibilité ExifTool.
 
 1. **92 %** — Étendre le modèle de lecture et les définitions de tags sans perdre les données brutes ; le parseur TIFF couvre maintenant les en-têtes classic et BigTIFF, les offsets/compteurs 64 bits et les valeurs LONG8/SLONG8/IFD8, tandis que les dérivés GPS valident les références, les plages et les conversions altitude/direction/temps/vitesse, les datasets IPTC-IIM lus conservent leur identifiant numérique stable, `EXIF:UserComment` décode les préfixes ASCII/Unicode sans perdre les octets bruts, les tags image/exposition/objectif courants ont des noms canoniques, et les champs Nikon bornés sont résolus par le catalogue partagé.
-2. **30 %** — Ajouter des corpus réels et des tests différentiels JPEG/TIFF/PNG/WebP ; le harnais opt-in est présent, mais aucune exécution de corpus réel n’est comptée.
+2. **45 %** — Ajouter des corpus réels et des tests différentiels JPEG/TIFF/PNG/WebP ; le harnais opt-in a été exécuté sur un corpus local de 194 fichiers sans panic, avec 69 fichiers reconnus, 1 266 clés et 1 045 valeurs typées alignées, mais 125 fichiers restent hors surface et aucune preuve n’est embarquée dans le dépôt.
 3. **95 %** — Approfondir HEIF/AVIF et les conteneurs média, puis couvrir les lecteurs restants ; les lecteurs ISO-BMFF exposent maintenant les propriétés image bornées courantes en plus des marques, XMP/EXIF et textes QuickTime, tandis que les lecteurs PSD/PSB, RAW, AVI et MKV/WebM couvrent leurs en-têtes et métadonnées courantes sans décoder les pixels ou les flux vidéo.
 4. **98 %** — Étendre XMP/IPTC/ICC/ID3 et isoler les espaces MakerNote ; XMP est maintenant réécrit de façon bornée pour JPEG APP1, WebP et PNG, les datasets IPTC-IIM connus peuvent être réécrits dans les ressources Photoshop APP13, les profils ICC fragmentés JPEG, PNG `iCCP` et WebP `ICCP` sont inspectés sous limites avec descriptions texte et valeurs XYZ courantes, les références XML sûres sont décodées sans entités personnalisées, les textes PNG compressés sont déployés sous budget, les champs texte/commentaires ID3v2 courants restent sous limites explicites, et les conteneurs MakerNote courants sont identifiés ; des IFD Nikon Type 2 et Canon bornés exposent maintenant leurs champs connus et conservent les valeurs inconnues décodables, avec offsets de source absolus testés.
 5. **72 %** — Concevoir l’écriture read-modify-write avec validation et remplacement atomique ; dix writers bornés couvrent maintenant JPEG, TIFF/BigTIFF, PNG, GIF, WebP, SVG, WAV, FLAC, ID3v2 et les champs texte ISO-BMFF existants, et les budgets metadata/valeur sont configurables depuis le CLI.

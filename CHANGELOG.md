@@ -114,4 +114,6 @@ Initial read-first foundation with narrow validated rewrites:
   `read_many` and backpressure-bounded `read_many_streaming` helpers used by the CLI;
 - added cooperative batch cancellation through `CancellationToken`, structured
   `MetraError::Cancelled` results, and CLI Ctrl+C handling with exit status 130;
+- strengthened the opt-in corpus differential harness with namespace/group
+  aliases and typed numeric, rational, string, and array value comparisons;
 - documented the verified surface and remaining compatibility boundaries.
