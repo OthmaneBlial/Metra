@@ -59,6 +59,26 @@ struct Arguments {
     )]
     copy: Option<String>,
 
+    /// Create a new minimal TIFF with one or more EXIF ASCII seed fields.
+    #[arg(
+        long = "create-tiff",
+        value_name = "KEY=VALUE",
+        action = clap::ArgAction::Append,
+        conflicts_with_all = [
+            "set",
+            "delete",
+            "copy",
+            "json",
+            "jsonl",
+            "csv",
+            "toml",
+            "yaml",
+            "validate",
+            "compare"
+        ]
+    )]
+    create_tiff: Vec<String>,
+
     /// Validate inputs and return a failure when any warning is produced.
     #[arg(long, conflicts_with_all = ["set", "delete", "copy"])]
     validate: bool,
@@ -105,6 +125,29 @@ struct Arguments {
 fn main() -> ExitCode {
     let arguments = Arguments::parse();
     let limits = parse_limits(arguments.max_metadata_bytes, arguments.max_value_bytes);
+    if !arguments.create_tiff.is_empty() {
+        if arguments.files.len() != 1 {
+            eprintln!("metra: --create-tiff requires exactly one destination path");
+            return ExitCode::from(2);
+        }
+        let options = match parse_tiff_create(&arguments.create_tiff) {
+            Ok(options) => options,
+            Err(message) => {
+                eprintln!("metra: {message}");
+                return ExitCode::from(2);
+            }
+        };
+        return match metra::create_tiff_path(&arguments.files[0], &options, limits) {
+            Ok(()) => {
+                println!("created: {}", arguments.files[0].display());
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", arguments.files[0].display());
+                ExitCode::from(1)
+            }
+        };
+    }
     let paths = match collect_paths(&arguments.files, arguments.recursive) {
         Ok(paths) => paths,
         Err(message) => {
@@ -183,6 +226,20 @@ fn main() -> ExitCode {
     } else {
         ExitCode::from(1)
     }
+}
+
+fn parse_tiff_create(entries: &[String]) -> Result<metra::TiffCreateOptions, String> {
+    let mut options = metra::TiffCreateOptions::new();
+    for assignment in entries {
+        let (key, value) = assignment
+            .split_once('=')
+            .ok_or_else(|| "--create-tiff expects KEY=VALUE".to_owned())?;
+        if key.is_empty() {
+            return Err("--create-tiff requires a non-empty KEY".to_owned());
+        }
+        options.push_ascii(key, value);
+    }
+    Ok(options)
 }
 
 fn compare_paths(
