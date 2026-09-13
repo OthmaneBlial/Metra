@@ -27,6 +27,8 @@ Initial read-first foundation with narrow validated rewrites:
   while retaining malformed-layout and materialization-limit warnings;
 - decoded bounded AVI `strh` stream descriptors with typed codec, timing,
   duration, quality, and frame-bound fields without loading video frames;
+- decoded AVI video `strf` bitmap properties and audio `strf` format fields
+  after bounded stream-type dispatch, without loading media frames;
 - added bounded Ogg Vorbis/Opus comment replacement, deletion, and copy with
   page CRC regeneration, same-packet-size preservation, output validation, and
   atomic replacement;

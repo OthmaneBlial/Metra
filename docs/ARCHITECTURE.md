@@ -95,8 +95,9 @@ single MPEG frame header without decoding audio payloads.
 The FLAC reader validates the metadata-block chain and decodes STREAMINFO,
 bounded SEEKTABLE seek-point structures, CUESHEET catalog/track/index
 structures, Vorbis comments, and bounded PICTURE blocks without touching audio
-frames. The AVI reader additionally decodes bounded `avih` and `strh` stream
-headers, deriving stream duration without touching media chunks.
+frames. The AVI reader additionally decodes bounded `avih`, `strh`, and
+stream-type-aware `strf` video/audio headers, deriving stream duration without
+touching media chunks.
 The Ogg reader walks bounded pages and logical streams, validates CRCs for pages
 whose metadata bodies are inspected, and reconstructs only the
 first bounded metadata packets, and decodes Vorbis identification/comments,
