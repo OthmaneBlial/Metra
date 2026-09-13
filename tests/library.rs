@@ -86,3 +86,36 @@ fn public_batch_api_keeps_input_order_and_supports_streaming() {
     });
     assert_eq!(streamed_paths, paths);
 }
+
+#[test]
+fn public_batch_api_cancels_without_opening_remaining_paths() {
+    let paths = vec![
+        std::env::temp_dir().join("metra-cancel-a-does-not-exist"),
+        std::env::temp_dir().join("metra-cancel-b-does-not-exist"),
+    ];
+    let cancellation = metra::CancellationToken::new();
+    cancellation.cancel();
+    let options = metra::BatchOptions {
+        jobs: 2,
+        limits: metra::ParseLimits::default(),
+    };
+
+    let results = metra::read_many_with_cancellation(&paths, options, &cancellation);
+    assert_eq!(results.len(), paths.len());
+    assert!(
+        results
+            .iter()
+            .all(|item| matches!(item.result, Err(metra::MetraError::Cancelled)))
+    );
+
+    let mut streamed = Vec::new();
+    metra::read_many_streaming_with_cancellation(&paths, options, &cancellation, |item| {
+        streamed.push(item);
+    });
+    assert_eq!(streamed.len(), paths.len());
+    assert!(
+        streamed
+            .iter()
+            .all(|item| matches!(item.result, Err(metra::MetraError::Cancelled)))
+    );
+}

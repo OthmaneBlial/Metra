@@ -78,6 +78,30 @@ pub struct BatchResult {
     pub result: Result<Metadata>,
 }
 
+/// Cooperative cancellation shared by long-running batch operations.
+#[derive(Debug, Clone, Default)]
+pub struct CancellationToken {
+    cancelled: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl CancellationToken {
+    /// Create a token in the active state.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Request cancellation. In-flight parsing finishes its current bounded
+    /// operation; no later batch item is started.
+    pub fn cancel(&self) {
+        self.cancelled.store(true, Ordering::Release);
+    }
+
+    /// Return whether cancellation has been requested.
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::Acquire)
+    }
+}
+
 /// Inspect independent paths with bounded worker concurrency.
 ///
 /// Results always follow the order of `paths`, including when workers finish
@@ -85,6 +109,27 @@ pub struct BatchResult {
 /// input, so callers that need bounded output should use
 /// [`read_many_streaming`] instead.
 pub fn read_many(paths: &[PathBuf], options: BatchOptions) -> Vec<BatchResult> {
+    read_many_internal(paths, options, None)
+}
+
+/// Inspect paths with cooperative cancellation support.
+///
+/// Paths already being parsed may finish, but no new file is read after the
+/// token is cancelled. Remaining paths are returned as
+/// [`MetraError::Cancelled`] results so callers retain one result per input.
+pub fn read_many_with_cancellation(
+    paths: &[PathBuf],
+    options: BatchOptions,
+    cancellation: &CancellationToken,
+) -> Vec<BatchResult> {
+    read_many_internal(paths, options, Some(cancellation))
+}
+
+fn read_many_internal(
+    paths: &[PathBuf],
+    options: BatchOptions,
+    cancellation: Option<&CancellationToken>,
+) -> Vec<BatchResult> {
     if paths.is_empty() {
         return Vec::new();
     }
@@ -94,7 +139,7 @@ pub fn read_many(paths: &[PathBuf], options: BatchOptions) -> Vec<BatchResult> {
             .iter()
             .cloned()
             .map(|path| BatchResult {
-                result: read_with_limits(&path, options.limits),
+                result: read_one(&path, options.limits, cancellation),
                 path,
             })
             .collect();
@@ -118,7 +163,7 @@ pub fn read_many(paths: &[PathBuf], options: BatchOptions) -> Vec<BatchResult> {
                     let Some(path) = paths.get(index).cloned() else {
                         break;
                     };
-                    let result = read_with_limits(&path, options.limits);
+                    let result = read_one(&path, options.limits, cancellation);
                     if sender.send((index, BatchResult { path, result })).is_err() {
                         break;
                     }
@@ -137,14 +182,52 @@ pub fn read_many(paths: &[PathBuf], options: BatchOptions) -> Vec<BatchResult> {
         .collect()
 }
 
+fn read_one(
+    path: &Path,
+    limits: ParseLimits,
+    cancellation: Option<&CancellationToken>,
+) -> Result<Metadata> {
+    if cancellation.is_some_and(CancellationToken::is_cancelled) {
+        Err(MetraError::Cancelled)
+    } else {
+        read_with_limits(path, limits)
+    }
+}
+
 /// Inspect paths in deterministic order while emitting each result as soon as
 /// all earlier paths are ready.
 ///
 /// Parallel workers use a bounded synchronous channel. If an early path is
 /// slow, later results apply backpressure instead of growing an unbounded
 /// out-of-order buffer.
-pub fn read_many_streaming<F>(paths: &[PathBuf], options: BatchOptions, mut emit: F)
+pub fn read_many_streaming<F>(paths: &[PathBuf], options: BatchOptions, emit: F)
 where
+    F: FnMut(BatchResult),
+{
+    read_many_streaming_internal(paths, options, None, emit);
+}
+
+/// Stream deterministic batch results with cooperative cancellation support.
+///
+/// Once cancelled, currently active items may finish and remaining paths are
+/// emitted as [`MetraError::Cancelled`] without being opened.
+pub fn read_many_streaming_with_cancellation<F>(
+    paths: &[PathBuf],
+    options: BatchOptions,
+    cancellation: &CancellationToken,
+    emit: F,
+) where
+    F: FnMut(BatchResult),
+{
+    read_many_streaming_internal(paths, options, Some(cancellation), emit);
+}
+
+fn read_many_streaming_internal<F>(
+    paths: &[PathBuf],
+    options: BatchOptions,
+    cancellation: Option<&CancellationToken>,
+    mut emit: F,
+) where
     F: FnMut(BatchResult),
 {
     if paths.is_empty() {
@@ -154,26 +237,38 @@ where
     if worker_count == 1 {
         for path in paths.iter().cloned() {
             emit(BatchResult {
-                result: read_with_limits(&path, options.limits),
+                result: read_one(&path, options.limits, cancellation),
                 path,
             });
         }
         return;
     }
 
+    if cancellation.is_some_and(CancellationToken::is_cancelled) {
+        for path in paths.iter().cloned() {
+            emit(BatchResult {
+                path,
+                result: Err(MetraError::Cancelled),
+            });
+        }
+        return;
+    }
+
     let shared_paths = Arc::new(paths.to_vec());
-    let (job_sender, job_receiver) = mpsc::sync_channel(worker_count);
+    let (job_sender, job_receiver) = mpsc::sync_channel::<(usize, PathBuf)>(worker_count);
     let job_receiver = Arc::new(Mutex::new(job_receiver));
     let (result_sender, receiver) = mpsc::channel();
     let mut pending = BTreeMap::new();
     let mut next_to_emit = 0_usize;
     let mut next_to_schedule = worker_count;
     let mut job_sender = Some(job_sender);
+    let cancellation = cancellation.cloned();
 
     thread::scope(|scope| {
         for _ in 0..worker_count {
             let job_receiver = Arc::clone(&job_receiver);
             let sender = result_sender.clone();
+            let worker_cancellation = cancellation.clone();
             scope.spawn(move || {
                 loop {
                     let job = job_receiver
@@ -183,7 +278,7 @@ where
                     let Ok((index, path)) = job else {
                         break;
                     };
-                    let result = read_with_limits(&path, options.limits);
+                    let result = read_one(&path, options.limits, worker_cancellation.as_ref());
                     if sender.send((index, BatchResult { path, result })).is_err() {
                         break;
                     }
@@ -209,7 +304,12 @@ where
             while let Some(result) = pending.remove(&next_to_emit) {
                 emit(result);
                 next_to_emit += 1;
-                if next_to_schedule < shared_paths.len() {
+                if cancellation
+                    .as_ref()
+                    .is_some_and(CancellationToken::is_cancelled)
+                {
+                    job_sender.take();
+                } else if next_to_schedule < shared_paths.len() {
                     let path = shared_paths[next_to_schedule].clone();
                     job_sender
                         .as_ref()
@@ -228,5 +328,18 @@ where
     while let Some(result) = pending.remove(&next_to_emit) {
         emit(result);
         next_to_emit += 1;
+    }
+
+    if cancellation
+        .as_ref()
+        .is_some_and(CancellationToken::is_cancelled)
+    {
+        while next_to_schedule < shared_paths.len() {
+            emit(BatchResult {
+                path: shared_paths[next_to_schedule].clone(),
+                result: Err(MetraError::Cancelled),
+            });
+            next_to_schedule += 1;
+        }
     }
 }

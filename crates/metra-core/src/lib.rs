@@ -1529,6 +1529,8 @@ pub enum MetraError {
     CorruptMetadata { message: String },
     #[error("write failure: {message}")]
     WriteFailure { message: String },
+    #[error("operation cancelled")]
+    Cancelled,
 }
 
 pub type Result<T> = std::result::Result<T, MetraError>;
