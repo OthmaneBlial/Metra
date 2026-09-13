@@ -65,6 +65,13 @@ fn minimal_svg() -> Vec<u8> {
         .to_vec()
 }
 
+fn minimal_svg_document(title: &str, description: &str, comment: &str) -> Vec<u8> {
+    format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\"><!-- {comment} --><title>{title}</title><desc>{description}</desc><rect width=\"2\" height=\"2\"/></svg>"
+    )
+    .into_bytes()
+}
+
 fn minimal_gif(comment: &str) -> Vec<u8> {
     let mut bytes = b"GIF89a".to_vec();
     bytes.extend_from_slice(&[2, 0, 2, 0, 0, 0, 0]);
@@ -563,6 +570,73 @@ fn cli_can_edit_and_copy_png_xmp() {
             .unwrap()
             .display_value(),
         "source"
+    );
+}
+
+#[test]
+fn cli_can_edit_and_copy_svg_document_text() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.file(
+        "source.svg",
+        &minimal_svg_document("source title", "source description", "source comment"),
+    );
+    let target = directory.file(
+        "target.svg",
+        &minimal_svg_document("target title", "target description", "target comment"),
+    );
+
+    for (key, value, expected) in [
+        ("SVG:Title", "edited title", "SVG:Title"),
+        ("SVG:Description", "edited description", "SVG:Description"),
+        ("SVG:Comment", "edited comment", "SVG:Comment"),
+    ] {
+        let assignment = format!("{key}={value}");
+        let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+            .args([
+                "--set",
+                &assignment,
+                target.to_str().expect("UTF-8 test path"),
+            ])
+            .output()
+            .expect("Metra CLI should start");
+        assert!(set.status.success(), "stderr: {:?}", set.stderr);
+        assert_eq!(
+            metra::read(&target)
+                .unwrap()
+                .find(expected)
+                .unwrap()
+                .display_value(),
+            value
+        );
+    }
+
+    let delete = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--delete",
+            "SVG:Comment",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(delete.status.success(), "stderr: {:?}", delete.stderr);
+    assert!(metra::read(&target).unwrap().find("SVG:Comment").is_none());
+
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            &format!("SVG:Title={}", source.to_str().expect("UTF-8 test path")),
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("SVG:Title")
+            .unwrap()
+            .display_value(),
+        "source title"
     );
 }
 

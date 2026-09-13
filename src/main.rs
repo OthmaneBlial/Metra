@@ -144,6 +144,7 @@ enum EditRequest {
     DirectMp3(Vec<metra::Mp3Edit>),
     DirectGif(Vec<metra::GifEdit>),
     DirectWebp(Vec<metra::WebpEdit>),
+    DirectSvg(Vec<metra::SvgEdit>),
     Copy { key: CopyKey, source: PathBuf },
 }
 
@@ -158,6 +159,14 @@ enum CopyKey {
     Mp3Comment,
     GifComment,
     WebpXmp,
+    SvgText(SvgTextKey),
+}
+
+#[derive(Debug)]
+enum SvgTextKey {
+    Title,
+    Description,
+    Comment,
 }
 
 fn parse_edits(
@@ -170,6 +179,9 @@ fn parse_edits(
             .split_once('=')
             .ok_or_else(|| "--set expects KEY=VALUE".to_owned())?;
         if key != "JPEG:Comment" {
+            if let Some(edit) = svg_set_edit(key, value) {
+                return Ok(Some(EditRequest::DirectSvg(vec![edit])));
+            }
             if png_xmp_key(key) {
                 return Ok(Some(EditRequest::DirectPng(vec![metra::PngEdit::SetXmp(
                     value.to_owned(),
@@ -230,6 +242,9 @@ fn parse_edits(
     }
     if let Some(key) = delete {
         if key != "JPEG:Comment" {
+            if let Some(edit) = svg_delete_edit(key) {
+                return Ok(Some(EditRequest::DirectSvg(vec![edit])));
+            }
             if png_xmp_key(key) {
                 return Ok(Some(EditRequest::DirectPng(vec![
                     metra::PngEdit::DeleteXmp,
@@ -293,6 +308,8 @@ fn parse_edits(
         }
         let key = if key == "JPEG:Comment" {
             CopyKey::JpegComment
+        } else if let Some(svg_key) = svg_text_key(key) {
+            CopyKey::SvgText(svg_key)
         } else if png_xmp_key(key) {
             CopyKey::PngXmp
         } else if let Some(keyword) = png_text_keyword(key) {
@@ -329,9 +346,36 @@ fn png_xmp_key(key: &str) -> bool {
     matches!(key, "PNG:XMP" | "PNG:iTXt:XMP")
 }
 
+fn svg_set_edit(key: &str, value: &str) -> Option<metra::SvgEdit> {
+    match key {
+        "SVG:Title" => Some(metra::SvgEdit::SetTitle(value.to_owned())),
+        "SVG:Description" => Some(metra::SvgEdit::SetDescription(value.to_owned())),
+        "SVG:Comment" => Some(metra::SvgEdit::SetComment(value.to_owned())),
+        _ => None,
+    }
+}
+
+fn svg_delete_edit(key: &str) -> Option<metra::SvgEdit> {
+    match key {
+        "SVG:Title" => Some(metra::SvgEdit::DeleteTitles),
+        "SVG:Description" => Some(metra::SvgEdit::DeleteDescriptions),
+        "SVG:Comment" => Some(metra::SvgEdit::DeleteComments),
+        _ => None,
+    }
+}
+
+fn svg_text_key(key: &str) -> Option<SvgTextKey> {
+    match key {
+        "SVG:Title" => Some(SvgTextKey::Title),
+        "SVG:Description" => Some(SvgTextKey::Description),
+        "SVG:Comment" => Some(SvgTextKey::Comment),
+        _ => None,
+    }
+}
+
 fn unsupported_edit_message(key: &str) -> String {
     format!(
-        "unsupported metadata key {key}; writable keys are JPEG:Comment, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, ID3:<text field>, GIF:Comment, or WebP:XMP"
+        "unsupported metadata key {key}; writable keys are JPEG:Comment, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
     )
 }
 
@@ -426,6 +470,7 @@ fn apply_request(paths: &[PathBuf], request: EditRequest) -> ExitCode {
         EditRequest::DirectMp3(edits) => apply_mp3_edits(paths, &edits),
         EditRequest::DirectGif(edits) => apply_gif_edits(paths, &edits),
         EditRequest::DirectWebp(edits) => apply_webp_edits(paths, &edits),
+        EditRequest::DirectSvg(edits) => apply_svg_edits(paths, &edits),
         EditRequest::Copy { key, source } => apply_copy(paths, key, &source),
     }
 }
@@ -478,6 +523,39 @@ fn apply_png_edits(paths: &[PathBuf], edits: &[metra::PngEdit]) -> ExitCode {
             Ok(metadata) => {
                 eprintln!(
                     "metra: {}: {} edits are supported only for PNG files",
+                    path.display(),
+                    metadata.file_info.format
+                );
+                failures += 1;
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", path.display());
+                failures += 1;
+            }
+        }
+    }
+    if failures == 0 {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
+fn apply_svg_edits(paths: &[PathBuf], edits: &[metra::SvgEdit]) -> ExitCode {
+    let mut failures = 0_usize;
+    for path in paths {
+        match metra::read(path) {
+            Ok(metadata) if metadata.file_info.format == metra::FileFormat::Svg => {
+                if let Err(error) = metra::rewrite_svg_path(path, ParseLimits::default(), edits) {
+                    eprintln!("metra: {}: {error}", path.display());
+                    failures += 1;
+                } else {
+                    println!("updated: {}", path.display());
+                }
+            }
+            Ok(metadata) => {
+                eprintln!(
+                    "metra: {}: {} edits are supported only for SVG files",
                     path.display(),
                     metadata.file_info.format
                 );
@@ -578,6 +656,35 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path) -> ExitCode {
             };
             let edits = [metra::PngEdit::SetXmp(packet)];
             apply_png_edits(paths, &edits)
+        }
+        CopyKey::SvgText(kind) => {
+            if source_metadata.file_info.format != metra::FileFormat::Svg {
+                eprintln!(
+                    "metra: {}: source format {} is not SVG",
+                    source.display(),
+                    source_metadata.file_info.format
+                );
+                return ExitCode::from(1);
+            }
+            let key = match kind {
+                SvgTextKey::Title => "SVG:Title",
+                SvgTextKey::Description => "SVG:Description",
+                SvgTextKey::Comment => "SVG:Comment",
+            };
+            let Some(text) = source_metadata.find(key) else {
+                eprintln!("metra: {}: source does not contain {key}", source.display());
+                return ExitCode::from(1);
+            };
+            let metra::TagValue::String(text) = &text.value else {
+                eprintln!("metra: {}: {key} is not a string", source.display());
+                return ExitCode::from(1);
+            };
+            let edit = match kind {
+                SvgTextKey::Title => metra::SvgEdit::SetTitle(text.clone()),
+                SvgTextKey::Description => metra::SvgEdit::SetDescription(text.clone()),
+                SvgTextKey::Comment => metra::SvgEdit::SetComment(text.clone()),
+            };
+            apply_svg_edits(paths, &[edit])
         }
         CopyKey::WavInfo(name) => {
             if source_metadata.file_info.format != metra::FileFormat::Wav {
