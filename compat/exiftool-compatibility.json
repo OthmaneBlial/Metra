@@ -107,7 +107,7 @@
     "ICC": {
       "read": "partial",
       "write": "planned",
-      "create": "planned",
+      "create": "partial",
       "delete": "planned",
       "lossless_rewrite": "planned",
       "streaming": "partial"
@@ -201,6 +201,7 @@
     "create_tiff_seed": "partial",
     "create_png_seed": "partial",
     "create_wav_seed": "partial",
+    "create_icc_profile": "partial",
     "validate": "supported",
     "compare": "supported",
     "exiftool_compatibility_mode": "partial"
