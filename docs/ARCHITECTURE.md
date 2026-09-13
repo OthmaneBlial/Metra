@@ -216,7 +216,7 @@ The following changes are deferred until their acceptance tests exist:
 - a typed write/create/edit operation IR on top of the existing public
   `FormatHandler` registry;
 - additional manufacturer-specific MakerNote modules beyond the bounded Nikon
-  Type 1/2, Canon, Fujifilm, Panasonic, Olympus, legacy Sony, Apple, Samsung
+  Type 1/2, Canon, Fujifilm, Panasonic, Olympus, legacy Sony, Apple, Pentax, Samsung
   STMN, and DJI readers;
 - vendor-specific RAW container structures and RAF/CR3 payload metadata beyond
   the current bounded delegation;

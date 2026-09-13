@@ -154,7 +154,7 @@
     "Samsung": "partial",
     "DJI": "partial",
     "GoPro": "partial",
-    "Pentax": "planned"
+    "Pentax": "partial"
   },
   "cli": {
     "human_readable": "supported",
