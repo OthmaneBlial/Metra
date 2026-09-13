@@ -26,6 +26,8 @@ Initial read-first foundation with narrow validated rewrites:
   rejecting custom entities and DOCTYPE declarations;
 - added validated, lossless JPEG COM replacement/deletion with same-directory
   temporary files, output re-read validation, and atomic replacement;
+- added validated JPEG APP1 XMP replacement/deletion/insertion with bounded
+  XML validation and atomic replacement;
 - added validated JPEG IPTC-IIM dataset replacement/deletion inside Photoshop
   APP13 resources while preserving unrelated Photoshop blocks;
 - exposed the supported JPEG comment edits through explicit CLI `--set` and

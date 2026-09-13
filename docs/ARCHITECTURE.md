@@ -69,9 +69,9 @@ out-of-range required read.
 
 ## Rewrite boundary
 
-The current writer surface is deliberately limited to JPEG COM segments and
-known IPTC-IIM datasets inside Photoshop APP13 resources, PNG `tEXt` chunks
-and uncompressed `iTXt` XMP chunks, GIF comment extensions, WebP `XMP ` chunks,
+The current writer surface is deliberately limited to JPEG COM segments, APP1
+XMP packets, and known IPTC-IIM datasets inside Photoshop APP13 resources, PNG
+`tEXt` chunks and uncompressed `iTXt` XMP chunks, GIF comment extensions, WebP `XMP ` chunks,
 SVG title/description/comment nodes, WAV `LIST/INFO` fields, FLAC Vorbis
 Comment key/value pairs, and common ID3v2 text/comment frames. The WebP and
 PNG writers validate replacement packets with the bounded XMP parser. The
