@@ -93,6 +93,23 @@ fn minimal_webm_with_title(title: &str) -> Vec<u8> {
     [ebml_header, tags].concat()
 }
 
+fn minimal_webm_with_info_title(title: &str) -> Vec<u8> {
+    fn element(id: &[u8], data: &[u8]) -> Vec<u8> {
+        assert!(data.len() < 127);
+        let mut output = id.to_vec();
+        output.push(0x80 | data.len() as u8);
+        output.extend_from_slice(data);
+        output
+    }
+
+    let ebml_header = element(&[0x1A, 0x45, 0xDF, 0xA3], &element(&[0x42, 0x82], b"webm"));
+    let info = element(
+        &[0x15, 0x49, 0xA9, 0x66],
+        &element(&[0x7B, 0xA9], title.as_bytes()),
+    );
+    [ebml_header, info].concat()
+}
+
 fn minimal_dng_with_make(make: &str) -> Vec<u8> {
     let mut bytes = vec![
         b'I',
@@ -327,6 +344,36 @@ fn public_generic_edit_api_rewrites_and_revalidates_matroska_tag() {
     .expect("rewritten WebM should remain readable");
     assert_eq!(
         metadata.find("Matroska:Tag:TITLE").unwrap().display_value(),
+        "new"
+    );
+}
+
+#[test]
+fn public_generic_edit_api_rewrites_and_revalidates_matroska_info_title() {
+    let bytes = minimal_webm_with_info_title("old");
+    let output = metra::rewrite_metadata_to_vec(
+        &bytes,
+        metra::FileInfo::new(
+            "memory.webm".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::set("Matroska:Title", "new")],
+    )
+    .expect("generic Matroska Info edit should validate its rewritten bytes");
+
+    let metadata = metra::read_from(
+        &mut std::io::Cursor::new(output),
+        metra::FileInfo::new(
+            "memory.webm".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+    )
+    .expect("rewritten WebM should remain readable");
+    assert_eq!(
+        metadata.find("Matroska:Title").unwrap().display_value(),
         "new"
     );
 }

@@ -498,12 +498,21 @@ pub(crate) fn collect_matroska(
     edits
         .iter()
         .map(|edit| match edit {
-            MetadataEdit::Set { key, value } => matroska_tag_name(key)
-                .map(|name| crate::MatroskaEdit::SetTag {
-                    name: name.to_owned(),
-                    value: value.clone(),
-                })
-                .ok_or_else(|| unsupported_edit(format, key)),
+            MetadataEdit::Set { key, value } => {
+                if let Some(name) = matroska_tag_name(key) {
+                    Ok(crate::MatroskaEdit::SetTag {
+                        name: name.to_owned(),
+                        value: value.clone(),
+                    })
+                } else if matroska_info_key(key) {
+                    Ok(crate::MatroskaEdit::SetString {
+                        key: key.clone(),
+                        value: value.clone(),
+                    })
+                } else {
+                    Err(unsupported_edit(format, key))
+                }
+            }
             MetadataEdit::Delete { key } => Err(unsupported_edit(format, key)),
         })
         .collect()
@@ -608,6 +617,13 @@ fn avi_info_name(key: &str) -> Option<&str> {
 fn matroska_tag_name(key: &str) -> Option<&str> {
     let name = key.strip_prefix("Matroska:Tag:")?;
     (!name.is_empty()).then_some(name)
+}
+
+fn matroska_info_key(key: &str) -> bool {
+    matches!(
+        key,
+        "Matroska:Title" | "Matroska:MuxingApp" | "Matroska:WritingApp"
+    )
 }
 
 fn pdf_info_name(key: &str) -> Option<&str> {
