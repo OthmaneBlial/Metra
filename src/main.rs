@@ -460,6 +460,13 @@ fn parse_edits(
     }
     if let Some(key) = delete {
         if key != "JPEG:Comment" {
+            if let Some(tiff_key) = tiff_ascii_key(key) {
+                return Ok(Some(EditRequest::DirectTiff(vec![
+                    metra::TiffEdit::DeleteAscii {
+                        key: tiff_key.to_owned(),
+                    },
+                ])));
+            }
             if jpeg_xmp_key(key) {
                 return Ok(Some(EditRequest::DirectJpeg(vec![
                     metra::JpegEdit::DeleteXmp,

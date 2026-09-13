@@ -300,7 +300,11 @@ pub(crate) fn collect_tiff(
                     value: value.clone(),
                 })
                 .ok_or_else(|| unsupported_edit(format, key)),
-            MetadataEdit::Delete { key } => Err(unsupported_edit(format, key)),
+            MetadataEdit::Delete { key } => tiff_ascii_key(key)
+                .map(|key| crate::TiffEdit::DeleteAscii {
+                    key: key.to_owned(),
+                })
+                .ok_or_else(|| unsupported_edit(format, key)),
         })
         .collect()
 }

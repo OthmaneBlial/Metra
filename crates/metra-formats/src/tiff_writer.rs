@@ -16,6 +16,7 @@ use crate::tiff::read_tiff;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TiffEdit {
     SetAscii { key: String, value: String },
+    DeleteAscii { key: String },
 }
 
 pub fn rewrite_tiff<R: Read + Seek, W: Write + Seek>(
@@ -167,7 +168,10 @@ fn collect_patches<R: Read + Seek>(
     let variant = read_variant(reader, file_info.size, &file_info.path)?;
     let mut patches = Vec::with_capacity(edits.len());
     for edit in edits {
-        let TiffEdit::SetAscii { key, value } = edit;
+        let (key, value) = match edit {
+            TiffEdit::SetAscii { key, value } => (key, value.as_str()),
+            TiffEdit::DeleteAscii { key } => (key, ""),
+        };
         if value.contains('\0') {
             return Err(MetraError::WriteFailure {
                 message: format!("TIFF ASCII value for {key} cannot contain NUL"),
@@ -566,6 +570,28 @@ mod tests {
             }],
         );
         assert!(matches!(result, Err(MetraError::WriteFailure { .. })));
+    }
+
+    #[test]
+    fn deletes_existing_ascii_without_changing_tiff_layout() {
+        let bytes = tiff_with_make(b"Canon\0");
+        let output = rewrite_tiff_to_vec(
+            &bytes,
+            info(&bytes),
+            ParseLimits::default(),
+            &[TiffEdit::DeleteAscii {
+                key: "EXIF:Make".to_owned(),
+            }],
+        )
+        .expect("TIFF ASCII deletion should succeed");
+        assert_eq!(output.len(), bytes.len());
+        let metadata = read_tiff(
+            &mut Cursor::new(output),
+            info(&bytes),
+            ParseLimits::default(),
+        )
+        .expect("deleted TIFF should remain readable");
+        assert!(metadata.find("EXIF:Make").is_none());
     }
 
     #[test]

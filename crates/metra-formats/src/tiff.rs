@@ -498,22 +498,25 @@ impl<R: Read + Seek> TiffParser<'_, R> {
         } else {
             Vec::new()
         };
-        metadata.add_tag(Tag {
-            namespace: definition.namespace.to_owned(),
-            group: group.to_owned(),
-            id: Some(u32::from(id)),
-            name,
-            description: Some(definition.description.to_owned()),
-            raw_value,
-            value,
-            value_type,
-            source: Source::new(
-                format!("TIFF/{group}"),
-                Some(self.absolute_start.saturating_add(entry_offset)),
-                Some(entry_size as u64),
-            ),
-            writable: false,
-        });
+        let is_empty_string = matches!(&value, TagValue::String(value) if value.is_empty());
+        if !is_empty_string {
+            metadata.add_tag(Tag {
+                namespace: definition.namespace.to_owned(),
+                group: group.to_owned(),
+                id: Some(u32::from(id)),
+                name,
+                description: Some(definition.description.to_owned()),
+                raw_value,
+                value,
+                value_type,
+                source: Source::new(
+                    format!("TIFF/{group}"),
+                    Some(self.absolute_start.saturating_add(entry_offset)),
+                    Some(entry_size as u64),
+                ),
+                writable: false,
+            });
+        }
 
         if let Some((bytes, maker_note_offset)) = maker_note {
             let make = metadata.find("EXIF:Make").and_then(|tag| match &tag.value {
