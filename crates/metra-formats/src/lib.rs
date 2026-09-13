@@ -13,6 +13,7 @@ use metra_core::{FileFormat, FileInfo, Metadata, MetraError, ParseLimits, Result
 mod flac;
 mod flac_writer;
 mod gif;
+mod gif_writer;
 mod icc;
 mod id3;
 mod id3_writer;
@@ -32,6 +33,7 @@ mod xmp;
 pub use flac::read_flac;
 pub use flac_writer::{FlacEdit, rewrite_flac, rewrite_flac_path, rewrite_flac_to_vec};
 pub use gif::read_gif;
+pub use gif_writer::{GifEdit, rewrite_gif, rewrite_gif_path, rewrite_gif_to_vec};
 pub use id3::read_mp3;
 pub use id3_writer::{Mp3Edit, rewrite_mp3, rewrite_mp3_path, rewrite_mp3_to_vec};
 pub use isobmff::read_isobmff;
