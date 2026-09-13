@@ -42,7 +42,14 @@
     "MOV": { "read": "partial", "write": "planned", "streaming": "partial" },
     "M4A": { "read": "partial", "write": "planned", "streaming": "partial" },
     "PDF": { "read": "partial", "write": "planned", "streaming": "partial" },
-    "MP3": { "read": "partial", "write": "planned", "streaming": "partial" },
+    "MP3": {
+      "read": "partial",
+      "write": "partial",
+      "create": "planned",
+      "delete": "partial",
+      "lossless_rewrite": "partial",
+      "streaming": "partial"
+    },
     "FLAC": {
       "read": "partial",
       "write": "partial",

@@ -31,6 +31,8 @@ Initial read-first foundation with narrow validated rewrites:
   repair, streamed audio chunks, and atomic target replacement;
 - added validated FLAC Vorbis Comment replacement/deletion/copy while
   preserving other metadata blocks and audio frames;
+- added validated ID3v2 text/comment replacement/deletion/copy for common
+  fields while preserving other frames, padding, and MPEG audio bytes;
 - added bounded `--jobs` batch inspection with deterministic result ordering;
 - expanded ISO-BMFF inspection with `ispe` dimensions, item/handler fields,
   and direct XMP/EXIF decoding when the metadata boxes are available;

@@ -68,14 +68,16 @@ out-of-range required read.
 ## Rewrite boundary
 
 The current writer surface is deliberately limited to JPEG COM segments, PNG
-`tEXt` chunks, WAV `LIST/INFO` fields, and FLAC Vorbis Comment key/value pairs.
-Each library writer validates its source through the reader before writing,
-streams the original container while preserving untargeted bytes, validates
-the temporary output with the reader again, syncs it, and atomically renames a
-same-directory temporary file. The CLI exposes `--set`/`--delete`/`--copy` for
-`JPEG:Comment`, `PNG:Text:<keyword>`, `WAV:<INFO field>`, and
-`FLAC:<Vorbis field>`; generic tag mutation and other format writers remain
-deferred until their round-trip acceptance tests exist.
+`tEXt` chunks, WAV `LIST/INFO` fields, FLAC Vorbis Comment key/value pairs, and
+common ID3v2 text/comment frames. The ID3 writer requires a tag without
+unsynchronization, extended-header, or footer flags. Each library writer
+validates its source through the reader before writing, streams the original
+container while preserving untargeted bytes, validates the temporary output
+with the reader again, syncs it, and atomically renames a same-directory
+temporary file. The CLI exposes `--set`/`--delete`/`--copy` for
+`JPEG:Comment`, `PNG:Text:<keyword>`, `WAV:<INFO field>`,
+`FLAC:<Vorbis field>`, and `ID3:<text field>`; generic tag mutation and other
+format writers remain deferred until their round-trip acceptance tests exist.
 
 ## Output contract
 
