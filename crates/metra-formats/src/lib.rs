@@ -17,6 +17,7 @@ mod id3;
 mod iptc;
 mod isobmff;
 mod jpeg;
+mod pdf;
 mod png;
 mod tiff;
 mod webp;
@@ -27,6 +28,7 @@ pub use gif::read_gif;
 pub use id3::read_mp3;
 pub use isobmff::read_isobmff;
 pub use jpeg::read_jpeg;
+pub use pdf::read_pdf;
 pub use png::read_png;
 pub use tiff::read_tiff;
 pub use webp::read_webp;
@@ -150,6 +152,7 @@ pub fn read_path_with_limits(path: impl AsRef<Path>, limits: ParseLimits) -> Res
         | FileFormat::M4a => isobmff::read_isobmff(&mut file, file_info, limits),
         FileFormat::Mp3 => id3::read_mp3(&mut file, file_info, limits),
         FileFormat::Flac => flac::read_flac(&mut file, file_info, limits),
+        FileFormat::Pdf => pdf::read_pdf(&mut file, file_info, limits),
         format => Err(MetraError::UnsupportedFormat {
             description: format!("{format} is detected but its reader is not implemented yet"),
         }),
