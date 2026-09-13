@@ -43,7 +43,7 @@
     "M4A": { "read": "partial", "write": "planned", "streaming": "partial" },
     "PDF": { "read": "planned", "write": "planned" },
     "MP3": { "read": "partial", "write": "planned", "streaming": "partial" },
-    "FLAC": { "read": "planned", "write": "planned" }
+    "FLAC": { "read": "partial", "write": "planned", "streaming": "partial" }
   },
   "metadata_families": {
     "EXIF": "partial",
@@ -55,7 +55,8 @@
     "Photoshop_IRB": "partial",
     "MakerNotes": "planned",
     "ID3": "partial",
-    "QuickTime": "partial"
+    "QuickTime": "partial",
+    "VorbisComments": "partial"
   },
   "cli": {
     "human_readable": "supported",

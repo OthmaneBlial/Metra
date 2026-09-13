@@ -32,13 +32,15 @@ Implemented today:
 | GIF | GIF87a/GIF89a headers, logical-screen dimensions, comments, and bounded extension validation |
 | ISO-BMFF | HEIF/AVIF/MP4/MOV/M4A brand detection, bounded box walking, and QuickTime-style `ilst` text metadata |
 | MP3 | ID3v2.2/v2.3/v2.4 text, comments, lyrics, attached-picture metadata, ID3v1 fallback, and first MPEG frame properties |
+| FLAC | `STREAMINFO`, Vorbis comments, embedded-picture properties/data, and bounded metadata-block validation |
 | Output | Human-readable text, one JSON document, or JSON Lines; schema version `1` |
 | Safety | Checked offsets, bounded reads, recursion and entry limits, deterministic recursive traversal, and structured warnings |
 
 Writing, creation, deletion, metadata copying, MakerNotes interpretation, and
 full media and ExifTool compatibility are intentionally not advertised as
-implemented yet. PDF, FLAC, and manufacturer-specific MakerNotes are still
-planned; MP3 and ID3 are only partially covered. Their boundaries are tracked in
+implemented yet. PDF and manufacturer-specific MakerNotes are still planned;
+MP3/ID3 and FLAC/Vorbis comments are only partially covered. Their boundaries
+are tracked in
 [`compat/exiftool-compatibility.json`](compat/exiftool-compatibility.json).
 
 ## Quick start
@@ -133,7 +135,7 @@ not claim complete ExifTool compatibility.
 
 1. Expand the read model and generated tag definitions without losing raw data.
 2. Add corpus and differential tests for JPEG/TIFF/PNG/WebP edge cases.
-3. Deepen HEIF/AVIF and media container readers, then add MP3/FLAC/PDF readers.
+3. Deepen HEIF/AVIF and media container readers, then add PDF readers.
 4. Expand XMP/IPTC/ICC/ID3 coverage and add isolated MakerNote namespaces.
 5. Design read-modify-write with validation, temporary files, and atomic replace.
 6. Add carefully scoped set/delete/copy commands only after round-trip tests.

@@ -40,6 +40,8 @@ reader walks bounded boxes and exposes brands plus a conservative subset of
 QuickTime-style `ilst` text items.
 The MP3 reader handles bounded ID3v2 frame tables, ID3v1 fixed fields, and a
 single MPEG frame header without decoding audio payloads.
+The FLAC reader validates the metadata-block chain and decodes STREAMINFO,
+Vorbis comments, and bounded PICTURE blocks without touching audio frames.
 
 ## Parser invariants
 
