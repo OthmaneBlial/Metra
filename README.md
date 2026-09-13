@@ -135,7 +135,9 @@ The JSON schema is versioned at the document level:
 Consumers should use `namespace` plus canonical `name` (for example
 `EXIF:DateTimeOriginal`) or `find_by_id` when a format-level numeric identifier
 is available, rather than relying on human display text. The shared tag catalog
-is intentionally partial and will grow through generated definitions.
+is intentionally partial and will grow through generated definitions. IPTC-IIM
+tags retain their numeric dataset identifiers, so `find_by_id("IPTC", 25)` and
+structured output remain stable even when repeated values are represented as arrays.
 
 ## Architecture
 
@@ -191,7 +193,7 @@ Avancement global vérifié : **77 %**. Ce chiffre est une moyenne indicative de
 huit axes ci-dessous, calculée uniquement sur le code et les tests présents ; il
 ne représente pas un pourcentage de compatibilité ExifTool.
 
-1. **84 %** — Étendre le modèle de lecture et les définitions de tags sans perdre les données brutes ; les dérivés GPS valident maintenant les références, les plages et les conversions altitude/direction/temps/vitesse.
+1. **86 %** — Étendre le modèle de lecture et les définitions de tags sans perdre les données brutes ; les dérivés GPS valident maintenant les références, les plages et les conversions altitude/direction/temps/vitesse, et les datasets IPTC-IIM lus conservent leur identifiant numérique stable.
 2. **30 %** — Ajouter des corpus réels et des tests différentiels JPEG/TIFF/PNG/WebP ; le harnais opt-in est présent, mais aucune exécution de corpus réel n’est comptée.
 3. **90 %** — Approfondir HEIF/AVIF et les conteneurs média, puis couvrir les lecteurs restants.
 4. **90 %** — Étendre XMP/IPTC/ICC/ID3 et isoler les espaces MakerNote ; XMP est maintenant réécrit de façon bornée pour JPEG APP1, WebP et PNG, les datasets IPTC-IIM connus peuvent être réécrits dans les ressources Photoshop APP13, les profils ICC fragmentés JPEG, PNG `iCCP` et WebP `ICCP` sont inspectés sous limites, les références XML sûres sont décodées sans entités personnalisées, les textes PNG compressés sont déployés sous budget, et les champs texte/commentaires ID3v2 courants restent sous limites explicites.

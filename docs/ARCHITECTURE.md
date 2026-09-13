@@ -22,7 +22,8 @@ This crate owns stable, format-independent types:
 - explicit parser resource limits.
 
 The model preserves a canonical tag name and underlying numeric identifier when
-available. Display formatting is a presentation concern and is not a lookup
+available. TIFF/EXIF numeric IDs and IPTC-IIM dataset numbers are retained by
+their readers. Display formatting is a presentation concern and is not a lookup
 contract.
 
 ### `metra-formats`
