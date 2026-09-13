@@ -199,6 +199,11 @@ writer_adapter!(
     super::edit::collect_psd
 );
 writer_adapter!(
+    write_avi,
+    super::avi_writer::rewrite_avi,
+    super::edit::collect_avi
+);
+writer_adapter!(
     write_wav,
     super::wav_writer::rewrite_wav,
     super::edit::collect_wav
@@ -266,6 +271,11 @@ static FORMAT_HANDLERS: &[RegisteredFormatHandler] = &[
         writer: Some(write_psd),
     },
     RegisteredFormatHandler {
+        format: FileFormat::Avi,
+        reader: read_avi,
+        writer: Some(write_avi),
+    },
+    RegisteredFormatHandler {
         format: FileFormat::Gif,
         reader: read_gif,
         writer: Some(write_gif),
@@ -303,11 +313,6 @@ static FORMAT_HANDLERS: &[RegisteredFormatHandler] = &[
     RegisteredFormatHandler {
         format: FileFormat::Xmp,
         reader: read_xmp,
-        writer: None,
-    },
-    RegisteredFormatHandler {
-        format: FileFormat::Avi,
-        reader: read_avi,
         writer: None,
     },
     RegisteredFormatHandler {

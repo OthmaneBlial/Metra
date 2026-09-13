@@ -71,6 +71,7 @@ pub fn rewrite_metadata_path(
         FileFormat::Svg => crate::rewrite_svg_path(path, limits, &collect_svg(edits, format)?),
         FileFormat::Pdf => crate::rewrite_pdf_path(path, limits, &collect_pdf(edits, format)?),
         FileFormat::Psd => crate::rewrite_psd_path(path, limits, &collect_psd(edits, format)?),
+        FileFormat::Avi => crate::rewrite_avi_path(path, limits, &collect_avi(edits, format)?),
         _ => Err(unsupported_format(format)),
     }
 }
@@ -142,6 +143,9 @@ pub fn rewrite_metadata_to_vec(
         }
         FileFormat::Psd => {
             crate::rewrite_psd_to_vec(bytes, file_info, limits, &collect_psd(edits, detected)?)
+        }
+        FileFormat::Avi => {
+            crate::rewrite_avi_to_vec(bytes, file_info, limits, &collect_avi(edits, detected)?)
         }
         _ => Err(unsupported_format(detected)),
     }
@@ -451,6 +455,24 @@ pub(crate) fn collect_psd(
         .collect()
 }
 
+pub(crate) fn collect_avi(
+    edits: &[MetadataEdit],
+    format: FileFormat,
+) -> Result<Vec<crate::AviEdit>> {
+    edits
+        .iter()
+        .map(|edit| match edit {
+            MetadataEdit::Set { key, value } => avi_info_name(key)
+                .map(|name| crate::AviEdit::SetInfo {
+                    name: name.to_owned(),
+                    value: value.clone(),
+                })
+                .ok_or_else(|| unsupported_edit(format, key)),
+            MetadataEdit::Delete { key } => Err(unsupported_edit(format, key)),
+        })
+        .collect()
+}
+
 pub(crate) fn collect_wav(
     edits: &[MetadataEdit],
     format: FileFormat,
@@ -528,6 +550,23 @@ fn webp_xmp_key(key: &str) -> bool {
 
 fn psd_xmp_key(key: &str) -> bool {
     matches!(key, "PSD:XMP" | "PSD:ImageResources:XMP" | "XMP:Packet")
+}
+
+fn avi_info_name(key: &str) -> Option<&str> {
+    let name = key.strip_prefix("AVI:")?;
+    matches!(
+        name,
+        "Title"
+            | "Artist"
+            | "Comment"
+            | "Copyright"
+            | "Software"
+            | "Genre"
+            | "Product"
+            | "Keywords"
+            | "DateTime"
+    )
+    .then_some(name)
 }
 
 fn pdf_info_name(key: &str) -> Option<&str> {

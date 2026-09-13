@@ -49,6 +49,28 @@ fn minimal_psd_with_xmp(format: &str) -> Vec<u8> {
     bytes
 }
 
+fn minimal_avi_with_title(title: &str) -> Vec<u8> {
+    let mut info_chunk = b"INAM".to_vec();
+    info_chunk.extend_from_slice(&(title.len() as u32).to_le_bytes());
+    info_chunk.extend_from_slice(title.as_bytes());
+    if title.len() % 2 == 1 {
+        info_chunk.push(0);
+    }
+    let mut info_payload = b"INFO".to_vec();
+    info_payload.extend_from_slice(&info_chunk);
+    let mut info_list = b"LIST".to_vec();
+    info_list.extend_from_slice(&(info_payload.len() as u32).to_le_bytes());
+    info_list.extend_from_slice(&info_payload);
+    if info_payload.len() % 2 == 1 {
+        info_list.push(0);
+    }
+    let mut bytes = b"RIFF".to_vec();
+    bytes.extend_from_slice(&((4 + info_list.len()) as u32).to_le_bytes());
+    bytes.extend_from_slice(b"AVI ");
+    bytes.extend_from_slice(&info_list);
+    bytes
+}
+
 #[test]
 fn public_reader_api_detects_and_dispatches_in_memory_tiff() {
     let bytes = b"II*\0\0\0\0\0";
@@ -194,6 +216,33 @@ fn public_generic_edit_api_rewrites_and_revalidates_psd_xmp() {
         metadata.find("XMP:dc:format").unwrap().display_value(),
         "new"
     );
+}
+
+#[test]
+fn public_generic_edit_api_rewrites_and_revalidates_avi_info() {
+    let bytes = minimal_avi_with_title("old");
+    let output = metra::rewrite_metadata_to_vec(
+        &bytes,
+        metra::FileInfo::new(
+            "memory.avi".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::set("AVI:Title", "new")],
+    )
+    .expect("generic AVI edit should validate its rewritten bytes");
+
+    let metadata = metra::read_from(
+        &mut std::io::Cursor::new(output),
+        metra::FileInfo::new(
+            "memory.avi".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+    )
+    .expect("rewritten AVI should remain readable");
+    assert_eq!(metadata.find("AVI:Title").unwrap().display_value(), "new");
 }
 
 #[test]
