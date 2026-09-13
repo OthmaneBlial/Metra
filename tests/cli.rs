@@ -343,6 +343,18 @@ fn minimal_webm() -> Vec<u8> {
     .concat()
 }
 
+fn minimal_raw_tiff() -> Vec<u8> {
+    let mut tiff = vec![
+        b'I', b'I', 42, 0, 8, 0, 0, 0, // little-endian TIFF header
+        1, 0, // one IFD0 entry
+        0x0F, 0x01, 2, 0, 5, 0, 0, 0, 26, 0, 0, 0, // Make -> offset 26
+        0, 0, 0, 0, // no next IFD
+    ];
+    assert_eq!(tiff.len(), 26);
+    tiff.extend_from_slice(b"Sony\0");
+    tiff
+}
+
 fn run(args: &[&Path]) -> std::process::Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_metra"));
     for path in args {
@@ -609,6 +621,32 @@ fn webm_json_output_exposes_bounded_ebml_metadata() {
     assert!(
         tags.iter()
             .any(|tag| tag["name"] == "Tag:TITLE" && tag["value"]["string"] == "Sample")
+    );
+}
+
+#[test]
+fn dng_path_uses_raw_identity_and_tiff_metadata() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.file("capture.dng", &minimal_raw_tiff());
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args(["--json", path.to_str().expect("UTF-8 test path")])
+        .output()
+        .expect("Metra CLI should start");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let document: Value = serde_json::from_slice(&output.stdout).expect("JSON output should parse");
+    assert_eq!(document["file_info"]["format"], "RAW");
+    assert_eq!(document["file_info"]["mime_type"], "image/x-raw");
+    let tags = document["tags"]
+        .as_array()
+        .expect("tags should be an array");
+    assert!(
+        tags.iter()
+            .any(|tag| tag["name"] == "Variant" && tag["value"]["string"] == "DNG")
+    );
+    assert!(
+        tags.iter()
+            .any(|tag| tag["name"] == "Make" && tag["namespace"] == "EXIF")
     );
 }
 
