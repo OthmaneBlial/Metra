@@ -12,6 +12,7 @@ use metra_core::{FileFormat, FileInfo, Metadata, MetraError, ParseLimits, Result
 
 mod gif;
 mod icc;
+mod id3;
 mod iptc;
 mod isobmff;
 mod jpeg;
@@ -21,6 +22,7 @@ mod webp;
 mod xmp;
 
 pub use gif::read_gif;
+pub use id3::read_mp3;
 pub use isobmff::read_isobmff;
 pub use jpeg::read_jpeg;
 pub use png::read_png;
@@ -78,6 +80,16 @@ pub fn detect_format(bytes: &[u8]) -> Option<DetectedFormat> {
             format: FileFormat::Gif,
             signature: "GIF header",
         })
+    } else if bytes.starts_with(b"ID3") {
+        Some(DetectedFormat {
+            format: FileFormat::Mp3,
+            signature: "ID3 header",
+        })
+    } else if bytes.len() >= 2 && bytes[0] == 0xFF && bytes[1] & 0xE0 == 0xE0 {
+        Some(DetectedFormat {
+            format: FileFormat::Mp3,
+            signature: "MPEG audio frame sync",
+        })
     } else {
         None
     }
@@ -129,6 +141,7 @@ pub fn read_path_with_limits(path: impl AsRef<Path>, limits: ParseLimits) -> Res
         | FileFormat::Mp4
         | FileFormat::Mov
         | FileFormat::M4a => isobmff::read_isobmff(&mut file, file_info, limits),
+        FileFormat::Mp3 => id3::read_mp3(&mut file, file_info, limits),
         format => Err(MetraError::UnsupportedFormat {
             description: format!("{format} is detected but its reader is not implemented yet"),
         }),
@@ -154,5 +167,13 @@ mod tests {
             FileFormat::Tiff
         );
         assert!(detect_format(b"photo.jpg").is_none());
+        assert_eq!(
+            detect_format(b"ID3\x04\0\0\0\0\0\0\0").unwrap().format,
+            FileFormat::Mp3
+        );
+        assert_eq!(
+            detect_format(b"\xFF\xFB\x90\x64").unwrap().format,
+            FileFormat::Mp3
+        );
     }
 }
