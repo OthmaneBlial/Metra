@@ -161,7 +161,10 @@ fn png_chunk(kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
 
 fn minimal_png(comment: &str) -> Vec<u8> {
     let mut bytes = b"\x89PNG\r\n\x1A\n".to_vec();
-    bytes.extend_from_slice(&png_chunk(b"IHDR", &[0; 13]));
+    bytes.extend_from_slice(&png_chunk(
+        b"IHDR",
+        &[0, 0, 2, 0, 0, 0, 2, 0, 8, 2, 0, 0, 0],
+    ));
     bytes.extend_from_slice(&png_chunk(
         b"tEXt",
         format!("Comment\0{comment}").as_bytes(),
@@ -177,7 +180,10 @@ fn minimal_png_xmp(format: &str) -> Vec<u8> {
     let mut itxt = b"XML:com.adobe.xmp\0\0\0\0\0".to_vec();
     itxt.extend_from_slice(xmp.as_bytes());
     let mut bytes = b"\x89PNG\r\n\x1A\n".to_vec();
-    bytes.extend_from_slice(&png_chunk(b"IHDR", &[0; 13]));
+    bytes.extend_from_slice(&png_chunk(
+        b"IHDR",
+        &[0, 0, 2, 0, 0, 0, 2, 0, 8, 2, 0, 0, 0],
+    ));
     bytes.extend_from_slice(&png_chunk(b"iTXt", &itxt));
     bytes.extend_from_slice(&png_chunk(b"IDAT", &[1, 2, 3, 4]));
     bytes.extend_from_slice(&png_chunk(b"IEND", &[]));
