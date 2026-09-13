@@ -67,10 +67,10 @@
     },
     "OGG": {
       "read": "partial",
-      "write": "planned",
+      "write": "partial",
       "create": "planned",
-      "delete": "planned",
-      "lossless_rewrite": "planned",
+      "delete": "partial",
+      "lossless_rewrite": "partial",
       "streaming": "partial"
     },
     "WAV": { "read": "partial", "write": "partial", "delete": "partial", "lossless_rewrite": "partial", "streaming": "partial" },

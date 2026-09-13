@@ -42,8 +42,8 @@ expansion and nesting limits before being enabled.
 
 Only JPEG comment, bounded APP1 XMP, and known IPTC-IIM datasets in Photoshop
 APP13 resources, PNG `tEXt` and uncompressed `iTXt` XMP, GIF comments, WebP XMP, SVG
-title/description/comments, WAV `LIST/INFO`, FLAC Vorbis Comment, Ogg metadata
-inspection, common
+title/description/comments, WAV `LIST/INFO`, FLAC Vorbis Comment, Ogg Vorbis/Opus
+comment packet rewrites, common
 ID3v2 text/comment replacement/deletion/copy, bounded TIFF ASCII copy,
 existing ISO-BMFF text replacement/copy, and bounded Canon MakerNote IFD
 inspection are implemented, through the
@@ -53,6 +53,8 @@ validate the dataset allowlist, NUL-free values, resource sizes, and APP13
 segment limits; unrelated Photoshop resources are preserved. SVG replacement
 values are XML-escaped, and comment writes reject `--` and a trailing `-` so
 the resulting document remains valid XML.
+Ogg rewrites retain page boundaries, recalculate CRCs, preserve opaque packet
+bytes, and refuse packet growth unless the existing bounded packet can hold it.
 ID3v2
 unsynchronization, extended headers, and footers are rejected by the writer
 until their round-trip handling is implemented.

@@ -122,7 +122,10 @@ ASCII value slots, existing ISO-BMFF QuickTime text item values, JPEG COM segmen
 XMP packets, and known IPTC-IIM datasets inside Photoshop APP13 resources, PNG
 `tEXt` chunks and uncompressed `iTXt` XMP chunks, GIF comment extensions, WebP `XMP ` chunks,
 SVG title/description/comment nodes, WAV `LIST/INFO` fields, FLAC Vorbis
-Comment key/value pairs, and common ID3v2 text/comment frames. TIFF ASCII
+Comment key/value pairs, Ogg Vorbis/Opus comment packets, and common ID3v2 text/comment frames. Ogg
+rewrites preserve the existing packet size and page layout, recompute page CRCs, and refuse
+growth that cannot fit in the original packet; deletions use bounded Vorbis padding when
+available. Ogg-FLAC comment-block writing and new packet/page creation remain planned. TIFF ASCII
 values can be copied from a validated TIFF-like source into an existing target
 slot when the target field has enough storage. The WebP and
 PNG writers validate replacement packets with the bounded XMP parser. The

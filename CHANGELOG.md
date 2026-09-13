@@ -21,6 +21,9 @@ Initial read-first foundation with narrow validated rewrites:
   audio-frame properties;
 - added FLAC STREAMINFO, Vorbis comments, embedded-picture inspection, and
   bounded metadata-block validation;
+- added bounded Ogg Vorbis/Opus comment replacement, deletion, and copy with
+  page CRC regeneration, same-packet-size preservation, output validation, and
+  atomic replacement;
 - added bounded PDF Info/XMP inspection and RIFF/WAVE format, INFO, and BWF
   metadata readers;
 - added bounded SVG XML inspection for root geometry, document text, and safe
