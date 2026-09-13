@@ -178,8 +178,10 @@ The AVI writer accepts existing known `LIST/INFO` string chunks, writes only
 within their allocated payloads, preserves a NUL terminator when space exists,
 and never changes RIFF chunk sizes or media data.
 The Matroska/WebM writer accepts existing `Info` title/app strings and
-`SimpleTag` string values, writes only within their allocated EBML payloads, and never changes element widths, tag
-names, or media payloads.
+`SimpleTag` string values, writes only within their allocated EBML payloads, and
+never changes element widths, tag names, or media payloads. Set operations replace
+text in place; delete operations zero-fill the selected payload so the reader no
+longer exposes that field without changing the EBML structure.
 The RAW adapter accepts TIFF-like variants (DNG, CR2, NEF, ARW, ORF, RW2, and
 PEF), delegates slot validation to the TIFF writer, and revalidates through the
 RAW reader. A separate CR3 adapter requires the RAW reader to identify the
