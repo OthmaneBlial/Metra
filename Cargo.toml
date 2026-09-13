@@ -1,0 +1,37 @@
+[package]
+name = "metra"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+description = "Fast, safe metadata inspection powered by Rust"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/OthmaneBlial/Metra"
+keywords = ["metadata", "exif", "jpeg", "tiff", "cli"]
+categories = ["command-line-utilities", "multimedia::images"]
+
+[workspace]
+members = [
+    ".",
+    "crates/metra-core",
+    "crates/metra-formats",
+]
+resolver = "3"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+metra-core = { path = "crates/metra-core" }
+metra-formats = { path = "crates/metra-formats" }
+serde.workspace = true
+serde_json.workspace = true
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"

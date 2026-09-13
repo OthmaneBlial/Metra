@@ -1,0 +1,11 @@
+[package]
+name = "metra-formats"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Metadata format detection and defensive JPEG/TIFF/EXIF readers"
+
+[dependencies]
+metra-core = { path = "../metra-core" }
+thiserror.workspace = true
