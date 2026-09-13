@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "project_version": "0.1.0",
+  "policy": "Only behavior covered by tests is marked supported.",
+  "formats": {
+    "JPEG": {
+      "read": "partial",
+      "write": "planned",
+      "create": "planned",
+      "delete": "planned",
+      "lossless_rewrite": "planned",
+      "streaming": "partial"
+    },
+    "TIFF": {
+      "read": "partial",
+      "write": "planned",
+      "create": "planned",
+      "delete": "planned",
+      "lossless_rewrite": "planned",
+      "streaming": "partial"
+    },
+    "PNG": {
+      "read": "partial",
+      "write": "planned",
+      "create": "planned",
+      "delete": "planned",
+      "lossless_rewrite": "planned",
+      "streaming": "partial"
+    },
+    "WebP": {
+      "read": "partial",
+      "write": "planned",
+      "create": "planned",
+      "delete": "planned",
+      "lossless_rewrite": "planned",
+      "streaming": "partial"
+    },
+    "HEIF": { "read": "planned", "write": "planned" },
+    "AVIF": { "read": "planned", "write": "planned" },
+    "GIF": { "read": "planned", "write": "planned" },
+    "MP4": { "read": "planned", "write": "planned" },
+    "MOV": { "read": "planned", "write": "planned" },
+    "PDF": { "read": "planned", "write": "planned" },
+    "MP3": { "read": "planned", "write": "planned" },
+    "FLAC": { "read": "planned", "write": "planned" }
+  },
+  "metadata_families": {
+    "EXIF": "partial",
+    "GPS": "partial",
+    "JFIF": "partial",
+    "XMP": "planned",
+    "IPTC": "planned",
+    "ICC": "planned",
+    "Photoshop_IRB": "planned",
+    "MakerNotes": "planned",
+    "ID3": "planned",
+    "QuickTime": "planned"
+  },
+  "cli": {
+    "human_readable": "supported",
+    "json": "supported",
+    "jsonl": "supported",
+    "set": "planned",
+    "delete": "planned",
+    "copy": "planned",
+    "exiftool_compatibility_mode": "planned"
+  }
+}

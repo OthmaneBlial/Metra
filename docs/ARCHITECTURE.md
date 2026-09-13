@@ -1,0 +1,75 @@
+# Metra architecture
+
+## Design goals
+
+Metra is designed as a Rust library first. The binary in `src/main.rs` reads
+files through the public root facade and only owns argument parsing, traversal,
+rendering, and exit status. Format code must not shell out to an external
+metadata executable.
+
+## Current boundaries
+
+### `metra-core`
+
+This crate owns stable, format-independent types:
+
+- `Metadata` and `FileInfo`;
+- namespace-aware `Tag` records;
+- typed `TagValue` variants, including rationals, arrays, bytes, and unknowns;
+- structured `Warning` values;
+- `MetraError` categories;
+- explicit parser resource limits.
+
+The model preserves a canonical tag name and underlying numeric identifier when
+available. Display formatting is a presentation concern and is not a lookup
+contract.
+
+### `metra-formats`
+
+This crate owns magic-byte detection and format-specific readers. Readers are
+separate modules rather than one parser with format-specific branches spread
+through the CLI.
+
+The TIFF reader is the low-level building block for EXIF in JPEG, PNG, and
+WebP. It accepts a bounded random-access region, so embedded offsets remain
+relative to the correct TIFF payload while source offsets can still be
+reported against the containing file.
+
+## Parser invariants
+
+Every untrusted size or offset must satisfy all of the following before use:
+
+1. checked arithmetic succeeds;
+2. the resulting range is inside the declared input region;
+3. the allocation is within `ParseLimits`;
+4. recursion, entry, chunk, or segment counters remain within their limits.
+
+Malformed embedded metadata is recoverable at the container layer when safe:
+the reader adds a warning and retains tags already extracted from other blocks.
+Standalone TIFF parsing returns a structured error for an invalid root header or
+out-of-range required read.
+
+## Output contract
+
+JSON documents include `schema_version`. The schema is intentionally small and
+typed rather than a flattened map. A future schema change must either preserve
+version `1` semantics or increment the version and document the migration.
+
+For multiple files, `--json` emits an array of successful metadata documents;
+`--jsonl` emits one document per successful file. Errors are sent to stderr and
+produce a non-zero exit code.
+
+## Planned seams
+
+The following changes are deferred until their acceptance tests exist:
+
+- a generated tag-definition database instead of a growing handwritten table;
+- a `FormatHandler` capability abstraction once write/create behavior creates
+  meaningful shared operations;
+- independent XMP/RDF, IPTC, and ICC modules;
+- manufacturer-specific MakerNote modules;
+- a lossless block-preservation layer for safe rewrites;
+- controlled worker parallelism with deterministic output ordering.
+
+Deferring a seam is not a compatibility claim. The compatibility matrix records
+the actual state for each capability.
