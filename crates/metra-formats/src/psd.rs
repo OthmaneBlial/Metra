@@ -664,6 +664,26 @@ mod tests {
         output
     }
 
+    fn exif_resource() -> Vec<u8> {
+        let mut bytes = vec![b'I', b'I', 42, 0, 8, 0, 0, 0, 1, 0];
+        bytes.extend_from_slice(&0x010F_u16.to_le_bytes());
+        bytes.extend_from_slice(&2_u16.to_le_bytes());
+        bytes.extend_from_slice(&6_u32.to_le_bytes());
+        bytes.extend_from_slice(&26_u32.to_le_bytes());
+        bytes.extend_from_slice(&[0, 0, 0, 0]);
+        bytes.extend_from_slice(b"Canon\0");
+        bytes
+    }
+
+    fn icc_resource() -> Vec<u8> {
+        let mut bytes = vec![0_u8; 132];
+        bytes[..4].copy_from_slice(&132_u32.to_be_bytes());
+        bytes[8..10].copy_from_slice(&[4, 0x30]);
+        bytes[16..20].copy_from_slice(b"RGB ");
+        bytes[36..40].copy_from_slice(b"acsp");
+        bytes
+    }
+
     #[test]
     fn reads_psd_header_and_common_image_resources() {
         let xmp = br#"<x:xmpmeta xmlns:x="adobe:ns:meta/"/>"#;
@@ -694,6 +714,40 @@ mod tests {
         assert_eq!(
             metadata.find("Photoshop:URL").unwrap().value,
             TagValue::String("https://metra.test".to_owned())
+        );
+    }
+
+    #[test]
+    fn delegates_embedded_iptc_icc_and_exif_resources() {
+        let iptc = [0x1C, 2, 25, 0, 7]
+            .into_iter()
+            .chain(b"keyword".iter().copied())
+            .collect::<Vec<_>>();
+        let bytes = psd(&[
+            resource(0x0404, &iptc),
+            resource(0x040F, &icc_resource()),
+            resource(0x0422, &exif_resource()),
+        ]
+        .concat());
+        let info = FileInfo::new(
+            "embedded.psd".into(),
+            bytes.len() as u64,
+            metra_core::FileFormat::Psd,
+        );
+        let metadata = read_psd(&mut Cursor::new(bytes), info, ParseLimits::default())
+            .expect("embedded PSD resources should parse");
+
+        assert_eq!(
+            metadata.find("IPTC:Keywords").unwrap().value,
+            TagValue::String("keyword".to_owned())
+        );
+        assert_eq!(
+            metadata.find("ICC:ColorSpace").unwrap().value,
+            TagValue::String("RGB".to_owned())
+        );
+        assert_eq!(
+            metadata.find("EXIF:Make").unwrap().value,
+            TagValue::String("Canon".to_owned())
         );
     }
 
