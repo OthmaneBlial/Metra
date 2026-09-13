@@ -29,6 +29,8 @@ Initial read-first foundation with narrow validated rewrites:
   duration, quality, and frame-bound fields without loading video frames;
 - decoded AVI video `strf` bitmap properties and audio `strf` format fields
   after bounded stream-type dispatch, without loading media frames;
+- decoded ISO-BMFF `mvhd` movie timing and `tkhd` track identifiers, durations,
+  fixed-point dimensions, and track properties without loading media payloads;
 - added bounded Ogg Vorbis/Opus comment replacement, deletion, and copy with
   page CRC regeneration, same-packet-size preservation, output validation, and
   atomic replacement;

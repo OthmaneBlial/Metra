@@ -69,9 +69,10 @@ The PSD reader validates PSD/PSB sections, emits typed header properties, and
 delegates bounded XMP, IPTC, ICC, and embedded EXIF resources to the shared
 readers. Unknown Photoshop resources remain available as bounded byte values;
 layer and pixel data are skipped. The ISO-BMFF reader walks bounded boxes and
-exposes brands, dimensions, channel depths, orientation, pixel aspect ratio,
-nclx color properties, auxiliary item types, direct XMP/EXIF boxes, and a
-conservative subset of QuickTime-style `ilst` text items. HEIF/AVIF property
+exposes brands, `mvhd` movie timing, `tkhd` track identifiers/durations/fixed-
+point dimensions, image dimensions, channel depths, orientation, pixel aspect
+ratio, nclx color properties, auxiliary item types, direct XMP/EXIF boxes, and
+a conservative subset of QuickTime-style `ilst` text items. HEIF/AVIF property
 containers (`iprp`/`ipco`) are traversed with the same recursion and payload
 budgets as top-level boxes.
 The WebP reader extracts dimensions from the extended `VP8X` canvas and the
