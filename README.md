@@ -38,7 +38,7 @@ Implemented today:
 | WAV | RIFF/WAVE chunks, `fmt ` audio properties, `LIST/INFO`, Broadcast Wave `bext`, and bounded validation |
 | SVG | Bounded XML detection, root dimensions/version/viewBox, title, description, comments, nesting/text limits, and safe document-text rewrites |
 | PSD/PSB | Big-endian header and dimensions, bounded Photoshop image resources, XMP/IPTC/ICC/embedded EXIF delegation, resolution and common resource fields, and preservation of unknown resources as bytes |
-| RAW | DNG and TIFF-like CR2/NEF/ARW/ORF/RW2/PEF containers reuse the bounded TIFF/EXIF reader; CR3 reuses ISO-BMFF inspection; RAF is identified with an explicit partial-decoding warning |
+| RAW | DNG and TIFF-like CR2/NEF/ARW/ORF/RW2/PEF containers reuse the bounded TIFF/EXIF reader with common DNG tags (version, CFA, levels, matrices, white balance, and camera/lens identity); CR3 reuses ISO-BMFF inspection; RAF is identified with an explicit partial-decoding warning |
 | AVI | RIFF/AVI validation, bounded `avih` dimensions and frame timing, and common `LIST/INFO` text fields without decoding video frames |
 | MKV/WebM | EBML signature and document-type detection, bounded `Info`/`Tracks`/`Tags` scanning, typed duration, track, title, codec, and tag values, without decoding clusters |
 | Output | Human-readable text, JSON, JSON Lines, CSV, TOML, or YAML; schema version `1` is retained in structured output |
