@@ -45,6 +45,7 @@ mod raw_writer;
 mod svg;
 mod svg_writer;
 mod tiff;
+mod tiff_create;
 mod tiff_writer;
 mod wav;
 mod wav_writer;
@@ -87,6 +88,7 @@ pub use raw_writer::{rewrite_raw_tiff, rewrite_raw_tiff_path, rewrite_raw_tiff_t
 pub use svg::read_svg;
 pub use svg_writer::{SvgEdit, rewrite_svg, rewrite_svg_path, rewrite_svg_to_vec};
 pub use tiff::read_tiff;
+pub use tiff_create::{TiffCreateEntry, TiffCreateOptions, create_tiff_path, create_tiff_to_vec};
 pub use tiff_writer::{TiffEdit, rewrite_tiff, rewrite_tiff_path, rewrite_tiff_to_vec};
 pub use wav::read_wav;
 pub use wav_writer::{WavEdit, rewrite_wav, rewrite_wav_path, rewrite_wav_to_vec};
