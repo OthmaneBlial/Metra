@@ -642,6 +642,184 @@ impl fmt::Display for FileFormat {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CapabilityStatus {
+    Supported,
+    Partial,
+    Planned,
+    Unsupported,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FormatCapabilities {
+    pub format: FileFormat,
+    pub read: CapabilityStatus,
+    pub write: CapabilityStatus,
+    pub create: CapabilityStatus,
+    pub delete: CapabilityStatus,
+    pub lossless_rewrite: CapabilityStatus,
+    pub streaming: CapabilityStatus,
+}
+
+const FORMAT_CAPABILITIES: &[FormatCapabilities] = &[
+    FormatCapabilities {
+        format: FileFormat::Jpeg,
+        read: CapabilityStatus::Partial,
+        write: CapabilityStatus::Partial,
+        create: CapabilityStatus::Planned,
+        delete: CapabilityStatus::Partial,
+        lossless_rewrite: CapabilityStatus::Partial,
+        streaming: CapabilityStatus::Partial,
+    },
+    FormatCapabilities {
+        format: FileFormat::Tiff,
+        read: CapabilityStatus::Partial,
+        write: CapabilityStatus::Planned,
+        create: CapabilityStatus::Planned,
+        delete: CapabilityStatus::Planned,
+        lossless_rewrite: CapabilityStatus::Planned,
+        streaming: CapabilityStatus::Partial,
+    },
+    FormatCapabilities {
+        format: FileFormat::Png,
+        read: CapabilityStatus::Partial,
+        write: CapabilityStatus::Partial,
+        create: CapabilityStatus::Planned,
+        delete: CapabilityStatus::Partial,
+        lossless_rewrite: CapabilityStatus::Partial,
+        streaming: CapabilityStatus::Partial,
+    },
+    FormatCapabilities {
+        format: FileFormat::Webp,
+        read: CapabilityStatus::Partial,
+        write: CapabilityStatus::Partial,
+        create: CapabilityStatus::Planned,
+        delete: CapabilityStatus::Partial,
+        lossless_rewrite: CapabilityStatus::Partial,
+        streaming: CapabilityStatus::Partial,
+    },
+    FormatCapabilities {
+        format: FileFormat::Heif,
+        read: CapabilityStatus::Partial,
+        write: CapabilityStatus::Planned,
+        create: CapabilityStatus::Planned,
+        delete: CapabilityStatus::Planned,
+        lossless_rewrite: CapabilityStatus::Planned,
+        streaming: CapabilityStatus::Partial,
+    },
+    FormatCapabilities {
+        format: FileFormat::Avif,
+        read: CapabilityStatus::Partial,
+        write: CapabilityStatus::Planned,
+        create: CapabilityStatus::Planned,
+        delete: CapabilityStatus::Planned,
+        lossless_rewrite: CapabilityStatus::Planned,
+        streaming: CapabilityStatus::Partial,
+    },
+    FormatCapabilities {
+        format: FileFormat::Mp4,
+        read: CapabilityStatus::Partial,
+        write: CapabilityStatus::Planned,
+        create: CapabilityStatus::Planned,
+        delete: CapabilityStatus::Planned,
+        lossless_rewrite: CapabilityStatus::Planned,
+        streaming: CapabilityStatus::Partial,
+    },
+    FormatCapabilities {
+        format: FileFormat::Mov,
+        read: CapabilityStatus::Partial,
+        write: CapabilityStatus::Planned,
+        create: CapabilityStatus::Planned,
+        delete: CapabilityStatus::Planned,
+        lossless_rewrite: CapabilityStatus::Planned,
+        streaming: CapabilityStatus::Partial,
+    },
+    FormatCapabilities {
+        format: FileFormat::M4a,
+        read: CapabilityStatus::Partial,
+        write: CapabilityStatus::Planned,
+        create: CapabilityStatus::Planned,
+        delete: CapabilityStatus::Planned,
+        lossless_rewrite: CapabilityStatus::Planned,
+        streaming: CapabilityStatus::Partial,
+    },
+    FormatCapabilities {
+        format: FileFormat::Pdf,
+        read: CapabilityStatus::Partial,
+        write: CapabilityStatus::Planned,
+        create: CapabilityStatus::Planned,
+        delete: CapabilityStatus::Planned,
+        lossless_rewrite: CapabilityStatus::Planned,
+        streaming: CapabilityStatus::Partial,
+    },
+    FormatCapabilities {
+        format: FileFormat::Gif,
+        read: CapabilityStatus::Partial,
+        write: CapabilityStatus::Partial,
+        create: CapabilityStatus::Planned,
+        delete: CapabilityStatus::Partial,
+        lossless_rewrite: CapabilityStatus::Partial,
+        streaming: CapabilityStatus::Partial,
+    },
+    FormatCapabilities {
+        format: FileFormat::Mp3,
+        read: CapabilityStatus::Partial,
+        write: CapabilityStatus::Partial,
+        create: CapabilityStatus::Planned,
+        delete: CapabilityStatus::Partial,
+        lossless_rewrite: CapabilityStatus::Partial,
+        streaming: CapabilityStatus::Partial,
+    },
+    FormatCapabilities {
+        format: FileFormat::Flac,
+        read: CapabilityStatus::Partial,
+        write: CapabilityStatus::Partial,
+        create: CapabilityStatus::Planned,
+        delete: CapabilityStatus::Partial,
+        lossless_rewrite: CapabilityStatus::Partial,
+        streaming: CapabilityStatus::Partial,
+    },
+    FormatCapabilities {
+        format: FileFormat::Wav,
+        read: CapabilityStatus::Partial,
+        write: CapabilityStatus::Partial,
+        create: CapabilityStatus::Planned,
+        delete: CapabilityStatus::Partial,
+        lossless_rewrite: CapabilityStatus::Partial,
+        streaming: CapabilityStatus::Partial,
+    },
+    FormatCapabilities {
+        format: FileFormat::Svg,
+        read: CapabilityStatus::Partial,
+        write: CapabilityStatus::Partial,
+        create: CapabilityStatus::Planned,
+        delete: CapabilityStatus::Partial,
+        lossless_rewrite: CapabilityStatus::Partial,
+        streaming: CapabilityStatus::Partial,
+    },
+];
+
+pub fn format_capabilities(format: FileFormat) -> FormatCapabilities {
+    FORMAT_CAPABILITIES
+        .iter()
+        .find(|capabilities| capabilities.format == format)
+        .copied()
+        .unwrap_or(FormatCapabilities {
+            format,
+            read: CapabilityStatus::Unsupported,
+            write: CapabilityStatus::Unsupported,
+            create: CapabilityStatus::Unsupported,
+            delete: CapabilityStatus::Unsupported,
+            lossless_rewrite: CapabilityStatus::Unsupported,
+            streaming: CapabilityStatus::Unsupported,
+        })
+}
+
+pub fn format_capabilities_all() -> &'static [FormatCapabilities] {
+    FORMAT_CAPABILITIES
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileInfo {
     pub path: PathBuf,
@@ -1123,5 +1301,17 @@ mod tests {
         assert_eq!(diff.changed[0].key, "XMP:Title");
         assert_eq!(diff.changed[0].before, vec![TagValue::String("old".into())]);
         assert_eq!(diff.changed[0].after, vec![TagValue::String("new".into())]);
+    }
+
+    #[test]
+    fn format_capability_matrix_matches_current_writer_surface() {
+        let jpeg = format_capabilities(FileFormat::Jpeg);
+        assert_eq!(jpeg.read, CapabilityStatus::Partial);
+        assert_eq!(jpeg.write, CapabilityStatus::Partial);
+        assert_eq!(jpeg.create, CapabilityStatus::Planned);
+
+        let unknown = format_capabilities(FileFormat::Unknown);
+        assert_eq!(unknown.read, CapabilityStatus::Unsupported);
+        assert_eq!(format_capabilities_all().len(), 15);
     }
 }
