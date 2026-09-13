@@ -302,6 +302,47 @@ fn minimal_webp(format: &str) -> Vec<u8> {
     bytes
 }
 
+fn ebml_element(id: &[u8], data: &[u8]) -> Vec<u8> {
+    assert!(
+        data.len() < 127,
+        "test EBML element should fit its short size"
+    );
+    let mut output = id.to_vec();
+    output.push(0x80 | data.len() as u8);
+    output.extend_from_slice(data);
+    output
+}
+
+fn minimal_webm() -> Vec<u8> {
+    let ebml = ebml_element(&[0x42, 0x82], b"webm");
+    let ebml_header = ebml_element(b"\x1A\x45\xDF\xA3", &ebml);
+
+    let mut info = ebml_element(&[0x2A, 0xD7, 0xB1], &[0x0F, 0x42, 0x40]);
+    info.extend_from_slice(&ebml_element(&[0x44, 0x89], &10.0_f64.to_be_bytes()));
+    info.extend_from_slice(&ebml_element(&[0x7B, 0xA9], b"Metra CLI\0"));
+
+    let mut track = ebml_element(&[0xD7], &[1]);
+    track.extend_from_slice(&ebml_element(&[0x83], &[1]));
+    track.extend_from_slice(&ebml_element(&[0x86], b"V_VP9"));
+    let tracks = ebml_element(&[0x16, 0x54, 0xAE, 0x6B], &ebml_element(&[0xAE], &track));
+
+    let mut simple_tag = ebml_element(&[0x45, 0xA3], b"TITLE");
+    simple_tag.extend_from_slice(&ebml_element(&[0x44, 0x87], b"Sample"));
+    let tags = ebml_element(
+        &[0x12, 0x54, 0xC3, 0x67],
+        &ebml_element(&[0x73, 0x73], &ebml_element(&[0x67, 0xC8], &simple_tag)),
+    );
+
+    let mut segment_data = ebml_element(&[0x15, 0x49, 0xA9, 0x66], &info);
+    segment_data.extend_from_slice(&tracks);
+    segment_data.extend_from_slice(&tags);
+    [
+        ebml_header,
+        ebml_element(&[0x18, 0x53, 0x80, 0x67], &segment_data),
+    ]
+    .concat()
+}
+
 fn run(args: &[&Path]) -> std::process::Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_metra"));
     for path in args {
@@ -538,6 +579,36 @@ fn svg_json_output_exposes_document_metadata() {
             .expect("tags should be an array")
             .iter()
             .any(|tag| tag["name"] == "Title" && tag["value"]["string"] == "CLI vector")
+    );
+}
+
+#[test]
+fn webm_json_output_exposes_bounded_ebml_metadata() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.file("sample.webm", &minimal_webm());
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args(["--json", path.to_str().expect("UTF-8 test path")])
+        .output()
+        .expect("Metra CLI should start");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let document: Value = serde_json::from_slice(&output.stdout).expect("JSON output should parse");
+    assert_eq!(document["file_info"]["format"], "WEBM");
+    assert_eq!(document["file_info"]["mime_type"], "video/webm");
+    let tags = document["tags"]
+        .as_array()
+        .expect("tags should be an array");
+    assert!(
+        tags.iter()
+            .any(|tag| tag["name"] == "Title" && tag["value"]["string"] == "Metra CLI")
+    );
+    assert!(
+        tags.iter()
+            .any(|tag| tag["name"] == "TrackNumber" && tag["value"]["unsigned"] == 1)
+    );
+    assert!(
+        tags.iter()
+            .any(|tag| tag["name"] == "Tag:TITLE" && tag["value"]["string"] == "Sample")
     );
 }
 
