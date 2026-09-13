@@ -1071,6 +1071,22 @@ fn cli_can_set_and_copy_existing_avi_info() {
 }
 
 #[test]
+fn cli_can_delete_existing_avi_info() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.file("editable.avi", &minimal_avi_with_title("Title"));
+    let delete = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--delete",
+            "AVI:Title",
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(delete.status.success(), "stderr: {:?}", delete.stderr);
+    assert!(metra::read(&path).unwrap().find("AVI:Title").is_none());
+}
+
+#[test]
 fn cli_can_set_and_copy_existing_matroska_tag() {
     let directory = TemporaryDirectory::new();
     let source = directory.file("source.webm", &minimal_webm_with_title("source"));

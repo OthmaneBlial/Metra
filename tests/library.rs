@@ -341,6 +341,33 @@ fn public_generic_edit_api_rewrites_and_revalidates_avi_info() {
 }
 
 #[test]
+fn public_generic_edit_api_deletes_existing_avi_info() {
+    let bytes = minimal_avi_with_title("old");
+    let output = metra::rewrite_metadata_to_vec(
+        &bytes,
+        metra::FileInfo::new(
+            "memory.avi".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::delete("AVI:Title")],
+    )
+    .expect("generic AVI deletion should validate its rewritten bytes");
+
+    let metadata = metra::read_from(
+        &mut std::io::Cursor::new(output),
+        metra::FileInfo::new(
+            "memory.avi".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+    )
+    .expect("deleted AVI should remain readable");
+    assert!(metadata.find("AVI:Title").is_none());
+}
+
+#[test]
 fn public_generic_edit_api_rewrites_and_revalidates_matroska_tag() {
     let bytes = minimal_webm_with_title("old");
     let output = metra::rewrite_metadata_to_vec(
