@@ -1287,6 +1287,25 @@ fn cli_can_set_and_copy_existing_cr3_isobmff_text() {
 }
 
 #[test]
+fn cli_can_delete_existing_cr3_isobmff_text() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.file("editable.cr3", &minimal_cr3("Title"));
+    let delete = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--delete",
+            "ISOBMFF:Title",
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(delete.status.success(), "stderr: {:?}", delete.stderr);
+
+    let metadata = metra::read(&path).expect("deleted CR3 should remain readable");
+    assert_eq!(metadata.find("RAW:Variant").unwrap().display_value(), "CR3");
+    assert!(metadata.find("ISOBMFF:Title").is_none());
+}
+
+#[test]
 fn cli_can_set_and_delete_a_jpeg_comment_atomically() {
     let directory = TemporaryDirectory::new();
     let path = directory.file("editable.jpg", &minimal_exif_jpeg());
