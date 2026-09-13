@@ -69,6 +69,10 @@ PDF Info writes are limited to existing literal or hexadecimal string tokens and
 require the replacement to have the same encoded byte length. They do not create
 objects or rewrite xref offsets, so the rest of the PDF byte layout is copied
 unchanged and the temporary output is re-read before replacement.
+PSD XMP writes are limited to an existing `8BIM` XMP image resource and require
+an equal packet length. Resource headers, section boundaries, image data, and
+unknown resources are copied unchanged; the temporary PSD is re-read before
+atomic replacement.
 Ogg rewrites retain page boundaries, recalculate CRCs, preserve opaque packet
 bytes, and refuse packet growth unless the existing bounded packet can hold it.
 ID3v2

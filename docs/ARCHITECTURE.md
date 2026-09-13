@@ -230,7 +230,7 @@ The following changes are deferred until their acceptance tests exist:
   STMN, and DJI readers;
 - vendor-specific RAW container structures and RAF/CR3 payload metadata beyond
   the current bounded delegation;
-- PSD/PSB resource writers and layer/pixel metadata modules;
+- PSD/PSB layer/pixel metadata modules and resource types beyond existing XMP;
 - deeper HEIF/AVIF and media metadata modules, including codec-specific fields;
 - a generalized lossless block-preservation abstraction across more formats;
 
