@@ -877,6 +877,8 @@ pub enum FileFormat {
     Flac,
     Wav,
     Svg,
+    Icc,
+    Xmp,
     Psd,
     Avi,
     Mkv,
@@ -903,6 +905,8 @@ impl FileFormat {
             Self::Flac => Some("audio/flac"),
             Self::Wav => Some("audio/wav"),
             Self::Svg => Some("image/svg+xml"),
+            Self::Icc => Some("application/vnd.iccprofile"),
+            Self::Xmp => Some("application/rdf+xml"),
             Self::Psd => Some("image/vnd.adobe.photoshop"),
             Self::Avi => Some("video/x-msvideo"),
             Self::Mkv => Some("video/x-matroska"),
@@ -931,6 +935,8 @@ impl fmt::Display for FileFormat {
             Self::Flac => "FLAC",
             Self::Wav => "WAV",
             Self::Svg => "SVG",
+            Self::Icc => "ICC",
+            Self::Xmp => "XMP",
             Self::Psd => "PSD",
             Self::Avi => "AVI",
             Self::Mkv => "MKV",
@@ -1095,6 +1101,24 @@ const FORMAT_CAPABILITIES: &[FormatCapabilities] = &[
         create: CapabilityStatus::Planned,
         delete: CapabilityStatus::Partial,
         lossless_rewrite: CapabilityStatus::Partial,
+        streaming: CapabilityStatus::Partial,
+    },
+    FormatCapabilities {
+        format: FileFormat::Icc,
+        read: CapabilityStatus::Partial,
+        write: CapabilityStatus::Planned,
+        create: CapabilityStatus::Planned,
+        delete: CapabilityStatus::Planned,
+        lossless_rewrite: CapabilityStatus::Planned,
+        streaming: CapabilityStatus::Partial,
+    },
+    FormatCapabilities {
+        format: FileFormat::Xmp,
+        read: CapabilityStatus::Partial,
+        write: CapabilityStatus::Planned,
+        create: CapabilityStatus::Planned,
+        delete: CapabilityStatus::Planned,
+        lossless_rewrite: CapabilityStatus::Planned,
         streaming: CapabilityStatus::Partial,
     },
     FormatCapabilities {
@@ -1660,6 +1684,14 @@ mod tests {
 
         let unknown = format_capabilities(FileFormat::Unknown);
         assert_eq!(unknown.read, CapabilityStatus::Unsupported);
-        assert_eq!(format_capabilities_all().len(), 20);
+        assert_eq!(
+            format_capabilities(FileFormat::Icc).read,
+            CapabilityStatus::Partial
+        );
+        assert_eq!(
+            format_capabilities(FileFormat::Xmp).read,
+            CapabilityStatus::Partial
+        );
+        assert_eq!(format_capabilities_all().len(), 22);
     }
 }

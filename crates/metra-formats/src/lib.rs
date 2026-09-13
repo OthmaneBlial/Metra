@@ -48,6 +48,7 @@ pub use flac::read_flac;
 pub use flac_writer::{FlacEdit, rewrite_flac, rewrite_flac_path, rewrite_flac_to_vec};
 pub use gif::read_gif;
 pub use gif_writer::{GifEdit, rewrite_gif, rewrite_gif_path, rewrite_gif_to_vec};
+pub use icc::read_icc;
 pub use id3::read_mp3;
 pub use id3_writer::{Mp3Edit, rewrite_mp3, rewrite_mp3_path, rewrite_mp3_to_vec};
 pub use isobmff::read_isobmff;
@@ -69,6 +70,7 @@ pub use wav::read_wav;
 pub use wav_writer::{WavEdit, rewrite_wav, rewrite_wav_path, rewrite_wav_to_vec};
 pub use webp::read_webp;
 pub use webp_writer::{WebpEdit, rewrite_webp, rewrite_webp_path, rewrite_webp_to_vec};
+pub use xmp::read_xmp;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DetectedFormat {
@@ -205,6 +207,16 @@ pub fn detect_format(bytes: &[u8]) -> Option<DetectedFormat> {
             format: FileFormat::Svg,
             signature: "SVG XML root",
         })
+    } else if icc::is_icc_signature(bytes) {
+        Some(DetectedFormat {
+            format: FileFormat::Icc,
+            signature: "ICC profile",
+        })
+    } else if xmp::is_xmp_signature(bytes) {
+        Some(DetectedFormat {
+            format: FileFormat::Xmp,
+            signature: "XMP packet",
+        })
     } else {
         None
     }
@@ -276,6 +288,44 @@ pub fn read_path(path: impl AsRef<Path>) -> Result<Metadata> {
     read_path_with_limits(path, ParseLimits::default())
 }
 
+pub(crate) fn read_bounded_document<R: Read + Seek>(
+    reader: &mut R,
+    file_info: &FileInfo,
+    limits: ParseLimits,
+    context: &str,
+) -> Result<Vec<u8>> {
+    let length =
+        usize::try_from(file_info.size).map_err(|_| MetraError::ResourceLimitExceeded {
+            resource: context.to_owned(),
+            limit: limits.max_value_bytes,
+        })?;
+    if length > limits.max_value_bytes {
+        return Err(MetraError::ResourceLimitExceeded {
+            resource: context.to_owned(),
+            limit: limits.max_value_bytes,
+        });
+    }
+    reader
+        .seek(SeekFrom::Start(0))
+        .map_err(|source| MetraError::Io {
+            path: file_info.path.clone(),
+            source,
+        })?;
+    let mut bytes = vec![0_u8; length];
+    reader
+        .read_exact(&mut bytes)
+        .map_err(|source| match source.kind() {
+            std::io::ErrorKind::UnexpectedEof => MetraError::UnexpectedEof {
+                context: context.to_owned(),
+            },
+            _ => MetraError::Io {
+                path: file_info.path.clone(),
+                source,
+            },
+        })?;
+    Ok(bytes)
+}
+
 /// Read metadata from a seekable stream using the default defensive limits.
 pub fn read_reader<R: Read + Seek>(reader: &mut R, file_info: FileInfo) -> Result<Metadata> {
     read_reader_with_limits(reader, file_info, ParseLimits::default())
@@ -338,6 +388,8 @@ pub fn read_reader_with_limits<R: Read + Seek>(
         FileFormat::Pdf => pdf::read_pdf(reader, file_info, limits),
         FileFormat::Wav => wav::read_wav(reader, file_info, limits),
         FileFormat::Svg => svg::read_svg(reader, file_info, limits),
+        FileFormat::Icc => icc::read_icc(reader, file_info, limits),
+        FileFormat::Xmp => xmp::read_xmp(reader, file_info, limits),
         FileFormat::Psd => psd::read_psd(reader, file_info, limits),
         FileFormat::Avi => avi::read_avi(reader, file_info, limits),
         FileFormat::Mkv | FileFormat::Webm => matroska::read_matroska(reader, file_info, limits),
@@ -446,5 +498,19 @@ mod tests {
                 .format,
             FileFormat::Svg
         );
+        let mut icc = vec![0_u8; 132];
+        icc[36..40].copy_from_slice(b"acsp");
+        assert_eq!(detect_format(&icc).unwrap().format, FileFormat::Icc);
+        assert_eq!(
+            detect_format(b"<?xpacket begin=\"\"?><x:xmpmeta/>")
+                .unwrap()
+                .format,
+            FileFormat::Xmp
+        );
+        assert_eq!(
+            detect_format(b"<?xpacket?><xmp:xmpmeta/>").unwrap().format,
+            FileFormat::Xmp
+        );
+        assert!(detect_format(b"\0binary payload <rdf:RDF>").is_none());
     }
 }

@@ -1,9 +1,12 @@
 use std::collections::BTreeMap;
+use std::io::{Read, Seek};
 
 use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
 
-use metra_core::{Metadata, MetraError, ParseLimits, Result, Source, Tag, TagValue, ValueType};
+use metra_core::{
+    FileInfo, Metadata, MetraError, ParseLimits, Result, Source, Tag, TagValue, ValueType,
+};
 
 use crate::xml::resolve_general_ref;
 
@@ -13,6 +16,69 @@ struct Node {
     attributes: BTreeMap<String, String>,
     children: Vec<Node>,
     text: String,
+}
+
+pub fn read_xmp<R: Read + Seek>(
+    reader: &mut R,
+    file_info: FileInfo,
+    limits: ParseLimits,
+) -> Result<Metadata> {
+    let bytes = crate::read_bounded_document(reader, &file_info, limits, "XMP packet")?;
+    let mut metadata = Metadata::new(file_info);
+    parse_xmp(&bytes, 0, "XMP/file", &mut metadata, limits)?;
+    metadata.sort_tags();
+    Ok(metadata)
+}
+
+pub(crate) fn is_xmp_signature(bytes: &[u8]) -> bool {
+    leading_element_name(bytes).is_some_and(is_xmp_root)
+}
+
+fn is_xmp_root(name: &[u8]) -> bool {
+    let local_name = name.rsplit(|byte| *byte == b':').next().unwrap_or(name);
+    matches!(local_name, b"xmpmeta" | b"RDF")
+}
+
+fn leading_element_name(bytes: &[u8]) -> Option<&[u8]> {
+    let mut cursor = usize::from(bytes.starts_with(&[0xEF, 0xBB, 0xBF]));
+    loop {
+        while bytes
+            .get(cursor)
+            .is_some_and(|byte| byte.is_ascii_whitespace())
+        {
+            cursor += 1;
+        }
+        if bytes
+            .get(cursor..)
+            .is_some_and(|rest| rest.starts_with(b"<?"))
+        {
+            let end = bytes
+                .get(cursor + 2..)?
+                .windows(2)
+                .position(|window| window == b"?>")?;
+            cursor = cursor.checked_add(2 + end + 2)?;
+            continue;
+        }
+        if bytes
+            .get(cursor..)
+            .is_some_and(|rest| rest.starts_with(b"<!--"))
+        {
+            let end = bytes
+                .get(cursor + 4..)?
+                .windows(3)
+                .position(|window| window == b"-->")?;
+            cursor = cursor.checked_add(4 + end + 3)?;
+            continue;
+        }
+        let rest = bytes.get(cursor..)?.strip_prefix(b"<")?;
+        if rest.first().is_some_and(|byte| matches!(byte, b'/' | b'!')) {
+            return None;
+        }
+        let name_end = rest
+            .iter()
+            .position(|byte| byte.is_ascii_whitespace() || matches!(byte, b'>' | b'/'))?;
+        return Some(&rest[..name_end]);
+    }
 }
 
 pub(crate) fn parse_xmp(
@@ -349,6 +415,8 @@ fn display_name(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Cursor;
+
     use super::*;
     use metra_core::{FileFormat, FileInfo};
 
@@ -380,6 +448,22 @@ mod tests {
             metadata.find("XMP:dc:title").unwrap().value,
             TagValue::Structure(_)
         ));
+
+        let standalone = read_xmp(
+            &mut Cursor::new(packet.as_slice()),
+            FileInfo::new(
+                "standalone.xmp".into(),
+                packet.len() as u64,
+                FileFormat::Xmp,
+            ),
+            ParseLimits::default(),
+        )
+        .expect("standalone XMP fixture should parse");
+        assert_eq!(standalone.file_info.format, FileFormat::Xmp);
+        assert_eq!(
+            standalone.find("XMP:dc:format").unwrap().display_value(),
+            "image/jpeg"
+        );
     }
 
     #[test]

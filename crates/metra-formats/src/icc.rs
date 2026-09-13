@@ -1,6 +1,24 @@
+use std::io::{Read, Seek};
+
 use metra_core::{
-    Metadata, MetraError, ParseLimits, Result, Source, Tag, TagValue, ValueType, Warning,
+    FileInfo, Metadata, MetraError, ParseLimits, Result, Source, Tag, TagValue, ValueType, Warning,
 };
+
+pub fn read_icc<R: Read + Seek>(
+    reader: &mut R,
+    file_info: FileInfo,
+    limits: ParseLimits,
+) -> Result<Metadata> {
+    let bytes = crate::read_bounded_document(reader, &file_info, limits, "ICC profile")?;
+    let mut metadata = Metadata::new(file_info);
+    parse_icc_profile(&bytes, 0, &mut metadata, limits)?;
+    metadata.sort_tags();
+    Ok(metadata)
+}
+
+pub(crate) fn is_icc_signature(bytes: &[u8]) -> bool {
+    bytes.len() >= 40 && &bytes[36..40] == b"acsp"
+}
 
 pub(crate) fn parse_icc_profile(
     bytes: &[u8],
@@ -371,6 +389,8 @@ fn parse_mluc(bytes: &[u8]) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Cursor;
+
     use super::*;
     use metra_core::{FileFormat, FileInfo};
 
@@ -443,6 +463,22 @@ mod tests {
             metadata.find("ICC:ProfileID").unwrap().value,
             TagValue::Bytes(_)
         ));
+
+        let standalone = read_icc(
+            &mut Cursor::new(bytes.clone()),
+            FileInfo::new("profile.icc".into(), bytes.len() as u64, FileFormat::Icc),
+            ParseLimits::default(),
+        )
+        .expect("standalone ICC fixture should parse");
+        assert_eq!(
+            standalone.file_info.format,
+            FileFormat::Icc,
+            "standalone readers should retain their detected format"
+        );
+        assert_eq!(
+            standalone.find("ICC:Description").unwrap().display_value(),
+            "Metra"
+        );
     }
 
     #[test]
