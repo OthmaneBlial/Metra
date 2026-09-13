@@ -172,6 +172,9 @@ Creator, Producer, CreationDate, or ModifyDate literal/hexadecimal string
 tokens. It preserves the token encoding and requires an exactly equal encoded
 byte span, so it never creates objects, rewrites xref tables, or moves unrelated
 PDF bytes.
+The AVI writer accepts existing known `LIST/INFO` string chunks, writes only
+within their allocated payloads, preserves a NUL terminator when space exists,
+and never changes RIFF chunk sizes or media data.
 The SVG writer validates the source XML, escapes replacement text, rejects
 unsafe comment delimiters, and preserves unrelated source ranges. The ID3 writer requires a tag without
 unsynchronization, extended-header, or footer flags. Each library writer
