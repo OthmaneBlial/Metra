@@ -39,6 +39,10 @@ pub(crate) fn inspect_maker_note(
         parse_sony_makernote(bytes, data_offset, metadata, limits);
     } else if identity.format == "Fujifilm MakerNote" {
         parse_fujifilm_makernote(bytes, data_offset, metadata, limits);
+    } else if identity.format == "Panasonic MakerNote" {
+        parse_panasonic_makernote(bytes, data_offset, metadata, limits);
+    } else if identity.format == "Olympus MakerNote" {
+        parse_olympus_makernote(bytes, data_offset, metadata, limits);
     }
 }
 
@@ -813,6 +817,333 @@ fn parse_fujifilm_entry(
     });
 }
 
+#[derive(Clone, Copy)]
+struct VendorIfdConfig {
+    group: &'static str,
+    name_prefix: &'static str,
+    source: &'static str,
+    warning_prefix: &'static str,
+    unknown_description: &'static str,
+    definition: fn(u16) -> Option<(&'static str, &'static str)>,
+}
+
+fn parse_panasonic_makernote(
+    bytes: &[u8],
+    data_offset: u64,
+    metadata: &mut Metadata,
+    limits: ParseLimits,
+) {
+    if bytes.len() < 14 {
+        metadata.add_warning(
+            Warning::new(
+                "truncated-panasonic-makernote",
+                "Panasonic MakerNote does not contain a complete IFD count",
+            )
+            .at(data_offset),
+        );
+        return;
+    }
+    parse_vendor_little_ifd(
+        bytes,
+        12,
+        data_offset,
+        metadata,
+        limits,
+        VendorIfdConfig {
+            group: "Panasonic",
+            name_prefix: "Panasonic:",
+            source: "EXIF/MakerNote/Panasonic",
+            warning_prefix: "panasonic-makernote",
+            unknown_description: "Unknown Panasonic MakerNote tag",
+            definition: panasonic_tag_definition,
+        },
+    );
+}
+
+fn parse_olympus_makernote(
+    bytes: &[u8],
+    data_offset: u64,
+    metadata: &mut Metadata,
+    limits: ParseLimits,
+) {
+    let ifd_offset = if bytes.get(8..10) == Some(b"II")
+        && read_u16(bytes, 10, Endian::Little) == Some(3)
+    {
+        Some(12)
+    } else if bytes.get(0..6) == Some(b"OLYMP\0") && read_u16(bytes, 6, Endian::Little) == Some(2) {
+        Some(8)
+    } else {
+        None
+    };
+    let Some(ifd_offset) = ifd_offset else {
+        return;
+    };
+    parse_vendor_little_ifd(
+        bytes,
+        ifd_offset,
+        data_offset,
+        metadata,
+        limits,
+        VendorIfdConfig {
+            group: "Olympus",
+            name_prefix: "Olympus:",
+            source: "EXIF/MakerNote/Olympus",
+            warning_prefix: "olympus-makernote",
+            unknown_description: "Unknown Olympus MakerNote tag",
+            definition: olympus_tag_definition,
+        },
+    );
+}
+
+fn parse_vendor_little_ifd(
+    bytes: &[u8],
+    offset: usize,
+    data_offset: u64,
+    metadata: &mut Metadata,
+    limits: ParseLimits,
+    config: VendorIfdConfig,
+) {
+    let Some(count) = read_u16(bytes, offset, Endian::Little).map(usize::from) else {
+        metadata.add_warning(
+            Warning::new(
+                format!("truncated-{}", config.warning_prefix),
+                format!("{} MakerNote IFD count is missing", config.group),
+            )
+            .at(data_offset.saturating_add(offset as u64)),
+        );
+        return;
+    };
+    let count_to_read = count.min(limits.max_ifd_entries);
+    if count > count_to_read {
+        metadata.add_warning(
+            Warning::new(
+                format!("{}-entry-limit", config.warning_prefix),
+                format!(
+                    "{} MakerNote declares {count} entries; reading only {count_to_read}",
+                    config.group
+                ),
+            )
+            .at(data_offset.saturating_add(offset as u64)),
+        );
+    }
+    let Some(entries_start) = offset.checked_add(2) else {
+        return;
+    };
+    for index in 0..count_to_read {
+        let Some(entry_offset) = index
+            .checked_mul(12)
+            .and_then(|delta| entries_start.checked_add(delta))
+        else {
+            metadata.add_warning(
+                Warning::new(
+                    format!("invalid-{}-size", config.warning_prefix),
+                    format!("{} MakerNote IFD entry offset overflows", config.group),
+                )
+                .at(data_offset.saturating_add(entries_start as u64)),
+            );
+            return;
+        };
+        let Some(entry_end) = entry_offset.checked_add(12) else {
+            return;
+        };
+        let Some(entry) = bytes.get(entry_offset..entry_end) else {
+            metadata.add_warning(
+                Warning::new(
+                    format!("truncated-{}", config.warning_prefix),
+                    format!(
+                        "{} MakerNote entry extends beyond its payload",
+                        config.group
+                    ),
+                )
+                .at(data_offset.saturating_add(entry_offset as u64)),
+            );
+            return;
+        };
+        parse_vendor_little_entry(
+            entry,
+            entry_offset,
+            data_offset,
+            bytes,
+            metadata,
+            limits,
+            config,
+        );
+    }
+}
+
+fn parse_vendor_little_entry(
+    entry: &[u8],
+    entry_offset: usize,
+    data_offset: u64,
+    bytes: &[u8],
+    metadata: &mut Metadata,
+    limits: ParseLimits,
+    config: VendorIfdConfig,
+) {
+    let Some(id) = read_u16(entry, 0, Endian::Little) else {
+        return;
+    };
+    let Some(type_id) = read_u16(entry, 2, Endian::Little) else {
+        return;
+    };
+    let Some(count) = read_u32(entry, 4, Endian::Little) else {
+        return;
+    };
+    let Some(item_size) = type_size(type_id) else {
+        return;
+    };
+    let Some(total_size) = usize::try_from(count)
+        .ok()
+        .and_then(|count| count.checked_mul(item_size))
+    else {
+        metadata.add_warning(
+            Warning::new(
+                format!("invalid-{}-size", config.warning_prefix),
+                format!(
+                    "{} MakerNote tag 0x{id:04X} value size overflows",
+                    config.group
+                ),
+            )
+            .at(data_offset.saturating_add(entry_offset as u64)),
+        );
+        return;
+    };
+    if total_size > limits.max_value_bytes {
+        metadata.add_warning(
+            Warning::new(
+                format!("{}-value-limit", config.warning_prefix),
+                format!(
+                    "{} MakerNote tag 0x{id:04X} exceeds the value budget",
+                    config.group
+                ),
+            )
+            .at(data_offset.saturating_add(entry_offset as u64)),
+        );
+        return;
+    }
+    let value_offset = if total_size <= 4 {
+        entry_offset.saturating_add(8)
+    } else {
+        let Some(value_offset) =
+            read_u32(entry, 8, Endian::Little).and_then(|value| usize::try_from(value).ok())
+        else {
+            return;
+        };
+        value_offset
+    };
+    let Some(value_end) = value_offset.checked_add(total_size) else {
+        return;
+    };
+    let Some(value_bytes) = bytes.get(value_offset..value_end) else {
+        metadata.add_warning(
+            Warning::new(
+                format!("invalid-{}-offset", config.warning_prefix),
+                format!(
+                    "{} MakerNote tag 0x{id:04X} is outside its payload",
+                    config.group
+                ),
+            )
+            .at(data_offset.saturating_add(value_offset as u64)),
+        );
+        return;
+    };
+    let Some(value) = decode_value(type_id, count, value_bytes, Endian::Little) else {
+        return;
+    };
+    let (name, description) = (config.definition)(id)
+        .map(|(name, description)| (name.to_owned(), description.to_owned()))
+        .unwrap_or_else(|| {
+            (
+                format!("{}Tag0x{id:04X}", config.name_prefix),
+                config.unknown_description.to_owned(),
+            )
+        });
+    metadata.add_tag(Tag {
+        namespace: "MakerNotes".to_owned(),
+        group: config.group.to_owned(),
+        id: Some(u32::from(id)),
+        name,
+        description: Some(description),
+        raw_value: Some(value_bytes.to_vec()),
+        value_type: value_type(&value),
+        value,
+        source: Source::new(
+            config.source,
+            Some(data_offset.saturating_add(value_offset as u64)),
+            Some(total_size as u64),
+        ),
+        writable: false,
+    });
+}
+
+fn panasonic_tag_definition(id: u16) -> Option<(&'static str, &'static str)> {
+    Some(match id {
+        0x0001 => ("Panasonic:ImageQuality", "Panasonic image quality"),
+        0x0002 => ("Panasonic:FirmwareVersion", "Panasonic firmware version"),
+        0x0003 => ("Panasonic:WhiteBalance", "Panasonic white balance"),
+        0x0007 => ("Panasonic:FocusMode", "Panasonic focus mode"),
+        0x000F => ("Panasonic:AFAreaMode", "Panasonic autofocus area mode"),
+        0x001A => (
+            "Panasonic:ImageStabilization",
+            "Panasonic image stabilization",
+        ),
+        0x001C => ("Panasonic:MacroMode", "Panasonic macro mode"),
+        0x001F => ("Panasonic:ShootingMode", "Panasonic shooting mode"),
+        0x0020 => ("Panasonic:Audio", "Panasonic audio mode"),
+        0x0021 => ("Panasonic:DataDump", "Panasonic opaque data dump"),
+        0x0023 => ("Panasonic:WhiteBalanceBias", "Panasonic white-balance bias"),
+        0x0024 => ("Panasonic:FlashBias", "Panasonic flash bias"),
+        0x0025 => (
+            "Panasonic:InternalSerialNumber",
+            "Panasonic internal serial number",
+        ),
+        0x0026 => (
+            "Panasonic:PanasonicExifVersion",
+            "Panasonic MakerNote EXIF version",
+        ),
+        0x0027 => ("Panasonic:VideoFrameRate", "Panasonic video frame rate"),
+        0x0028 => ("Panasonic:ColorEffect", "Panasonic color effect"),
+        0x0029 => (
+            "Panasonic:TimeSincePowerOn",
+            "Panasonic time since power on",
+        ),
+        _ => return None,
+    })
+}
+
+fn olympus_tag_definition(id: u16) -> Option<(&'static str, &'static str)> {
+    Some(match id {
+        0x0200 => ("Olympus:SpecialMode", "Olympus special mode"),
+        0x0201 => ("Olympus:Quality", "Olympus image quality"),
+        0x0202 => ("Olympus:Macro", "Olympus macro mode"),
+        0x0203 => ("Olympus:BWMode", "Olympus black-and-white mode"),
+        0x0204 => ("Olympus:DigitalZoom", "Olympus digital zoom"),
+        0x0205 => ("Olympus:FocalPlaneDiagonal", "Olympus focal-plane diagonal"),
+        0x0206 => (
+            "Olympus:LensDistortionParams",
+            "Olympus lens distortion parameters",
+        ),
+        0x0207 => ("Olympus:CameraType", "Olympus camera type"),
+        0x0209 => ("Olympus:CameraID", "Olympus camera identifier"),
+        0x0300 => (
+            "Olympus:PreCaptureFrames",
+            "Olympus pre-capture frame count",
+        ),
+        0x0404 => ("Olympus:SerialNumber", "Olympus serial number"),
+        0x1010 => ("Olympus:FlashChargeLevel", "Olympus flash charge level"),
+        0x1023 => (
+            "Olympus:FlashExposureComp",
+            "Olympus flash exposure compensation",
+        ),
+        0x1029 => ("Olympus:Contrast", "Olympus contrast"),
+        0x102A => ("Olympus:SharpnessFactor", "Olympus sharpness factor"),
+        0x102B => ("Olympus:ColorControl", "Olympus color control"),
+        0x102C => ("Olympus:ValidBits", "Olympus valid bits"),
+        0x1030 => ("Olympus:SceneDetect", "Olympus scene detection"),
+        _ => return None,
+    })
+}
+
 fn read_u16(bytes: &[u8], offset: usize, endian: Endian) -> Option<u16> {
     let bytes = bytes.get(offset..offset.checked_add(2)?)?;
     Some(match endian {
@@ -1243,6 +1574,96 @@ mod tests {
         assert_eq!(
             metadata
                 .find("MakerNotes:FujiFilm:Sharpness")
+                .unwrap()
+                .value,
+            TagValue::Unsigned(3)
+        );
+    }
+
+    #[test]
+    fn reads_bounded_panasonic_ifd_values() {
+        let mut maker_note = b"Panasonic\0\0\0".to_vec();
+        maker_note.extend_from_slice(&3_u16.to_le_bytes());
+        maker_note.extend_from_slice(&[1, 0, 3, 0]);
+        maker_note.extend_from_slice(&1_u32.to_le_bytes());
+        maker_note.extend_from_slice(&2_u16.to_le_bytes());
+        maker_note.extend_from_slice(&[0, 0]);
+        maker_note.extend_from_slice(&[2, 0, 7, 0]);
+        maker_note.extend_from_slice(&4_u32.to_le_bytes());
+        maker_note.extend_from_slice(b"0100");
+        maker_note.extend_from_slice(&[0x21, 0, 7, 0]);
+        maker_note.extend_from_slice(&3_u32.to_le_bytes());
+        maker_note.extend_from_slice(&[1, 2, 3, 0]);
+        maker_note.extend_from_slice(&[0, 0, 0, 0]);
+
+        let mut metadata = Metadata::new(FileInfo::new(
+            "panasonic.jpg".into(),
+            maker_note.len() as u64,
+            FileFormat::Jpeg,
+        ));
+        inspect_maker_note(&maker_note, 1_300, &mut metadata, ParseLimits::default());
+
+        assert_eq!(
+            metadata
+                .find("MakerNotes:Panasonic:ImageQuality")
+                .unwrap()
+                .value,
+            TagValue::Unsigned(2)
+        );
+        assert_eq!(
+            metadata
+                .find("MakerNotes:Panasonic:FirmwareVersion")
+                .unwrap()
+                .value,
+            TagValue::Bytes(b"0100".to_vec())
+        );
+        let data_dump = metadata
+            .find("MakerNotes:Panasonic:DataDump")
+            .expect("Panasonic data dump should be retained");
+        assert_eq!(data_dump.value, TagValue::Bytes(vec![1, 2, 3]));
+    }
+
+    #[test]
+    fn reads_modern_and_legacy_olympus_ifd_headers() {
+        let mut modern = b"OLYMPUS\0II\x03\0".to_vec();
+        modern.extend_from_slice(&2_u16.to_le_bytes());
+        modern.extend_from_slice(&[0, 2, 4, 0]);
+        modern.extend_from_slice(&1_u32.to_le_bytes());
+        modern.extend_from_slice(&1_u32.to_le_bytes());
+        modern.extend_from_slice(&[1, 2, 3, 0]);
+        modern.extend_from_slice(&1_u32.to_le_bytes());
+        modern.extend_from_slice(&[1, 2, 3, 0]);
+        modern.extend_from_slice(&[0, 0, 0, 0]);
+
+        let mut modern_metadata = Metadata::new(FileInfo::new(
+            "olympus.jpg".into(),
+            modern.len() as u64,
+            FileFormat::Jpeg,
+        ));
+        inspect_maker_note(&modern, 1_500, &mut modern_metadata, ParseLimits::default());
+        assert_eq!(
+            modern_metadata
+                .find("MakerNotes:Olympus:SpecialMode")
+                .unwrap()
+                .value,
+            TagValue::Unsigned(1)
+        );
+
+        let mut legacy = b"OLYMP\0\x02\0".to_vec();
+        legacy.extend_from_slice(&1_u16.to_le_bytes());
+        legacy.extend_from_slice(&[1, 2, 3, 0]);
+        legacy.extend_from_slice(&1_u32.to_le_bytes());
+        legacy.extend_from_slice(&3_u16.to_le_bytes());
+        legacy.extend_from_slice(&[0, 0, 0, 0]);
+        let mut legacy_metadata = Metadata::new(FileInfo::new(
+            "olympus-e1.jpg".into(),
+            legacy.len() as u64,
+            FileFormat::Jpeg,
+        ));
+        inspect_maker_note(&legacy, 1_700, &mut legacy_metadata, ParseLimits::default());
+        assert_eq!(
+            legacy_metadata
+                .find("MakerNotes:Olympus:Quality")
                 .unwrap()
                 .value,
             TagValue::Unsigned(3)
