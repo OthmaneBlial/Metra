@@ -26,6 +26,8 @@ Initial read-first foundation with narrow validated rewrites:
   atomic replacement;
 - added explicit chained TIFF `IFD1`/`IFD2` traversal for thumbnail-directory
   metadata while keeping thumbnail pixel payloads out of memory;
+- added bounded Ogg-FLAC Vorbis Comment decoding from mapping and subsequent
+  metadata packets, with explicit metadata-block limits;
 - added bounded PDF Info/XMP inspection and RIFF/WAVE format, INFO, and BWF
   metadata readers;
 - added bounded SVG XML inspection for root geometry, document text, and safe
