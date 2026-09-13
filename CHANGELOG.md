@@ -61,6 +61,7 @@ Initial read-first foundation with narrow validated rewrites:
 - added bounded JPEG ICC APP2 fragment reassembly with sequence and duplicate
   checks before profile inspection;
 - added typed WebP `ICCP` profile inspection under the configured value budget;
+- added bounded ICC text and XYZ table-tag inspection with stable 4CC IDs;
 - preserved numeric IPTC-IIM dataset identifiers in parsed tags and stable lookup;
 - decoded EXIF `UserComment` ASCII and Unicode payloads while preserving raw bytes;
 - exposed repeated canonical and numeric tag lookup through the public API;

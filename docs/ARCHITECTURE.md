@@ -43,7 +43,8 @@ XMP to the bounded XML reader; PNG text and `iCCP` chunks use a zlib decoder
 capped by `ParseLimits`; Photoshop resources delegate IPTC IIM parsing,
 and ICC payloads delegate bounded profile-header, typed illuminant, and tag-table inspection; JPEG
 ICC APP2 fragments are collected and reassembled by sequence number before that inspection, while
-PNG and WebP carry their bounded profile payloads directly. TIFF
+common ICC text and XYZ table tags retain their 4CC identifiers. PNG and WebP carry their bounded
+profile payloads directly. TIFF
 also derives GPS decimal coordinates, signed altitude, image direction, speed
 in meters per second, and seconds since midnight only after validating their
 rational values, units, and ranges.
