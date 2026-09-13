@@ -60,6 +60,8 @@ readers. Unknown Photoshop resources remain available as bounded byte values;
 layer and pixel data are skipped. The ISO-BMFF
 reader walks bounded boxes and exposes brands, image properties, direct
 XMP/EXIF boxes, and a conservative subset of QuickTime-style `ilst` text items.
+The AVI reader scans RIFF lists with checked boundaries, exposes typed `avih`
+timing/dimension fields and common `LIST/INFO` text, and skips video payloads.
 The MP3 reader handles bounded ID3v2 frame tables, ID3v1 fixed fields, and a
 single MPEG frame header without decoding audio payloads.
 The FLAC reader validates the metadata-block chain and decodes STREAMINFO,

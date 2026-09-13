@@ -81,6 +81,14 @@
       "delete": "planned",
       "lossless_rewrite": "planned",
       "streaming": "partial"
+    },
+    "AVI": {
+      "read": "partial",
+      "write": "planned",
+      "create": "planned",
+      "delete": "planned",
+      "lossless_rewrite": "planned",
+      "streaming": "partial"
     }
   },
   "metadata_families": {

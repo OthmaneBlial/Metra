@@ -13,7 +13,7 @@ pretending to understand them.
 The first verified vertical slice is:
 
 ```text
-JPEG / TIFF / PNG / WebP / GIF / SVG / PSD/PSB / ISO-BMFF media
+JPEG / TIFF / PNG / WebP / GIF / SVG / PSD/PSB / AVI / ISO-BMFF media
         ↓
 bounded container parsing
         ↓
@@ -38,6 +38,7 @@ Implemented today:
 | WAV | RIFF/WAVE chunks, `fmt ` audio properties, `LIST/INFO`, Broadcast Wave `bext`, and bounded validation |
 | SVG | Bounded XML detection, root dimensions/version/viewBox, title, description, comments, nesting/text limits, and safe document-text rewrites |
 | PSD/PSB | Big-endian header and dimensions, bounded Photoshop image resources, XMP/IPTC/ICC/embedded EXIF delegation, resolution and common resource fields, and preservation of unknown resources as bytes |
+| AVI | RIFF/AVI validation, bounded `avih` dimensions and frame timing, and common `LIST/INFO` text fields without decoding video frames |
 | Output | Human-readable text, JSON, JSON Lines, CSV, TOML, or YAML; schema version `1` is retained in structured output |
 | Batch | Deterministic path ordering with bounded parallel inspection through `--jobs N`; human, JSON Lines, and CSV modes stream results with a bounded out-of-order buffer |
 | Safety | Checked offsets, bounded reads, recursion and entry limits, deterministic recursive traversal, safe XML entity handling, and structured warnings |
@@ -220,7 +221,7 @@ ne représente pas un pourcentage de compatibilité ExifTool.
 
 1. **91 %** — Étendre le modèle de lecture et les définitions de tags sans perdre les données brutes ; les dérivés GPS valident maintenant les références, les plages et les conversions altitude/direction/temps/vitesse, les datasets IPTC-IIM lus conservent leur identifiant numérique stable, `EXIF:UserComment` décode les préfixes ASCII/Unicode sans perdre les octets bruts, les tags image/exposition/objectif courants ont des noms canoniques, et les champs Nikon bornés sont résolus par le catalogue partagé.
 2. **30 %** — Ajouter des corpus réels et des tests différentiels JPEG/TIFF/PNG/WebP ; le harnais opt-in est présent, mais aucune exécution de corpus réel n’est comptée.
-3. **91 %** — Approfondir HEIF/AVIF et les conteneurs média, puis couvrir les lecteurs restants ; un lecteur PSD/PSB borné couvre maintenant l’en-tête et les ressources Photoshop courantes sans décoder les pixels.
+3. **92 %** — Approfondir HEIF/AVIF et les conteneurs média, puis couvrir les lecteurs restants ; des lecteurs PSD/PSB et AVI bornés couvrent maintenant leurs en-têtes et métadonnées courantes sans décoder les pixels ou les flux vidéo.
 4. **95 %** — Étendre XMP/IPTC/ICC/ID3 et isoler les espaces MakerNote ; XMP est maintenant réécrit de façon bornée pour JPEG APP1, WebP et PNG, les datasets IPTC-IIM connus peuvent être réécrits dans les ressources Photoshop APP13, les profils ICC fragmentés JPEG, PNG `iCCP` et WebP `ICCP` sont inspectés sous limites avec descriptions texte et valeurs XYZ courantes, les références XML sûres sont décodées sans entités personnalisées, les textes PNG compressés sont déployés sous budget, les champs texte/commentaires ID3v2 courants restent sous limites explicites, et les conteneurs MakerNote courants sont identifiés ; un IFD Nikon Type 2 borné expose maintenant les champs connus via le catalogue partagé, avec intégration EXIF et offsets de source absolus testés.
 5. **67 %** — Concevoir l’écriture read-modify-write avec validation et remplacement atomique ; huit writers bornés couvrent maintenant JPEG, PNG, GIF, WebP, SVG, WAV, FLAC et ID3v2, et les budgets metadata/valeur sont configurables depuis le CLI.
 6. **95 %** — Ajouter `set`/`delete`/`copy` et comparer après les tests round-trip ; les opérations couvrent maintenant JPEG `Comment`/`XMP` et datasets IPTC-IIM connus, PNG `tEXt`/`XMP`, GIF `Comment`, WebP `XMP`, SVG `Title`/`Description`/`Comment`, WAV `LIST/INFO`, FLAC Vorbis Comments et ID3v2 texte/commentaire via API et CLI, avec comparaison déterministe des valeurs.
