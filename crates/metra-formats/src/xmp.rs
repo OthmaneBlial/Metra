@@ -5,6 +5,8 @@ use quick_xml::events::{BytesStart, Event};
 
 use metra_core::{Metadata, MetraError, ParseLimits, Result, Source, Tag, TagValue, ValueType};
 
+use crate::xml::resolve_general_ref;
+
 #[derive(Debug, Default)]
 struct Node {
     name: String,
@@ -48,7 +50,7 @@ pub(crate) fn parse_xmp(
 
 fn parse_tree(bytes: &[u8], limits: ParseLimits) -> Result<Vec<Node>> {
     let mut reader = Reader::from_reader(bytes);
-    reader.config_mut().trim_text(true);
+    reader.config_mut().trim_text(false);
     let mut buffer = Vec::new();
     let mut stack: Vec<Node> = Vec::new();
     let mut roots = Vec::new();
@@ -135,12 +137,17 @@ fn parse_tree(bytes: &[u8], limits: ParseLimits) -> Result<Vec<Node>> {
                 });
             }
             Event::GeneralRef(reference) => {
-                return Err(MetraError::InvalidXml {
-                    message: format!(
-                        "unresolved XML entity {} is not allowed in metadata packets",
-                        display_name(reference.as_ref())
-                    ),
-                });
+                let value = resolve_general_ref(&reference)?;
+                text_bytes = text_bytes.saturating_add(value.len());
+                if text_bytes > limits.max_value_bytes {
+                    return Err(MetraError::ResourceLimitExceeded {
+                        resource: "XMP text".to_owned(),
+                        limit: limits.max_value_bytes,
+                    });
+                }
+                if let Some(node) = stack.last_mut() {
+                    node.text.push_str(&value);
+                }
             }
             Event::Eof => break,
             Event::Decl(_) | Event::Comment(_) | Event::PI(_) => {}
@@ -264,8 +271,9 @@ fn node_value(node: &Node) -> Option<TagValue> {
         if let Some(resource) = node.attributes.get("rdf:resource") {
             return Some(TagValue::String(resource.clone()));
         }
-        if !node.text.is_empty() {
-            return Some(TagValue::String(node.text.clone()));
+        let text = node.text.trim();
+        if !text.is_empty() {
+            return Some(TagValue::String(text.to_owned()));
         }
         return if node.attributes.is_empty() {
             None
@@ -275,8 +283,9 @@ fn node_value(node: &Node) -> Option<TagValue> {
     }
 
     let mut fields = BTreeMap::new();
-    if !node.text.is_empty() {
-        fields.insert("#text".to_owned(), TagValue::String(node.text.clone()));
+    let text = node.text.trim();
+    if !text.is_empty() {
+        fields.insert("#text".to_owned(), TagValue::String(text.to_owned()));
     }
     for (name, value) in &node.attributes {
         if !is_metadata_control_attribute(name) {
@@ -384,5 +393,43 @@ mod tests {
             ParseLimits::default(),
         );
         assert!(matches!(result, Err(MetraError::InvalidXml { .. })));
+    }
+
+    #[test]
+    fn decodes_safe_character_references_and_rejects_custom_entities() {
+        let packet = br#"<x:xmpmeta><rdf:RDF><rdf:Description xmlns:dc="urn:dc"><dc:description>bread &amp; butter &#38;</dc:description></rdf:Description></rdf:RDF></x:xmpmeta>"#;
+        let mut metadata = Metadata::new(FileInfo::new(
+            "xmp.jpg".into(),
+            packet.len() as u64,
+            FileFormat::Jpeg,
+        ));
+        parse_xmp(
+            packet,
+            0,
+            "JPEG/APP1-XMP",
+            &mut metadata,
+            ParseLimits::default(),
+        )
+        .expect("safe XML character references should parse");
+        assert_eq!(
+            metadata.find("XMP:dc:description").unwrap().display_value(),
+            "bread & butter &"
+        );
+
+        let packet = br#"<x:xmpmeta><rdf:RDF><rdf:Description xmlns:dc="urn:dc"><dc:description>&custom;</dc:description></rdf:Description></rdf:RDF></x:xmpmeta>"#;
+        let mut metadata = Metadata::new(FileInfo::new(
+            "xmp.jpg".into(),
+            packet.len() as u64,
+            FileFormat::Jpeg,
+        ));
+        let error = parse_xmp(
+            packet,
+            0,
+            "JPEG/APP1-XMP",
+            &mut metadata,
+            ParseLimits::default(),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("unsupported XML entity"));
     }
 }

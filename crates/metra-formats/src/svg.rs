@@ -1,11 +1,13 @@
 use std::io::{Read, Seek};
 
 use quick_xml::Reader;
-use quick_xml::events::{BytesRef, BytesStart, Event};
+use quick_xml::events::{BytesStart, Event};
 
 use metra_core::{
     FileInfo, Metadata, MetraError, ParseLimits, Result, Source, Tag, TagValue, ValueType,
 };
+
+use crate::xml::resolve_general_ref;
 
 #[derive(Debug)]
 struct ElementState {
@@ -361,18 +363,6 @@ fn local_name(bytes: &[u8]) -> String {
 
 fn display_name(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
-}
-
-pub(crate) fn resolve_general_ref(reference: &BytesRef<'_>) -> Result<String> {
-    let name = reference.decode().map_err(|error| MetraError::InvalidXml {
-        message: error.to_string(),
-    })?;
-    let raw = format!("&{name};");
-    quick_xml::escape::unescape(&raw)
-        .map(|value| value.into_owned())
-        .map_err(|error| MetraError::InvalidXml {
-            message: format!("unsupported XML entity {name}: {error}"),
-        })
 }
 
 #[cfg(test)]

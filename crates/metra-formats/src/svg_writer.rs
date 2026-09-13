@@ -8,7 +8,8 @@ use metra_core::{FileFormat, FileInfo, MetraError, ParseLimits, Result};
 use quick_xml::Reader;
 use quick_xml::events::Event;
 
-use crate::svg::{read_svg, resolve_general_ref};
+use crate::svg::read_svg;
+use crate::xml::resolve_general_ref;
 
 /// Lossless SVG document-text edits that preserve unrelated source bytes.
 #[derive(Debug, Clone, PartialEq, Eq)]

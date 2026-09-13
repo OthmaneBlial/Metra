@@ -30,6 +30,7 @@ mod wav;
 mod wav_writer;
 mod webp;
 mod webp_writer;
+mod xml;
 mod xmp;
 
 pub use flac::read_flac;
