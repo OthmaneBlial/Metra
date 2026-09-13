@@ -35,7 +35,8 @@ The TIFF reader is the low-level building block for EXIF in JPEG, PNG, and
 WebP. It accepts a bounded random-access region, so embedded offsets remain
 relative to the correct TIFF payload while source offsets can still be
 reported against the containing file. JPEG, PNG, and WebP delegate structured
-XMP to the bounded XML reader; Photoshop resources delegate IPTC IIM parsing,
+XMP to the bounded XML reader; PNG text chunks use a zlib decoder capped by
+`ParseLimits`; Photoshop resources delegate IPTC IIM parsing,
 and ICC payloads delegate profile-header/tag-table inspection. The ISO-BMFF
 reader walks bounded boxes and exposes brands, image properties, direct
 XMP/EXIF boxes, and a conservative subset of QuickTime-style `ilst` text items.
