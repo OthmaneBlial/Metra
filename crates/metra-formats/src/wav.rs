@@ -4,6 +4,8 @@ use std::path::Path;
 use metra_core::{
     FileInfo, Metadata, MetraError, ParseLimits, Result, Source, Tag, TagValue, ValueType, Warning,
 };
+use quick_xml::Reader;
+use quick_xml::events::Event;
 
 pub fn read_wav<R: Read + Seek>(
     reader: &mut R,
@@ -194,10 +196,26 @@ pub fn read_wav<R: Read + Seek>(
                 }
             }
             b"iXML" => {
-                metadata.add_warning(
-                    Warning::new("wav-ixml", "WAV iXML metadata is present but not decoded")
+                let bounded = read_bounded(
+                    reader,
+                    data_offset,
+                    length,
+                    &path,
+                    limits,
+                    &mut metadata_bytes,
+                    "WAV iXML chunk",
+                )?;
+                if let Some(data) = bounded {
+                    parse_ixml(&data, data_offset, limits, &mut metadata);
+                } else {
+                    metadata.add_warning(
+                        Warning::new(
+                            "wav-metadata-limit",
+                            "WAV iXML chunk was skipped due to limits",
+                        )
                         .at(data_offset),
-                );
+                    );
+                }
             }
             b"id3 " => {
                 metadata.add_warning(
@@ -306,6 +324,185 @@ fn parse_fmt(data: &[u8], offset: u64, metadata: &mut Metadata) {
             "fmt",
             offset + 20,
             4,
+        );
+    }
+}
+
+fn parse_ixml(data: &[u8], offset: u64, limits: ParseLimits, metadata: &mut Metadata) {
+    metadata.add_tag(Tag {
+        namespace: "WAV".to_owned(),
+        group: "iXML".to_owned(),
+        id: None,
+        name: "iXML:Packet".to_owned(),
+        description: Some("Raw bounded WAV iXML packet".to_owned()),
+        raw_value: Some(data.to_vec()),
+        value: TagValue::Bytes(data.to_vec()),
+        value_type: ValueType::Bytes,
+        source: Source::new("WAV/iXML", Some(offset), Some(data.len() as u64)),
+        writable: false,
+    });
+
+    let mut reader = Reader::from_reader(data);
+    reader.config_mut().trim_text(true);
+    let mut buffer = Vec::new();
+    let mut stack: Vec<String> = Vec::new();
+    let mut texts: Vec<String> = Vec::new();
+    let mut element_count = 0_usize;
+    let mut text_bytes = 0_usize;
+    loop {
+        let event = match reader.read_event_into(&mut buffer) {
+            Ok(event) => event,
+            Err(error) => {
+                metadata
+                    .add_warning(Warning::new("invalid-wav-ixml", error.to_string()).at(offset));
+                return;
+            }
+        };
+        match event {
+            Event::Start(element) => {
+                if stack.len() >= limits.max_recursion_depth {
+                    metadata.add_warning(
+                        Warning::new("wav-ixml-recursion-limit", "WAV iXML nesting limit reached")
+                            .at(offset),
+                    );
+                    return;
+                }
+                element_count = element_count.saturating_add(1);
+                if element_count > limits.max_jpeg_segments {
+                    metadata.add_warning(
+                        Warning::new("wav-ixml-element-limit", "WAV iXML element limit reached")
+                            .at(offset),
+                    );
+                    return;
+                }
+                let name = String::from_utf8_lossy(element.name().as_ref()).into_owned();
+                stack.push(name);
+                texts.push(String::new());
+            }
+            Event::Empty(_element) => {
+                element_count = element_count.saturating_add(1);
+                if element_count > limits.max_jpeg_segments {
+                    metadata.add_warning(
+                        Warning::new("wav-ixml-element-limit", "WAV iXML element limit reached")
+                            .at(offset),
+                    );
+                    return;
+                }
+            }
+            Event::Text(text) => {
+                let decoded = match text.decode() {
+                    Ok(decoded) => decoded,
+                    Err(error) => {
+                        metadata.add_warning(
+                            Warning::new("invalid-wav-ixml", error.to_string()).at(offset),
+                        );
+                        return;
+                    }
+                };
+                let unescaped = match quick_xml::escape::unescape(decoded.as_ref()) {
+                    Ok(value) => value,
+                    Err(error) => {
+                        metadata.add_warning(
+                            Warning::new("invalid-wav-ixml", error.to_string()).at(offset),
+                        );
+                        return;
+                    }
+                };
+                text_bytes = text_bytes.saturating_add(unescaped.len());
+                if text_bytes > limits.max_value_bytes {
+                    metadata.add_warning(
+                        Warning::new("wav-ixml-value-limit", "WAV iXML text budget was reached")
+                            .at(offset),
+                    );
+                    return;
+                }
+                if let Some(value) = texts.last_mut() {
+                    value.push_str(unescaped.as_ref());
+                }
+            }
+            Event::CData(text) => {
+                let decoded = match text.decode() {
+                    Ok(decoded) => decoded,
+                    Err(error) => {
+                        metadata.add_warning(
+                            Warning::new("invalid-wav-ixml", error.to_string()).at(offset),
+                        );
+                        return;
+                    }
+                };
+                text_bytes = text_bytes.saturating_add(decoded.len());
+                if text_bytes > limits.max_value_bytes {
+                    metadata.add_warning(
+                        Warning::new("wav-ixml-value-limit", "WAV iXML text budget was reached")
+                            .at(offset),
+                    );
+                    return;
+                }
+                if let Some(value) = texts.last_mut() {
+                    value.push_str(decoded.as_ref());
+                }
+            }
+            Event::End(element) => {
+                let Some(name) = stack.pop() else {
+                    metadata.add_warning(
+                        Warning::new("invalid-wav-ixml", "unexpected WAV iXML closing element")
+                            .at(offset),
+                    );
+                    return;
+                };
+                let Some(value) = texts.pop() else {
+                    metadata.add_warning(
+                        Warning::new("invalid-wav-ixml", "WAV iXML element stack is inconsistent")
+                            .at(offset),
+                    );
+                    return;
+                };
+                if element.name().as_ref() != name.as_bytes() {
+                    metadata.add_warning(
+                        Warning::new(
+                            "invalid-wav-ixml",
+                            "WAV iXML closing element does not match",
+                        )
+                        .at(offset),
+                    );
+                    return;
+                }
+                if !value.is_empty() {
+                    let path = stack
+                        .iter()
+                        .chain(std::iter::once(&name))
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(".");
+                    metadata.add_tag(Tag {
+                        namespace: "WAV".to_owned(),
+                        group: "iXML".to_owned(),
+                        id: None,
+                        name: format!("iXML:{path}"),
+                        description: Some("WAV iXML leaf value".to_owned()),
+                        raw_value: Some(value.as_bytes().to_vec()),
+                        value: TagValue::String(value),
+                        value_type: ValueType::String,
+                        source: Source::new("WAV/iXML", Some(offset), Some(data.len() as u64)),
+                        writable: false,
+                    });
+                }
+            }
+            Event::DocType(_) => {
+                metadata.add_warning(
+                    Warning::new("invalid-wav-ixml", "DOCTYPE is not allowed in WAV iXML")
+                        .at(offset),
+                );
+                return;
+            }
+            Event::Eof => break,
+            Event::Decl(_) | Event::Comment(_) | Event::PI(_) | Event::GeneralRef(_) => {}
+        }
+        buffer.clear();
+    }
+    if !stack.is_empty() {
+        metadata.add_warning(
+            Warning::new("invalid-wav-ixml", "WAV iXML ended with unclosed elements").at(offset),
         );
     }
 }
@@ -601,6 +798,48 @@ mod tests {
         assert_eq!(
             metadata.find("WAV:Artist").unwrap().display_value(),
             "Artist"
+        );
+    }
+
+    #[test]
+    fn reads_bounded_ixml_leaf_values() {
+        let ixml = br#"<BWFXML><PROJECT>Metra</PROJECT><SCENE><TAKE>07</TAKE></SCENE><NOTE><![CDATA[clean take]]></NOTE></BWFXML>"#;
+        let mut body = chunk(b"iXML", ixml);
+        body.extend(chunk(b"data", &[0, 0]));
+        let mut bytes = b"RIFF".to_vec();
+        bytes.extend_from_slice(&((4 + body.len()) as u32).to_le_bytes());
+        bytes.extend_from_slice(b"WAVE");
+        bytes.extend(body);
+        let info = FileInfo::new("ixml.wav".into(), bytes.len() as u64, FileFormat::Wav);
+        let metadata = read_wav(&mut Cursor::new(bytes), info, ParseLimits::default()).unwrap();
+
+        assert_eq!(
+            metadata
+                .find("WAV:iXML:BWFXML.PROJECT")
+                .unwrap()
+                .display_value(),
+            "Metra"
+        );
+        assert_eq!(
+            metadata
+                .find("WAV:iXML:BWFXML.SCENE.TAKE")
+                .unwrap()
+                .display_value(),
+            "07"
+        );
+        assert_eq!(
+            metadata
+                .find("WAV:iXML:BWFXML.NOTE")
+                .unwrap()
+                .display_value(),
+            "clean take"
+        );
+        assert!(metadata.find("WAV:iXML:Packet").is_some());
+        assert!(
+            !metadata
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "wav-ixml")
         );
     }
 
