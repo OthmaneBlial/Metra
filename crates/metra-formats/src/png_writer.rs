@@ -3,15 +3,18 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use metra_core::{FileFormat, FileInfo, MetraError, ParseLimits, Result};
+use metra_core::{FileFormat, FileInfo, Metadata, MetraError, ParseLimits, Result};
 
 use crate::png::{PNG_SIGNATURE, crc32, read_png};
+use crate::xmp::parse_xmp;
 
 /// Lossless PNG text edits for uncompressed `tEXt` chunks.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PngEdit {
     SetText { keyword: String, value: String },
     DeleteText { keyword: String },
+    SetXmp(String),
+    DeleteXmp,
 }
 
 pub fn rewrite_png<R: Read + Seek, W: Write>(
@@ -114,6 +117,8 @@ pub fn rewrite_png_path(
 enum TextAction {
     Set { keyword: Vec<u8>, value: Vec<u8> },
     Delete { keyword: Vec<u8> },
+    SetXmp(Vec<u8>),
+    DeleteXmp,
 }
 
 fn rewrite_png_stream<R: Read, W: Write>(
@@ -173,23 +178,44 @@ fn rewrite_png_stream<R: Read, W: Write>(
             if let Some(action) = action.as_ref()
                 && keyword.is_some_and(|keyword| action_matches(action, keyword))
             {
-                match action {
-                    TextAction::Set { keyword, value } if !inserted => {
-                        write_text_chunk(writer, keyword, value)?;
-                        inserted = true;
-                    }
-                    TextAction::Set { .. } | TextAction::Delete { .. } => {}
-                }
+                write_replacement_chunk(writer, action, &mut inserted)?;
+            } else {
+                write_all(writer, &header)?;
+                write_all(writer, &data)?;
+                write_all(writer, &crc)?;
+            }
+        } else if &chunk_type == b"iTXt" {
+            let length =
+                usize::try_from(data_length).map_err(|_| MetraError::ResourceLimitExceeded {
+                    resource: "PNG iTXt chunk during rewrite".to_owned(),
+                    limit: limits.max_metadata_bytes,
+                })?;
+            text_bytes = text_bytes.saturating_add(length);
+            if text_bytes > limits.max_metadata_bytes {
+                return Err(MetraError::ResourceLimitExceeded {
+                    resource: "PNG text metadata during rewrite".to_owned(),
+                    limit: limits.max_metadata_bytes,
+                });
+            }
+            let mut data = vec![0_u8; length];
+            read_exact(reader, &mut data, path)?;
+            let mut crc = [0_u8; 4];
+            read_exact(reader, &mut crc, path)?;
+            if let Some(action) = action.as_ref()
+                && itxt_keyword(&data).is_some_and(|keyword| action_matches(action, keyword))
+            {
+                write_replacement_chunk(writer, action, &mut inserted)?;
             } else {
                 write_all(writer, &header)?;
                 write_all(writer, &data)?;
                 write_all(writer, &crc)?;
             }
         } else if &chunk_type == b"IEND" {
-            if let Some(TextAction::Set { keyword, value }) = action.as_ref()
+            if let Some(action) = action.as_ref()
                 && !inserted
+                && action_is_set(action)
             {
-                write_text_chunk(writer, keyword, value)?;
+                write_action_chunk(writer, action)?;
             }
             write_all(writer, &header)?;
             copy_exact(reader, writer, data_length, path)?;
@@ -236,6 +262,10 @@ fn text_action(edits: &[PngEdit], limits: ParseLimits) -> Result<Option<TextActi
                     keyword: validate_keyword(keyword)?,
                 });
             }
+            PngEdit::SetXmp(value) => {
+                action = Some(TextAction::SetXmp(validate_xmp(value, limits)?));
+            }
+            PngEdit::DeleteXmp => action = Some(TextAction::DeleteXmp),
         }
     }
     Ok(action)
@@ -259,9 +289,30 @@ fn validate_value(value: &str) -> Result<Vec<u8>> {
     Ok(value.as_bytes().to_vec())
 }
 
+fn validate_xmp(value: &str, limits: ParseLimits) -> Result<Vec<u8>> {
+    let bytes = value.as_bytes().to_vec();
+    if bytes.len() > limits.max_value_bytes {
+        return Err(MetraError::ResourceLimitExceeded {
+            resource: "PNG XMP packet".to_owned(),
+            limit: limits.max_value_bytes,
+        });
+    }
+    let mut validation = Metadata::new(FileInfo::new(
+        "<memory>".into(),
+        bytes.len() as u64,
+        FileFormat::Png,
+    ));
+    parse_xmp(&bytes, 0, "PNG/XMP", &mut validation, limits)?;
+    Ok(bytes)
+}
+
 fn text_keyword(data: &[u8]) -> Option<&[u8]> {
     let separator = data.iter().position(|byte| *byte == 0)?;
     Some(&data[..separator])
+}
+
+fn itxt_keyword(data: &[u8]) -> Option<&[u8]> {
+    data.get(..data.iter().position(|byte| *byte == 0)?)
 }
 
 fn action_matches(action: &TextAction, keyword: &[u8]) -> bool {
@@ -270,6 +321,36 @@ fn action_matches(action: &TextAction, keyword: &[u8]) -> bool {
             keyword: target, ..
         }
         | TextAction::Delete { keyword: target } => target == keyword,
+        TextAction::SetXmp(_) | TextAction::DeleteXmp => keyword == b"XML:com.adobe.xmp",
+    }
+}
+
+fn action_is_set(action: &TextAction) -> bool {
+    matches!(action, TextAction::Set { .. } | TextAction::SetXmp(_))
+}
+
+fn write_replacement_chunk<W: Write>(
+    writer: &mut W,
+    action: &TextAction,
+    inserted: &mut bool,
+) -> Result<()> {
+    if *inserted {
+        return Ok(());
+    }
+    match action {
+        TextAction::Set { keyword, value } => write_text_chunk(writer, keyword, value)?,
+        TextAction::SetXmp(value) => write_itxt_xmp_chunk(writer, value)?,
+        TextAction::Delete { .. } | TextAction::DeleteXmp => {}
+    }
+    *inserted = true;
+    Ok(())
+}
+
+fn write_action_chunk<W: Write>(writer: &mut W, action: &TextAction) -> Result<()> {
+    match action {
+        TextAction::Set { keyword, value } => write_text_chunk(writer, keyword, value),
+        TextAction::SetXmp(value) => write_itxt_xmp_chunk(writer, value),
+        TextAction::Delete { .. } | TextAction::DeleteXmp => Ok(()),
     }
 }
 
@@ -288,6 +369,23 @@ fn write_text_chunk<W: Write>(writer: &mut W, keyword: &[u8], value: &[u8]) -> R
         writer,
         &crc32(&chunk_type, &[keyword, &[0], value].concat()).to_be_bytes(),
     )
+}
+
+fn write_itxt_xmp_chunk<W: Write>(writer: &mut W, value: &[u8]) -> Result<()> {
+    let keyword = b"XML:com.adobe.xmp";
+    let data_length = keyword.len() + 5 + value.len();
+    let length = u32::try_from(data_length).map_err(|_| MetraError::WriteFailure {
+        message: "PNG iTXt XMP chunk exceeds the 32-bit length limit".to_owned(),
+    })?;
+    let chunk_type = *b"iTXt";
+    let mut data = Vec::with_capacity(data_length);
+    data.extend_from_slice(keyword);
+    data.extend_from_slice(&[0, 0, 0, 0, 0]);
+    data.extend_from_slice(value);
+    write_all(writer, &length.to_be_bytes())?;
+    write_all(writer, &chunk_type)?;
+    write_all(writer, &data)?;
+    write_all(writer, &crc32(&chunk_type, &data).to_be_bytes())
 }
 
 fn read_exact<R: Read>(reader: &mut R, bytes: &mut [u8], path: &Path) -> Result<()> {
@@ -360,6 +458,11 @@ mod tests {
 
     use super::*;
 
+    const XMP_BEFORE: &[u8] =
+        br#"<x:xmpmeta><rdf:RDF><rdf:Description xmlns:dc="urn:dc" dc:format="before"/></rdf:RDF></x:xmpmeta>"#;
+    const XMP_AFTER: &[u8] =
+        br#"<x:xmpmeta><rdf:RDF><rdf:Description xmlns:dc="urn:dc" dc:format="after"/></rdf:RDF></x:xmpmeta>"#;
+
     fn info(size: usize) -> FileInfo {
         FileInfo::new("editable.png".into(), size as u64, FileFormat::Png)
     }
@@ -377,6 +480,17 @@ mod tests {
         let mut bytes = PNG_SIGNATURE.to_vec();
         bytes.extend_from_slice(&chunk(b"IHDR", &[0; 13]));
         bytes.extend_from_slice(&chunk(b"tEXt", b"Comment\0before"));
+        bytes.extend_from_slice(&chunk(b"IDAT", &[1, 2, 3, 4]));
+        bytes.extend_from_slice(&chunk(b"IEND", &[]));
+        bytes
+    }
+
+    fn png_with_xmp(xmp: &[u8]) -> Vec<u8> {
+        let mut itxt = b"XML:com.adobe.xmp\0\0\0\0\0".to_vec();
+        itxt.extend_from_slice(xmp);
+        let mut bytes = PNG_SIGNATURE.to_vec();
+        bytes.extend_from_slice(&chunk(b"IHDR", &[0; 13]));
+        bytes.extend_from_slice(&chunk(b"iTXt", &itxt));
         bytes.extend_from_slice(&chunk(b"IDAT", &[1, 2, 3, 4]));
         bytes.extend_from_slice(&chunk(b"IEND", &[]));
         bytes
@@ -479,5 +593,88 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.to_string().contains("keywords"));
+    }
+
+    #[test]
+    fn replaces_deletes_and_inserts_xmp_chunks() {
+        let bytes = png_with_xmp(XMP_BEFORE);
+        let output = rewrite_png_to_vec(
+            &bytes,
+            info(bytes.len()),
+            ParseLimits::default(),
+            &[PngEdit::SetXmp(
+                String::from_utf8(XMP_AFTER.to_vec()).unwrap(),
+            )],
+        )
+        .unwrap();
+        assert!(
+            output
+                .windows(12)
+                .any(|window| window == [0, 0, 0, 4, b'I', b'D', b'A', b'T', 1, 2, 3, 4])
+        );
+        let metadata = read_png(
+            &mut Cursor::new(output.clone()),
+            info(output.len()),
+            ParseLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            metadata.find("XMP:dc:format").unwrap().display_value(),
+            "after"
+        );
+
+        let deleted = rewrite_png_to_vec(
+            &bytes,
+            info(bytes.len()),
+            ParseLimits::default(),
+            &[PngEdit::DeleteXmp],
+        )
+        .unwrap();
+        let deleted_metadata = read_png(
+            &mut Cursor::new(deleted.clone()),
+            info(deleted.len()),
+            ParseLimits::default(),
+        )
+        .unwrap();
+        assert!(deleted_metadata.find("XMP:Packet").is_none());
+
+        let mut without_xmp = PNG_SIGNATURE.to_vec();
+        without_xmp.extend_from_slice(&chunk(b"IHDR", &[0; 13]));
+        without_xmp.extend_from_slice(&chunk(b"IEND", &[]));
+        let inserted = rewrite_png_to_vec(
+            &without_xmp,
+            info(without_xmp.len()),
+            ParseLimits::default(),
+            &[PngEdit::SetXmp(
+                String::from_utf8(XMP_AFTER.to_vec()).unwrap(),
+            )],
+        )
+        .unwrap();
+        let inserted_metadata = read_png(
+            &mut Cursor::new(inserted.clone()),
+            info(inserted.len()),
+            ParseLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            inserted_metadata
+                .find("XMP:dc:format")
+                .unwrap()
+                .display_value(),
+            "after"
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_xmp_before_writing() {
+        let bytes = png_with_xmp(XMP_BEFORE);
+        let error = rewrite_png_to_vec(
+            &bytes,
+            info(bytes.len()),
+            ParseLimits::default(),
+            &[PngEdit::SetXmp("<broken".to_owned())],
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("XML"));
     }
 }
