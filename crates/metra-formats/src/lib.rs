@@ -255,9 +255,81 @@ pub fn read_path(path: impl AsRef<Path>) -> Result<Metadata> {
     read_path_with_limits(path, ParseLimits::default())
 }
 
+/// Read metadata from a seekable stream using the default defensive limits.
+pub fn read_reader<R: Read + Seek>(reader: &mut R, file_info: FileInfo) -> Result<Metadata> {
+    read_reader_with_limits(reader, file_info, ParseLimits::default())
+}
+
+/// Detect and read metadata from a seekable stream with caller-selected limits.
+///
+/// The caller supplies the stream path and declared size for diagnostics and
+/// range checks. The format is detected from the stream signature rather than
+/// trusted from `file_info.format`.
+pub fn read_reader_with_limits<R: Read + Seek>(
+    reader: &mut R,
+    file_info: FileInfo,
+    limits: ParseLimits,
+) -> Result<Metadata> {
+    let mut header = [0_u8; 4096];
+    let mut header_len = 0;
+    while header_len < header.len() {
+        match reader
+            .read(&mut header[header_len..])
+            .map_err(|source| MetraError::Io {
+                path: file_info.path.clone(),
+                source,
+            })? {
+            0 => break,
+            read => header_len += read,
+        }
+    }
+    reader
+        .seek(SeekFrom::Start(0))
+        .map_err(|source| MetraError::Io {
+            path: file_info.path.clone(),
+            source,
+        })?;
+
+    let detected =
+        detect_format_for_path(&file_info.path, &header[..header_len]).ok_or_else(|| {
+            MetraError::UnsupportedFormat {
+                description: format!(
+                    "unrecognized file signature for {}",
+                    file_info.path.display()
+                ),
+            }
+        })?;
+    let file_info = FileInfo::new(file_info.path.clone(), file_info.size, detected.format);
+
+    match detected.format {
+        FileFormat::Jpeg => jpeg::read_jpeg(reader, file_info, limits),
+        FileFormat::Tiff => tiff::read_tiff(reader, file_info, limits),
+        FileFormat::Png => png::read_png(reader, file_info, limits),
+        FileFormat::Webp => webp::read_webp(reader, file_info, limits),
+        FileFormat::Gif => gif::read_gif(reader, file_info, limits),
+        FileFormat::Heif
+        | FileFormat::Avif
+        | FileFormat::Mp4
+        | FileFormat::Mov
+        | FileFormat::M4a => isobmff::read_isobmff(reader, file_info, limits),
+        FileFormat::Mp3 => id3::read_mp3(reader, file_info, limits),
+        FileFormat::Flac => flac::read_flac(reader, file_info, limits),
+        FileFormat::Pdf => pdf::read_pdf(reader, file_info, limits),
+        FileFormat::Wav => wav::read_wav(reader, file_info, limits),
+        FileFormat::Svg => svg::read_svg(reader, file_info, limits),
+        FileFormat::Psd => psd::read_psd(reader, file_info, limits),
+        FileFormat::Avi => avi::read_avi(reader, file_info, limits),
+        FileFormat::Mkv | FileFormat::Webm => matroska::read_matroska(reader, file_info, limits),
+        FileFormat::Raw => raw::read_raw(reader, file_info, limits),
+        format => Err(MetraError::UnsupportedFormat {
+            description: format!("{format} is detected but its reader is not implemented yet"),
+        }),
+    }
+}
+
 pub fn read_path_with_limits(path: impl AsRef<Path>, limits: ParseLimits) -> Result<Metadata> {
     let path = path.as_ref().to_path_buf();
-    let mut file = File::open(&path).map_err(|source| MetraError::Io {
+    let file = File::open(&path).map_err(|source| MetraError::Io {
         path: path.clone(),
         source,
     })?;
@@ -268,49 +340,12 @@ pub fn read_path_with_limits(path: impl AsRef<Path>, limits: ParseLimits) -> Res
             source,
         })?
         .len();
-
-    let mut header = [0_u8; 4096];
-    let header_len = file.read(&mut header).map_err(|source| MetraError::Io {
-        path: path.clone(),
-        source,
-    })?;
-    file.seek(SeekFrom::Start(0))
-        .map_err(|source| MetraError::Io {
-            path: path.clone(),
-            source,
-        })?;
-
-    let detected = detect_format_for_path(&path, &header[..header_len]).ok_or_else(|| {
-        MetraError::UnsupportedFormat {
-            description: format!("unrecognized file signature for {}", path.display()),
-        }
-    })?;
-    let file_info = FileInfo::new(path.clone(), size, detected.format);
-
-    match detected.format {
-        FileFormat::Jpeg => jpeg::read_jpeg(&mut file, file_info, limits),
-        FileFormat::Tiff => tiff::read_tiff(&mut file, file_info, limits),
-        FileFormat::Png => png::read_png(&mut file, file_info, limits),
-        FileFormat::Webp => webp::read_webp(&mut file, file_info, limits),
-        FileFormat::Gif => gif::read_gif(&mut file, file_info, limits),
-        FileFormat::Heif
-        | FileFormat::Avif
-        | FileFormat::Mp4
-        | FileFormat::Mov
-        | FileFormat::M4a => isobmff::read_isobmff(&mut file, file_info, limits),
-        FileFormat::Mp3 => id3::read_mp3(&mut file, file_info, limits),
-        FileFormat::Flac => flac::read_flac(&mut file, file_info, limits),
-        FileFormat::Pdf => pdf::read_pdf(&mut file, file_info, limits),
-        FileFormat::Wav => wav::read_wav(&mut file, file_info, limits),
-        FileFormat::Svg => svg::read_svg(&mut file, file_info, limits),
-        FileFormat::Psd => psd::read_psd(&mut file, file_info, limits),
-        FileFormat::Avi => avi::read_avi(&mut file, file_info, limits),
-        FileFormat::Mkv | FileFormat::Webm => matroska::read_matroska(&mut file, file_info, limits),
-        FileFormat::Raw => raw::read_raw(&mut file, file_info, limits),
-        format => Err(MetraError::UnsupportedFormat {
-            description: format!("{format} is detected but its reader is not implemented yet"),
-        }),
-    }
+    let mut file = file;
+    read_reader_with_limits(
+        &mut file,
+        FileInfo::new(path, size, FileFormat::Unknown),
+        limits,
+    )
 }
 
 #[cfg(test)]

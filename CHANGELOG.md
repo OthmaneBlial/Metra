@@ -108,4 +108,6 @@ Initial read-first foundation with narrow validated rewrites:
 - added malformed-input, resource-limit, and end-to-end CLI tests;
 - added bounded TIFF ASCII copy from TIFF-like sources into existing TIFF
   fields, with target-format, string-type, capacity, and output re-read checks;
+- exposed the same signature detection and format dispatch for public `Read + Seek`
+  streams through `metra::read_from` and `metra::read_from_with_limits`;
 - documented the verified surface and remaining compatibility boundaries.

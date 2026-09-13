@@ -137,6 +137,11 @@ for keyword in metadata.find_all("IPTC:Keywords") {
 }
 ```
 
+The same detection and format dispatch is available for in-memory or custom
+seekable readers through `metra::read_from` and
+`metra::read_from_with_limits`; the caller supplies a diagnostic path and
+declared byte length in `FileInfo`.
+
 The model keeps namespaces explicit (`EXIF`, `GPS`, `PNG`, `WebP`, `JFIF`,
 `XMP`, `IPTC`, `ICC`, and `ISOBMFF`),
 retains bounded raw bytes, represents rational and array values without

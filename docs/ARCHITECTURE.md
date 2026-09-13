@@ -4,7 +4,8 @@
 
 Metra is designed as a Rust library first. The binary in `src/main.rs` reads
 files through the public root facade and only owns argument parsing, traversal,
-bounded worker scheduling, rendering, and exit status. Format code must not
+bounded worker scheduling, rendering, and exit status. The same facade
+dispatches `Read + Seek` streams for library callers. Format code must not
 shell out to an external metadata executable.
 
 ## Current boundaries
