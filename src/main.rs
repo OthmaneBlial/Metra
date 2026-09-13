@@ -63,6 +63,10 @@ struct Arguments {
     )]
     copy: Option<String>,
 
+    /// Validate inputs and return a failure when any warning is produced.
+    #[arg(long, conflicts_with_all = ["set", "delete", "copy"])]
+    validate: bool,
+
     /// Traverse directories recursively in deterministic path order.
     #[arg(short = 'r', long)]
     recursive: bool,
@@ -103,7 +107,10 @@ fn main() -> ExitCode {
 
     let failures = if arguments.json || arguments.toml || arguments.yaml {
         let results = inspect_paths(&paths, arguments.jobs);
-        let failures = results.iter().filter(|(_, result)| result.is_err()).count();
+        let failures = results
+            .iter()
+            .filter(|(_, result)| result_is_failure(result, arguments.validate))
+            .count();
         if arguments.toml {
             emit_toml(&results);
         } else if arguments.yaml {
@@ -116,17 +123,22 @@ fn main() -> ExitCode {
         if arguments.csv {
             println!("path,format,namespace,group,id,name,value_type,value");
         }
-        inspect_paths_streaming(&paths, arguments.jobs, |path, result| {
-            if arguments.csv {
-                emit_csv_record(&path, &result);
-            } else if arguments.jsonl {
-                emit_jsonl_record(&path, &result);
-            } else if let Ok(metadata) = &result {
-                print_human(metadata);
-            } else if let Err(error) = &result {
-                eprintln!("metra: {}: {error}", path.display());
-            }
-        })
+        inspect_paths_streaming(
+            &paths,
+            arguments.jobs,
+            arguments.validate,
+            |path, result| {
+                if arguments.csv {
+                    emit_csv_record(&path, &result);
+                } else if arguments.jsonl {
+                    emit_jsonl_record(&path, &result);
+                } else if let Ok(metadata) = &result {
+                    print_human(metadata);
+                } else if let Err(error) = &result {
+                    eprintln!("metra: {}: {error}", path.display());
+                }
+            },
+        )
     };
 
     if failures == 0 {
@@ -1187,7 +1199,7 @@ fn inspect_paths(paths: &[PathBuf], jobs: usize) -> Vec<(PathBuf, metra::Result<
         .collect()
 }
 
-fn inspect_paths_streaming<F>(paths: &[PathBuf], jobs: usize, mut emit: F) -> usize
+fn inspect_paths_streaming<F>(paths: &[PathBuf], jobs: usize, validate: bool, mut emit: F) -> usize
 where
     F: FnMut(PathBuf, metra::Result<Metadata>),
 {
@@ -1195,7 +1207,7 @@ where
         let mut failures = 0;
         for path in paths {
             let result = metra::read_with_limits(path, ParseLimits::default());
-            if result.is_err() {
+            if result_is_failure(&result, validate) {
                 failures += 1;
             }
             emit(path.clone(), result);
@@ -1233,7 +1245,7 @@ where
         for (index, path, result) in receiver {
             pending.insert(index, (path, result));
             while let Some((path, result)) = pending.remove(&next_to_emit) {
-                if result.is_err() {
+                if result_is_failure(&result, validate) {
                     failures += 1;
                 }
                 emit(path, result);
@@ -1243,13 +1255,19 @@ where
     });
 
     while let Some((path, result)) = pending.remove(&next_to_emit) {
-        if result.is_err() {
+        if result_is_failure(&result, validate) {
             failures += 1;
         }
         emit(path, result);
         next_to_emit += 1;
     }
     failures
+}
+
+fn result_is_failure(result: &metra::Result<Metadata>, validate: bool) -> bool {
+    result
+        .as_ref()
+        .map_or(true, |metadata| validate && !metadata.warnings.is_empty())
 }
 
 fn collect_paths(inputs: &[PathBuf], recursive: bool) -> Result<Vec<PathBuf>, String> {

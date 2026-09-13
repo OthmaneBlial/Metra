@@ -360,6 +360,39 @@ fn jsonl_and_human_modes_are_available() {
 }
 
 #[test]
+fn validate_returns_failure_for_recoverable_warnings() {
+    let directory = TemporaryDirectory::new();
+    let mut bytes = minimal_png("warning");
+    let text_start = 8 + 25;
+    let text_length = u32::from_be_bytes(
+        bytes[text_start..text_start + 4]
+            .try_into()
+            .expect("PNG text length"),
+    ) as usize;
+    let crc_start = text_start + 8 + text_length;
+    bytes[crc_start] ^= 0xFF;
+    let path = directory.file("warning.png", &bytes);
+
+    let regular = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([path.to_str().expect("UTF-8 test path")])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(regular.status.success(), "stderr: {:?}", regular.stderr);
+
+    let strict = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--validate",
+            "--json",
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(!strict.status.success());
+    let document: Value = serde_json::from_slice(&strict.stdout).expect("JSON output should parse");
+    assert_eq!(document["warnings"][0]["code"], "png-crc");
+}
+
+#[test]
 fn jobs_keep_batch_output_in_path_order() {
     let directory = TemporaryDirectory::new();
     let first = directory.file("camera-a.jpg", &minimal_exif_jpeg());
