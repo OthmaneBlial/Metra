@@ -179,6 +179,6 @@
     "create_png_seed": "partial",
     "validate": "supported",
     "compare": "supported",
-    "exiftool_compatibility_mode": "planned"
+    "exiftool_compatibility_mode": "partial"
   }
 }
