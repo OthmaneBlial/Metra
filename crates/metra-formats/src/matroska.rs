@@ -371,6 +371,8 @@ fn parse_simple_tag<R: Read + Seek>(
 ) -> Result<()> {
     let mut name = None;
     let mut value = None;
+    let mut value_offset = None;
+    let mut value_length = None;
     while cursor < end {
         let Some(header) = read_element_header(reader, cursor, end, file_length, path)? else {
             metadata.add_warning(
@@ -423,6 +425,8 @@ fn parse_simple_tag<R: Read + Seek>(
                 name = Some(string);
             } else {
                 value = Some(string);
+                value_offset = Some(payload_start);
+                value_length = Some(payload_length);
             }
         }
         cursor = payload_end;
@@ -436,8 +440,8 @@ fn parse_simple_tag<R: Read + Seek>(
             TagValue::String(value),
             ValueType::String,
             "Matroska/Tags",
-            None,
-            None,
+            value_offset,
+            value_length,
             None,
         );
     }
