@@ -20,8 +20,14 @@ pub enum FileFormat {
     Tiff,
     Png,
     Webp,
+    Heif,
+    Avif,
+    Mp4,
+    Mov,
+    M4a,
     Pdf,
     Gif,
+    Mp3,
     Unknown,
 }
 
@@ -32,8 +38,14 @@ impl FileFormat {
             Self::Tiff => Some("image/tiff"),
             Self::Png => Some("image/png"),
             Self::Webp => Some("image/webp"),
+            Self::Heif => Some("image/heif"),
+            Self::Avif => Some("image/avif"),
+            Self::Mp4 => Some("video/mp4"),
+            Self::Mov => Some("video/quicktime"),
+            Self::M4a => Some("audio/mp4"),
             Self::Pdf => Some("application/pdf"),
             Self::Gif => Some("image/gif"),
+            Self::Mp3 => Some("audio/mpeg"),
             Self::Unknown => None,
         }
     }
@@ -46,8 +58,14 @@ impl fmt::Display for FileFormat {
             Self::Tiff => "TIFF",
             Self::Png => "PNG",
             Self::Webp => "WebP",
+            Self::Heif => "HEIF",
+            Self::Avif => "AVIF",
+            Self::Mp4 => "MP4",
+            Self::Mov => "MOV",
+            Self::M4a => "M4A",
             Self::Pdf => "PDF",
             Self::Gif => "GIF",
+            Self::Mp3 => "MP3",
             Self::Unknown => "Unknown",
         })
     }

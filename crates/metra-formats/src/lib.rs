@@ -13,6 +13,7 @@ use metra_core::{FileFormat, FileInfo, Metadata, MetraError, ParseLimits, Result
 mod gif;
 mod icc;
 mod iptc;
+mod isobmff;
 mod jpeg;
 mod png;
 mod tiff;
@@ -20,6 +21,7 @@ mod webp;
 mod xmp;
 
 pub use gif::read_gif;
+pub use isobmff::read_isobmff;
 pub use jpeg::read_jpeg;
 pub use png::read_png;
 pub use tiff::read_tiff;
@@ -54,6 +56,18 @@ pub fn detect_format(bytes: &[u8]) -> Option<DetectedFormat> {
             format: FileFormat::Webp,
             signature: "RIFF/WEBP",
         })
+    } else if bytes.len() >= 12 && &bytes[4..8] == b"ftyp" {
+        let brand = &bytes[8..12];
+        let (format, signature) = match brand {
+            b"avif" | b"avis" => (FileFormat::Avif, "ISO-BMFF ftyp/AVIF"),
+            b"heic" | b"heix" | b"hevc" | b"heim" | b"heis" | b"mif1" | b"msf1" => {
+                (FileFormat::Heif, "ISO-BMFF ftyp/HEIF")
+            }
+            b"qt  " => (FileFormat::Mov, "ISO-BMFF ftyp/QuickTime"),
+            b"M4A " | b"M4B " => (FileFormat::M4a, "ISO-BMFF ftyp/M4A"),
+            _ => (FileFormat::Mp4, "ISO-BMFF ftyp/MP4"),
+        };
+        Some(DetectedFormat { format, signature })
     } else if bytes.starts_with(b"%PDF-") {
         Some(DetectedFormat {
             format: FileFormat::Pdf,
@@ -110,6 +124,11 @@ pub fn read_path_with_limits(path: impl AsRef<Path>, limits: ParseLimits) -> Res
         FileFormat::Png => png::read_png(&mut file, file_info, limits),
         FileFormat::Webp => webp::read_webp(&mut file, file_info, limits),
         FileFormat::Gif => gif::read_gif(&mut file, file_info, limits),
+        FileFormat::Heif
+        | FileFormat::Avif
+        | FileFormat::Mp4
+        | FileFormat::Mov
+        | FileFormat::M4a => isobmff::read_isobmff(&mut file, file_info, limits),
         format => Err(MetraError::UnsupportedFormat {
             description: format!("{format} is detected but its reader is not implemented yet"),
         }),
