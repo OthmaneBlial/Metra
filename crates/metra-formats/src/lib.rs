@@ -40,6 +40,7 @@ mod png_writer;
 mod psd;
 mod psd_writer;
 mod raw;
+mod raw_writer;
 mod svg;
 mod svg_writer;
 mod tiff;
@@ -80,6 +81,7 @@ pub use png_writer::{PngEdit, rewrite_png, rewrite_png_path, rewrite_png_to_vec}
 pub use psd::read_psd;
 pub use psd_writer::{PsdEdit, rewrite_psd, rewrite_psd_path, rewrite_psd_to_vec};
 pub use raw::read_raw;
+pub use raw_writer::{rewrite_raw_tiff, rewrite_raw_tiff_path, rewrite_raw_tiff_to_vec};
 pub use svg::read_svg;
 pub use svg_writer::{SvgEdit, rewrite_svg, rewrite_svg_path, rewrite_svg_to_vec};
 pub use tiff::read_tiff;
