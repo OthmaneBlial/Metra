@@ -204,6 +204,11 @@ writer_adapter!(
     super::edit::collect_avi
 );
 writer_adapter!(
+    write_matroska,
+    super::matroska_writer::rewrite_matroska,
+    super::edit::collect_matroska
+);
+writer_adapter!(
     write_wav,
     super::wav_writer::rewrite_wav,
     super::edit::collect_wav
@@ -318,12 +323,12 @@ static FORMAT_HANDLERS: &[RegisteredFormatHandler] = &[
     RegisteredFormatHandler {
         format: FileFormat::Mkv,
         reader: read_matroska,
-        writer: None,
+        writer: Some(write_matroska),
     },
     RegisteredFormatHandler {
         format: FileFormat::Webm,
         reader: read_matroska,
-        writer: None,
+        writer: Some(write_matroska),
     },
     RegisteredFormatHandler {
         format: FileFormat::Raw,
@@ -515,6 +520,55 @@ mod tests {
         .expect("registered PSD writer output should remain readable");
         assert_eq!(
             metadata.find("XMP:dc:format").unwrap().display_value(),
+            "new"
+        );
+    }
+
+    #[test]
+    fn registered_matroska_writer_dispatches_canonical_edits() {
+        let element = |id: &[u8], data: &[u8]| {
+            assert!(data.len() < 127);
+            let mut output = id.to_vec();
+            output.push(0x80 | data.len() as u8);
+            output.extend_from_slice(data);
+            output
+        };
+        let ebml_header = element(b"\x1A\x45\xDF\xA3", &element(&[0x42, 0x82], b"webm"));
+        let simple_tag = [
+            element(&[0x45, 0xA3], b"TITLE"),
+            element(&[0x44, 0x87], b"old"),
+        ]
+        .concat();
+        let tags = element(
+            &[0x12, 0x54, 0xC3, 0x67],
+            &element(&[0x73, 0x73], &element(&[0x67, 0xC8], &simple_tag)),
+        );
+        let bytes = [ebml_header, tags].concat();
+        let handler = handler_for_format(FileFormat::Webm).expect("WebM handler should exist");
+        let mut reader = std::io::Cursor::new(bytes.clone());
+        let mut writer = std::io::Cursor::new(Vec::new());
+        handler
+            .write_metadata(
+                &mut reader,
+                &mut writer,
+                FileInfo::new("handler.webm".into(), bytes.len() as u64, FileFormat::Webm),
+                ParseLimits::default(),
+                &[MetadataEdit::set("Matroska:Tag:TITLE", "new")],
+            )
+            .expect("registered WebM writer should accept canonical edits");
+
+        let output = writer.into_inner();
+        let metadata = crate::read_reader(
+            &mut std::io::Cursor::new(output.clone()),
+            FileInfo::new(
+                "handler.webm".into(),
+                output.len() as u64,
+                FileFormat::Unknown,
+            ),
+        )
+        .expect("registered WebM writer output should remain readable");
+        assert_eq!(
+            metadata.find("Matroska:Tag:TITLE").unwrap().display_value(),
             "new"
         );
     }
