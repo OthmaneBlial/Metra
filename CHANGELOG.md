@@ -25,6 +25,8 @@ Initial read-first foundation with narrow validated rewrites:
   retaining malformed-length and materialization-limit warnings;
 - decoded bounded FLAC CUESHEET catalog, lead-in, track, and index structures
   while retaining malformed-layout and materialization-limit warnings;
+- decoded bounded AVI `strh` stream descriptors with typed codec, timing,
+  duration, quality, and frame-bound fields without loading video frames;
 - added bounded Ogg Vorbis/Opus comment replacement, deletion, and copy with
   page CRC regeneration, same-packet-size preservation, output validation, and
   atomic replacement;
