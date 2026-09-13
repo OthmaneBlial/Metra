@@ -142,6 +142,7 @@ enum EditRequest {
     DirectWav(Vec<metra::WavEdit>),
     DirectFlac(Vec<metra::FlacEdit>),
     DirectMp3(Vec<metra::Mp3Edit>),
+    DirectGif(Vec<metra::GifEdit>),
     Copy { key: CopyKey, source: PathBuf },
 }
 
@@ -153,6 +154,7 @@ enum CopyKey {
     FlacComment(String),
     Mp3Text(String),
     Mp3Comment,
+    GifComment,
 }
 
 fn parse_edits(
@@ -202,6 +204,11 @@ fn parse_edits(
                     },
                 ])));
             }
+            if key == "GIF:Comment" {
+                return Ok(Some(EditRequest::DirectGif(vec![
+                    metra::GifEdit::SetComment(value.to_owned()),
+                ])));
+            }
             return Err(unsupported_edit_message(key));
         }
         return Ok(Some(EditRequest::DirectJpeg(vec![
@@ -243,6 +250,11 @@ fn parse_edits(
                     },
                 ])));
             }
+            if key == "GIF:Comment" {
+                return Ok(Some(EditRequest::DirectGif(vec![
+                    metra::GifEdit::DeleteComments,
+                ])));
+            }
             return Err(unsupported_edit_message(key));
         }
         return Ok(Some(EditRequest::DirectJpeg(vec![
@@ -268,6 +280,8 @@ fn parse_edits(
             CopyKey::Mp3Comment
         } else if let Some(name) = mp3_text_name(key) {
             CopyKey::Mp3Text(name.to_owned())
+        } else if key == "GIF:Comment" {
+            CopyKey::GifComment
         } else {
             return Err(unsupported_edit_message(key));
         };
@@ -286,7 +300,7 @@ fn png_text_keyword(key: &str) -> Option<&str> {
 
 fn unsupported_edit_message(key: &str) -> String {
     format!(
-        "unsupported metadata key {key}; writable keys are JPEG:Comment, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, or ID3:<text field>"
+        "unsupported metadata key {key}; writable keys are JPEG:Comment, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, ID3:<text field>, or GIF:Comment"
     )
 }
 
@@ -375,6 +389,7 @@ fn apply_request(paths: &[PathBuf], request: EditRequest) -> ExitCode {
         EditRequest::DirectWav(edits) => apply_wav_edits(paths, &edits),
         EditRequest::DirectFlac(edits) => apply_flac_edits(paths, &edits),
         EditRequest::DirectMp3(edits) => apply_mp3_edits(paths, &edits),
+        EditRequest::DirectGif(edits) => apply_gif_edits(paths, &edits),
         EditRequest::Copy { key, source } => apply_copy(paths, key, &source),
     }
 }
@@ -596,6 +611,29 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path) -> ExitCode {
             }];
             apply_mp3_edits(paths, &edits)
         }
+        CopyKey::GifComment => {
+            if source_metadata.file_info.format != metra::FileFormat::Gif {
+                eprintln!(
+                    "metra: {}: source format {} is not GIF",
+                    source.display(),
+                    source_metadata.file_info.format
+                );
+                return ExitCode::from(1);
+            }
+            let Some(comment) = source_metadata.find("GIF:Comment") else {
+                eprintln!(
+                    "metra: {}: source does not contain GIF:Comment",
+                    source.display()
+                );
+                return ExitCode::from(1);
+            };
+            let metra::TagValue::String(comment) = &comment.value else {
+                eprintln!("metra: {}: GIF:Comment is not a string", source.display());
+                return ExitCode::from(1);
+            };
+            let edits = [metra::GifEdit::SetComment(comment.clone())];
+            apply_gif_edits(paths, &edits)
+        }
     }
 }
 
@@ -704,6 +742,39 @@ fn find_mp3_tag<'a>(metadata: &'a Metadata, key: &str) -> Option<&'a metra::Tag>
         .iter()
         .find(|tag| tag.key() == key && tag.group.starts_with("ID3v"))
         .or_else(|| metadata.tags().iter().find(|tag| tag.key() == key))
+}
+
+fn apply_gif_edits(paths: &[PathBuf], edits: &[metra::GifEdit]) -> ExitCode {
+    let mut failures = 0_usize;
+    for path in paths {
+        match metra::read(path) {
+            Ok(metadata) if metadata.file_info.format == metra::FileFormat::Gif => {
+                if let Err(error) = metra::rewrite_gif_path(path, ParseLimits::default(), edits) {
+                    eprintln!("metra: {}: {error}", path.display());
+                    failures += 1;
+                } else {
+                    println!("updated: {}", path.display());
+                }
+            }
+            Ok(metadata) => {
+                eprintln!(
+                    "metra: {}: {} edits are supported only for GIF files",
+                    path.display(),
+                    metadata.file_info.format
+                );
+                failures += 1;
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", path.display());
+                failures += 1;
+            }
+        }
+    }
+    if failures == 0 {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
 }
 
 fn parse_jobs(value: &str) -> std::result::Result<usize, String> {

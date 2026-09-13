@@ -65,6 +65,17 @@ fn minimal_svg() -> Vec<u8> {
         .to_vec()
 }
 
+fn minimal_gif(comment: &str) -> Vec<u8> {
+    let mut bytes = b"GIF89a".to_vec();
+    bytes.extend_from_slice(&[2, 0, 2, 0, 0, 0, 0]);
+    bytes.extend_from_slice(&[0x21, 0xFE, comment.len() as u8]);
+    bytes.extend_from_slice(comment.as_bytes());
+    bytes.push(0);
+    bytes.extend_from_slice(&[0x2C, 0, 0, 0, 0, 2, 0, 2, 0, 0]);
+    bytes.extend_from_slice(&[2, 1, 0x44, 0, 0x3B]);
+    bytes
+}
+
 fn png_crc(kind: &[u8; 4], data: &[u8]) -> u32 {
     let mut crc = 0xFFFF_FFFF_u32;
     for byte in kind.iter().chain(data.iter()) {
@@ -644,5 +655,59 @@ fn cli_can_edit_and_copy_id3_text() {
             .unwrap()
             .display_value(),
         "source title"
+    );
+}
+
+#[test]
+fn cli_can_edit_and_copy_gif_comments() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.file("source.gif", &minimal_gif("source comment"));
+    let target = directory.file("target.gif", &minimal_gif("target comment"));
+
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "GIF:Comment=edited comment",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("GIF:Comment")
+            .unwrap()
+            .display_value(),
+        "edited comment"
+    );
+
+    let delete = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--delete",
+            "GIF:Comment",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(delete.status.success(), "stderr: {:?}", delete.stderr);
+    assert!(metra::read(&target).unwrap().find("GIF:Comment").is_none());
+
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            &format!("GIF:Comment={}", source.to_str().expect("UTF-8 test path")),
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("GIF:Comment")
+            .unwrap()
+            .display_value(),
+        "source comment"
     );
 }
