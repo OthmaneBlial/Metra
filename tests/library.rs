@@ -20,6 +20,35 @@ impl Seek for ShortReader {
     }
 }
 
+fn minimal_psd_with_xmp(format: &str) -> Vec<u8> {
+    let xmp = format!(
+        "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF><rdf:Description xmlns:dc=\"urn:dc\" dc:format=\"{format}\"/></rdf:RDF></x:xmpmeta>"
+    )
+    .into_bytes();
+    let mut resource = b"8BIM".to_vec();
+    resource.extend_from_slice(&0x0424_u16.to_be_bytes());
+    resource.extend_from_slice(&[0, 0]);
+    resource.extend_from_slice(&(xmp.len() as u32).to_be_bytes());
+    resource.extend_from_slice(&xmp);
+    if xmp.len() % 2 == 1 {
+        resource.push(0);
+    }
+    let mut bytes = vec![0_u8; 26];
+    bytes[..4].copy_from_slice(b"8BPS");
+    bytes[4..6].copy_from_slice(&1_u16.to_be_bytes());
+    bytes[12..14].copy_from_slice(&3_u16.to_be_bytes());
+    bytes[14..18].copy_from_slice(&100_u32.to_be_bytes());
+    bytes[18..22].copy_from_slice(&200_u32.to_be_bytes());
+    bytes[22..24].copy_from_slice(&8_u16.to_be_bytes());
+    bytes[24..26].copy_from_slice(&3_u16.to_be_bytes());
+    bytes.extend_from_slice(&0_u32.to_be_bytes());
+    bytes.extend_from_slice(&(resource.len() as u32).to_be_bytes());
+    bytes.extend_from_slice(&resource);
+    bytes.extend_from_slice(&0_u32.to_be_bytes());
+    bytes.extend_from_slice(&0_u16.to_be_bytes());
+    bytes
+}
+
 #[test]
 fn public_reader_api_detects_and_dispatches_in_memory_tiff() {
     let bytes = b"II*\0\0\0\0\0";
@@ -133,6 +162,37 @@ fn public_generic_edit_api_rewrites_and_revalidates_pdf_info() {
     assert_eq!(
         metadata.find("PDF:Title").unwrap().display_value(),
         "After!"
+    );
+}
+
+#[test]
+fn public_generic_edit_api_rewrites_and_revalidates_psd_xmp() {
+    let bytes = minimal_psd_with_xmp("old");
+    let xmp = "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF><rdf:Description xmlns:dc=\"urn:dc\" dc:format=\"new\"/></rdf:RDF></x:xmpmeta>";
+    let output = metra::rewrite_metadata_to_vec(
+        &bytes,
+        metra::FileInfo::new(
+            "memory.psd".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::set("PSD:XMP", xmp)],
+    )
+    .expect("generic PSD edit should validate its rewritten bytes");
+
+    let metadata = metra::read_from(
+        &mut std::io::Cursor::new(output),
+        metra::FileInfo::new(
+            "memory.psd".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+    )
+    .expect("rewritten PSD should remain readable");
+    assert_eq!(
+        metadata.find("XMP:dc:format").unwrap().display_value(),
+        "new"
     );
 }
 

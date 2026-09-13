@@ -36,6 +36,7 @@ mod pdf_writer;
 mod png;
 mod png_writer;
 mod psd;
+mod psd_writer;
 mod raw;
 mod svg;
 mod svg_writer;
@@ -71,6 +72,7 @@ pub use pdf_writer::{PdfEdit, rewrite_pdf, rewrite_pdf_path, rewrite_pdf_to_vec}
 pub use png::read_png;
 pub use png_writer::{PngEdit, rewrite_png, rewrite_png_path, rewrite_png_to_vec};
 pub use psd::read_psd;
+pub use psd_writer::{PsdEdit, rewrite_psd, rewrite_psd_path, rewrite_psd_to_vec};
 pub use raw::read_raw;
 pub use svg::read_svg;
 pub use svg_writer::{SvgEdit, rewrite_svg, rewrite_svg_path, rewrite_svg_to_vec};

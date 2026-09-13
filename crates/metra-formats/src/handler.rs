@@ -194,6 +194,11 @@ writer_adapter!(
     super::edit::collect_pdf
 );
 writer_adapter!(
+    write_psd,
+    super::psd_writer::rewrite_psd,
+    super::edit::collect_psd
+);
+writer_adapter!(
     write_wav,
     super::wav_writer::rewrite_wav,
     super::edit::collect_wav
@@ -256,6 +261,11 @@ static FORMAT_HANDLERS: &[RegisteredFormatHandler] = &[
         writer: Some(write_pdf),
     },
     RegisteredFormatHandler {
+        format: FileFormat::Psd,
+        reader: read_psd,
+        writer: Some(write_psd),
+    },
+    RegisteredFormatHandler {
         format: FileFormat::Gif,
         reader: read_gif,
         writer: Some(write_gif),
@@ -293,11 +303,6 @@ static FORMAT_HANDLERS: &[RegisteredFormatHandler] = &[
     RegisteredFormatHandler {
         format: FileFormat::Xmp,
         reader: read_xmp,
-        writer: None,
-    },
-    RegisteredFormatHandler {
-        format: FileFormat::Psd,
-        reader: read_psd,
         writer: None,
     },
     RegisteredFormatHandler {
@@ -449,19 +454,80 @@ mod tests {
     }
 
     #[test]
-    fn handlers_without_writers_report_explicit_unsupported_errors() {
+    fn registered_psd_writer_dispatches_canonical_edits() {
+        let packet = |format: &str| {
+            format!(
+                "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF><rdf:Description xmlns:dc=\"urn:dc\" dc:format=\"{format}\"/></rdf:RDF></x:xmpmeta>"
+            )
+            .into_bytes()
+        };
+        let xmp = packet("old");
+        let mut resource = b"8BIM".to_vec();
+        resource.extend_from_slice(&0x0424_u16.to_be_bytes());
+        resource.extend_from_slice(&[0, 0]);
+        resource.extend_from_slice(&(xmp.len() as u32).to_be_bytes());
+        resource.extend_from_slice(&xmp);
+        if xmp.len() % 2 == 1 {
+            resource.push(0);
+        }
+        let mut bytes = vec![0_u8; 26];
+        bytes[..4].copy_from_slice(b"8BPS");
+        bytes[4..6].copy_from_slice(&1_u16.to_be_bytes());
+        bytes[12..14].copy_from_slice(&3_u16.to_be_bytes());
+        bytes[14..18].copy_from_slice(&100_u32.to_be_bytes());
+        bytes[18..22].copy_from_slice(&200_u32.to_be_bytes());
+        bytes[22..24].copy_from_slice(&8_u16.to_be_bytes());
+        bytes[24..26].copy_from_slice(&3_u16.to_be_bytes());
+        bytes.extend_from_slice(&0_u32.to_be_bytes());
+        bytes.extend_from_slice(&(resource.len() as u32).to_be_bytes());
+        bytes.extend_from_slice(&resource);
+        bytes.extend_from_slice(&0_u32.to_be_bytes());
+        bytes.extend_from_slice(&0_u16.to_be_bytes());
+
+        let replacement = String::from_utf8(packet("new")).expect("XMP fixture should be UTF-8");
         let handler = handler_for_format(FileFormat::Psd).expect("PSD handler should exist");
-        let mut reader = std::io::Cursor::new(b"%PDF-1.7".to_vec());
+        let mut reader = std::io::Cursor::new(bytes.clone());
+        let mut writer = std::io::Cursor::new(Vec::new());
+        handler
+            .write_metadata(
+                &mut reader,
+                &mut writer,
+                FileInfo::new("handler.psd".into(), bytes.len() as u64, FileFormat::Psd),
+                ParseLimits::default(),
+                &[MetadataEdit::set("PSD:XMP", replacement)],
+            )
+            .expect("registered PSD writer should accept canonical edits");
+
+        let output = writer.into_inner();
+        let metadata = crate::read_reader(
+            &mut std::io::Cursor::new(output.clone()),
+            FileInfo::new(
+                "handler.psd".into(),
+                output.len() as u64,
+                FileFormat::Unknown,
+            ),
+        )
+        .expect("registered PSD writer output should remain readable");
+        assert_eq!(
+            metadata.find("XMP:dc:format").unwrap().display_value(),
+            "new"
+        );
+    }
+
+    #[test]
+    fn handlers_without_writers_report_explicit_unsupported_errors() {
+        let handler = handler_for_format(FileFormat::Avi).expect("AVI handler should exist");
+        let mut reader = std::io::Cursor::new(b"RIFFAVI ".to_vec());
         let mut writer = std::io::Cursor::new(Vec::new());
         let error = handler
             .write_metadata(
                 &mut reader,
                 &mut writer,
-                FileInfo::new("document.psd".into(), 8, FileFormat::Psd),
+                FileInfo::new("document.avi".into(), 8, FileFormat::Avi),
                 ParseLimits::default(),
                 &[MetadataEdit::set("PDF:Title", "new")],
             )
-            .expect_err("PSD has no validated writer");
-        assert!(error.to_string().contains("PSD"));
+            .expect_err("AVI has no validated writer");
+        assert!(error.to_string().contains("AVI"));
     }
 }

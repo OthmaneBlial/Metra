@@ -91,10 +91,10 @@
     },
     "PSD": {
       "read": "partial",
-      "write": "planned",
+      "write": "partial",
       "create": "planned",
       "delete": "planned",
-      "lossless_rewrite": "planned",
+      "lossless_rewrite": "partial",
       "streaming": "partial"
     },
     "AVI": {
