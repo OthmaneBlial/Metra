@@ -53,7 +53,7 @@ pub use flac::read_flac;
 pub use flac_writer::{FlacEdit, rewrite_flac, rewrite_flac_path, rewrite_flac_to_vec};
 pub use gif::read_gif;
 pub use gif_writer::{GifEdit, rewrite_gif, rewrite_gif_path, rewrite_gif_to_vec};
-pub use handler::{FormatHandler, ReadSeek, format_handlers, handler_for_format};
+pub use handler::{FormatHandler, ReadSeek, WriteSeek, format_handlers, handler_for_format};
 pub use icc::read_icc;
 pub use id3::read_mp3;
 pub use id3_writer::{Mp3Edit, rewrite_mp3, rewrite_mp3_path, rewrite_mp3_to_vec};

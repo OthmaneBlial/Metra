@@ -1,16 +1,24 @@
-use std::io::{Read, Seek};
+use std::io::{Read, Seek, Write};
 
 use metra_core::{
     FileFormat, FileInfo, FormatCapabilities, Metadata, MetraError, ParseLimits, Result,
     format_capabilities,
 };
 
-use super::{DetectedFormat, detect_format};
+use super::{DetectedFormat, MetadataEdit, detect_format};
 
 /// A seekable reader object accepted by every registered format handler.
 pub trait ReadSeek: Read + Seek {}
 
 impl<T: Read + Seek + ?Sized> ReadSeek for T {}
+
+/// A seekable output object accepted by format writers.
+pub trait WriteSeek: Write + Seek {}
+
+impl<T: Write + Seek + ?Sized> WriteSeek for T {}
+
+type WriterAdapter =
+    fn(&mut dyn ReadSeek, &mut dyn WriteSeek, FileInfo, ParseLimits, &[MetadataEdit]) -> Result<()>;
 
 /// Common read-side contract for an explicit Metra format handler.
 pub trait FormatHandler: Sync {
@@ -28,6 +36,23 @@ pub trait FormatHandler: Sync {
         limits: ParseLimits,
     ) -> Result<Metadata>;
 
+    /// Rewrite the supplied canonical edits into a seekable output stream.
+    ///
+    /// Handlers without a validated writer return an explicit unsupported
+    /// error. The operation does not imply metadata creation or arbitrary
+    /// typed-tag mutation; those capabilities remain reported separately.
+    fn write_metadata(
+        &self,
+        reader: &mut dyn ReadSeek,
+        writer: &mut dyn WriteSeek,
+        file_info: FileInfo,
+        limits: ParseLimits,
+        edits: &[MetadataEdit],
+    ) -> Result<()> {
+        let _ = (reader, writer, file_info, limits, edits);
+        Err(unsupported_writer(self.format()))
+    }
+
     /// Report the current read/write/create/delete/rewrite/streaming surface.
     fn capabilities(&self) -> FormatCapabilities {
         format_capabilities(self.format())
@@ -37,6 +62,7 @@ pub trait FormatHandler: Sync {
 pub struct RegisteredFormatHandler {
     format: FileFormat,
     reader: fn(&mut dyn ReadSeek, FileInfo, ParseLimits) -> Result<Metadata>,
+    writer: Option<WriterAdapter>,
 }
 
 impl FormatHandler for RegisteredFormatHandler {
@@ -55,6 +81,19 @@ impl FormatHandler for RegisteredFormatHandler {
         limits: ParseLimits,
     ) -> Result<Metadata> {
         (self.reader)(reader, file_info, limits)
+    }
+
+    fn write_metadata(
+        &self,
+        reader: &mut dyn ReadSeek,
+        writer: &mut dyn WriteSeek,
+        file_info: FileInfo,
+        limits: ParseLimits,
+        edits: &[MetadataEdit],
+    ) -> Result<()> {
+        self.writer.ok_or_else(|| unsupported_writer(self.format))?(
+            reader, writer, file_info, limits, edits,
+        )
     }
 }
 
@@ -89,98 +128,192 @@ reader_adapter!(read_webp, super::webp::read_webp);
 reader_adapter!(read_xmp, super::xmp::read_xmp);
 reader_adapter!(read_isobmff, super::isobmff::read_isobmff);
 
+macro_rules! writer_adapter {
+    ($name:ident, $writer:path, $collector:path) => {
+        fn $name(
+            mut reader: &mut dyn ReadSeek,
+            mut writer: &mut dyn WriteSeek,
+            file_info: FileInfo,
+            limits: ParseLimits,
+            edits: &[MetadataEdit],
+        ) -> Result<()> {
+            let edits = $collector(edits, file_info.format)?;
+            $writer(&mut reader, &mut writer, file_info, limits, &edits)
+        }
+    };
+}
+
+writer_adapter!(
+    write_jpeg,
+    super::jpeg::rewrite_jpeg,
+    super::edit::collect_jpeg
+);
+writer_adapter!(
+    write_tiff,
+    super::tiff_writer::rewrite_tiff,
+    super::edit::collect_tiff
+);
+writer_adapter!(
+    write_png,
+    super::png_writer::rewrite_png,
+    super::edit::collect_png
+);
+writer_adapter!(
+    write_webp,
+    super::webp_writer::rewrite_webp,
+    super::edit::collect_webp
+);
+writer_adapter!(
+    write_isobmff,
+    super::isobmff_writer::rewrite_isobmff,
+    super::edit::collect_isobmff
+);
+writer_adapter!(
+    write_gif,
+    super::gif_writer::rewrite_gif,
+    super::edit::collect_gif
+);
+writer_adapter!(
+    write_mp3,
+    super::id3_writer::rewrite_mp3,
+    super::edit::collect_mp3
+);
+writer_adapter!(
+    write_flac,
+    super::flac_writer::rewrite_flac,
+    super::edit::collect_flac
+);
+writer_adapter!(
+    write_ogg,
+    super::ogg_writer::rewrite_ogg,
+    super::edit::collect_ogg
+);
+writer_adapter!(
+    write_wav,
+    super::wav_writer::rewrite_wav,
+    super::edit::collect_wav
+);
+writer_adapter!(
+    write_svg,
+    super::svg_writer::rewrite_svg,
+    super::edit::collect_svg
+);
+
 static FORMAT_HANDLERS: &[RegisteredFormatHandler] = &[
     RegisteredFormatHandler {
         format: FileFormat::Jpeg,
         reader: read_jpeg,
+        writer: Some(write_jpeg),
     },
     RegisteredFormatHandler {
         format: FileFormat::Tiff,
         reader: read_tiff,
+        writer: Some(write_tiff),
     },
     RegisteredFormatHandler {
         format: FileFormat::Png,
         reader: read_png,
+        writer: Some(write_png),
     },
     RegisteredFormatHandler {
         format: FileFormat::Webp,
         reader: read_webp,
+        writer: Some(write_webp),
     },
     RegisteredFormatHandler {
         format: FileFormat::Heif,
         reader: read_isobmff,
+        writer: Some(write_isobmff),
     },
     RegisteredFormatHandler {
         format: FileFormat::Avif,
         reader: read_isobmff,
+        writer: Some(write_isobmff),
     },
     RegisteredFormatHandler {
         format: FileFormat::Mp4,
         reader: read_isobmff,
+        writer: Some(write_isobmff),
     },
     RegisteredFormatHandler {
         format: FileFormat::Mov,
         reader: read_isobmff,
+        writer: Some(write_isobmff),
     },
     RegisteredFormatHandler {
         format: FileFormat::M4a,
         reader: read_isobmff,
+        writer: Some(write_isobmff),
     },
     RegisteredFormatHandler {
         format: FileFormat::Pdf,
         reader: read_pdf,
+        writer: None,
     },
     RegisteredFormatHandler {
         format: FileFormat::Gif,
         reader: read_gif,
+        writer: Some(write_gif),
     },
     RegisteredFormatHandler {
         format: FileFormat::Mp3,
         reader: read_mp3,
+        writer: Some(write_mp3),
     },
     RegisteredFormatHandler {
         format: FileFormat::Flac,
         reader: read_flac,
+        writer: Some(write_flac),
     },
     RegisteredFormatHandler {
         format: FileFormat::Ogg,
         reader: read_ogg,
+        writer: Some(write_ogg),
     },
     RegisteredFormatHandler {
         format: FileFormat::Wav,
         reader: read_wav,
+        writer: Some(write_wav),
     },
     RegisteredFormatHandler {
         format: FileFormat::Svg,
         reader: read_svg,
+        writer: Some(write_svg),
     },
     RegisteredFormatHandler {
         format: FileFormat::Icc,
         reader: read_icc,
+        writer: None,
     },
     RegisteredFormatHandler {
         format: FileFormat::Xmp,
         reader: read_xmp,
+        writer: None,
     },
     RegisteredFormatHandler {
         format: FileFormat::Psd,
         reader: read_psd,
+        writer: None,
     },
     RegisteredFormatHandler {
         format: FileFormat::Avi,
         reader: read_avi,
+        writer: None,
     },
     RegisteredFormatHandler {
         format: FileFormat::Mkv,
         reader: read_matroska,
+        writer: None,
     },
     RegisteredFormatHandler {
         format: FileFormat::Webm,
         reader: read_matroska,
+        writer: None,
     },
     RegisteredFormatHandler {
         format: FileFormat::Raw,
         reader: read_raw,
+        writer: None,
     },
 ];
 
@@ -202,6 +335,12 @@ pub fn handler_for_format(format: FileFormat) -> Option<&'static dyn FormatHandl
         .iter()
         .copied()
         .find(|handler| handler.format() == format)
+}
+
+fn unsupported_writer(format: FileFormat) -> MetraError {
+    MetraError::UnsupportedFormat {
+        description: format!("validated metadata writing is not implemented for {format}"),
+    }
 }
 
 pub fn unsupported_handler(format: FileFormat) -> MetraError {
@@ -235,5 +374,57 @@ mod tests {
             FileFormat::Jpeg
         );
         assert!(jpeg.detect(b"\x89PNG\r\n\x1A\npayload").is_none());
+    }
+
+    #[test]
+    fn registered_writer_dispatches_canonical_edits() {
+        let bytes = [
+            0xFF, 0xD8, // SOI
+            0xFF, 0xFE, 0x00, 0x05, b'o', b'l', b'd', // COM
+            0xFF, 0xD9, // EOI
+        ];
+        let handler = handler_for_format(FileFormat::Jpeg).expect("JPEG handler should exist");
+        let mut reader = std::io::Cursor::new(bytes.to_vec());
+        let mut writer = std::io::Cursor::new(Vec::new());
+        handler
+            .write_metadata(
+                &mut reader,
+                &mut writer,
+                FileInfo::new("handler.jpg".into(), bytes.len() as u64, FileFormat::Jpeg),
+                ParseLimits::default(),
+                &[MetadataEdit::set("JPEG:Comment", "new")],
+            )
+            .expect("registered JPEG writer should accept canonical edits");
+
+        let metadata = crate::read_reader(
+            &mut std::io::Cursor::new(writer.into_inner()),
+            FileInfo::new(
+                "handler.jpg".into(),
+                bytes.len() as u64,
+                FileFormat::Unknown,
+            ),
+        )
+        .expect("registered writer output should remain readable");
+        assert_eq!(
+            metadata.find("JPEG:Comment").unwrap().display_value(),
+            "new"
+        );
+    }
+
+    #[test]
+    fn handlers_without_writers_report_explicit_unsupported_errors() {
+        let handler = handler_for_format(FileFormat::Pdf).expect("PDF handler should exist");
+        let mut reader = std::io::Cursor::new(b"%PDF-1.7".to_vec());
+        let mut writer = std::io::Cursor::new(Vec::new());
+        let error = handler
+            .write_metadata(
+                &mut reader,
+                &mut writer,
+                FileInfo::new("document.pdf".into(), 8, FileFormat::Pdf),
+                ParseLimits::default(),
+                &[MetadataEdit::set("PDF:Title", "new")],
+            )
+            .expect_err("PDF has no validated writer");
+        assert!(error.to_string().contains("PDF"));
     }
 }

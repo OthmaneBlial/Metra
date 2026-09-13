@@ -152,7 +152,10 @@ fn unsupported_edit(format: FileFormat, key: &str) -> MetraError {
     }
 }
 
-fn collect_jpeg(edits: &[MetadataEdit], format: FileFormat) -> Result<Vec<crate::JpegEdit>> {
+pub(crate) fn collect_jpeg(
+    edits: &[MetadataEdit],
+    format: FileFormat,
+) -> Result<Vec<crate::JpegEdit>> {
     edits
         .iter()
         .map(|edit| match edit {
@@ -181,7 +184,10 @@ fn collect_jpeg(edits: &[MetadataEdit], format: FileFormat) -> Result<Vec<crate:
         .collect()
 }
 
-fn collect_tiff(edits: &[MetadataEdit], format: FileFormat) -> Result<Vec<crate::TiffEdit>> {
+pub(crate) fn collect_tiff(
+    edits: &[MetadataEdit],
+    format: FileFormat,
+) -> Result<Vec<crate::TiffEdit>> {
     edits
         .iter()
         .map(|edit| match edit {
@@ -196,7 +202,10 @@ fn collect_tiff(edits: &[MetadataEdit], format: FileFormat) -> Result<Vec<crate:
         .collect()
 }
 
-fn collect_png(edits: &[MetadataEdit], format: FileFormat) -> Result<Vec<crate::PngEdit>> {
+pub(crate) fn collect_png(
+    edits: &[MetadataEdit],
+    format: FileFormat,
+) -> Result<Vec<crate::PngEdit>> {
     edits
         .iter()
         .map(|edit| match edit {
@@ -219,7 +228,10 @@ fn collect_png(edits: &[MetadataEdit], format: FileFormat) -> Result<Vec<crate::
         .collect()
 }
 
-fn collect_webp(edits: &[MetadataEdit], format: FileFormat) -> Result<Vec<crate::WebpEdit>> {
+pub(crate) fn collect_webp(
+    edits: &[MetadataEdit],
+    format: FileFormat,
+) -> Result<Vec<crate::WebpEdit>> {
     edits
         .iter()
         .map(|edit| match edit {
@@ -232,7 +244,10 @@ fn collect_webp(edits: &[MetadataEdit], format: FileFormat) -> Result<Vec<crate:
         .collect()
 }
 
-fn collect_isobmff(edits: &[MetadataEdit], format: FileFormat) -> Result<Vec<crate::IsobmffEdit>> {
+pub(crate) fn collect_isobmff(
+    edits: &[MetadataEdit],
+    format: FileFormat,
+) -> Result<Vec<crate::IsobmffEdit>> {
     edits
         .iter()
         .map(|edit| match edit {
@@ -247,7 +262,10 @@ fn collect_isobmff(edits: &[MetadataEdit], format: FileFormat) -> Result<Vec<cra
         .collect()
 }
 
-fn collect_gif(edits: &[MetadataEdit], format: FileFormat) -> Result<Vec<crate::GifEdit>> {
+pub(crate) fn collect_gif(
+    edits: &[MetadataEdit],
+    format: FileFormat,
+) -> Result<Vec<crate::GifEdit>> {
     edits
         .iter()
         .map(|edit| match edit {
@@ -262,7 +280,10 @@ fn collect_gif(edits: &[MetadataEdit], format: FileFormat) -> Result<Vec<crate::
         .collect()
 }
 
-fn collect_mp3(edits: &[MetadataEdit], format: FileFormat) -> Result<Vec<crate::Mp3Edit>> {
+pub(crate) fn collect_mp3(
+    edits: &[MetadataEdit],
+    format: FileFormat,
+) -> Result<Vec<crate::Mp3Edit>> {
     edits
         .iter()
         .map(|edit| match edit {
@@ -287,7 +308,10 @@ fn collect_mp3(edits: &[MetadataEdit], format: FileFormat) -> Result<Vec<crate::
         .collect()
 }
 
-fn collect_flac(edits: &[MetadataEdit], format: FileFormat) -> Result<Vec<crate::FlacEdit>> {
+pub(crate) fn collect_flac(
+    edits: &[MetadataEdit],
+    format: FileFormat,
+) -> Result<Vec<crate::FlacEdit>> {
     edits
         .iter()
         .map(|edit| match edit {
@@ -306,7 +330,10 @@ fn collect_flac(edits: &[MetadataEdit], format: FileFormat) -> Result<Vec<crate:
         .collect()
 }
 
-fn collect_ogg(edits: &[MetadataEdit], format: FileFormat) -> Result<Vec<crate::OggEdit>> {
+pub(crate) fn collect_ogg(
+    edits: &[MetadataEdit],
+    format: FileFormat,
+) -> Result<Vec<crate::OggEdit>> {
     edits
         .iter()
         .map(|edit| match edit {
@@ -325,7 +352,10 @@ fn collect_ogg(edits: &[MetadataEdit], format: FileFormat) -> Result<Vec<crate::
         .collect()
 }
 
-fn collect_wav(edits: &[MetadataEdit], format: FileFormat) -> Result<Vec<crate::WavEdit>> {
+pub(crate) fn collect_wav(
+    edits: &[MetadataEdit],
+    format: FileFormat,
+) -> Result<Vec<crate::WavEdit>> {
     edits
         .iter()
         .map(|edit| match edit {
@@ -344,7 +374,10 @@ fn collect_wav(edits: &[MetadataEdit], format: FileFormat) -> Result<Vec<crate::
         .collect()
 }
 
-fn collect_svg(edits: &[MetadataEdit], format: FileFormat) -> Result<Vec<crate::SvgEdit>> {
+pub(crate) fn collect_svg(
+    edits: &[MetadataEdit],
+    format: FileFormat,
+) -> Result<Vec<crate::SvgEdit>> {
     edits
         .iter()
         .map(|edit| match edit {

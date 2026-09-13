@@ -18,7 +18,7 @@ pub use metra_core::{
 };
 pub use metra_formats::{
     DetectedFormat, FlacEdit, FormatHandler, GifEdit, IsobmffEdit, JpegEdit, MetadataEdit, Mp3Edit,
-    OggEdit, PngEdit, ReadSeek, SvgEdit, TiffEdit, WavEdit, WebpEdit, detect_format,
+    OggEdit, PngEdit, ReadSeek, SvgEdit, TiffEdit, WavEdit, WebpEdit, WriteSeek, detect_format,
     format_handlers, handler_for_format, read_icc, read_ogg, read_path_with_limits, read_reader,
     read_reader_with_limits, read_xmp, rewrite_flac, rewrite_flac_path, rewrite_flac_to_vec,
     rewrite_gif, rewrite_gif_path, rewrite_gif_to_vec, rewrite_isobmff, rewrite_isobmff_path,
