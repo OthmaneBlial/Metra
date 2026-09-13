@@ -90,6 +90,14 @@
       "lossless_rewrite": "planned",
       "streaming": "partial"
     },
+    "RAW": {
+      "read": "partial",
+      "write": "planned",
+      "create": "planned",
+      "delete": "planned",
+      "lossless_rewrite": "planned",
+      "streaming": "partial"
+    },
     "MKV": {
       "read": "partial",
       "write": "planned",
@@ -121,7 +129,8 @@
     "QuickTime": "partial",
     "VorbisComments": "partial",
     "BWF": "partial",
-    "SVGDocument": "partial"
+    "SVGDocument": "partial",
+    "RAW": "partial"
   },
   "cli": {
     "human_readable": "supported",

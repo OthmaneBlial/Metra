@@ -66,6 +66,11 @@ The Matroska reader validates the EBML signature and document type, walks bounde
 `Info`, `Tracks`, and `Tags` elements, exposes typed duration and track fields,
 and skips `Cluster` payloads without decoding media frames. WebM uses the same
 bounded reader with its document type retained by format detection.
+The RAW reader identifies common TIFF-like camera containers by their verified
+header or path family, delegates DNG/CR2/NEF/ARW/ORF/RW2/PEF EXIF parsing to the
+TIFF reader, delegates CR3 to ISO-BMFF, and reports RAF as identified but only
+partially decoded. RAW identity tags keep the container family explicit without
+claiming proprietary sensor-payload support.
 The MP3 reader handles bounded ID3v2 frame tables, ID3v1 fixed fields, and a
 single MPEG frame header without decoding audio payloads.
 The FLAC reader validates the metadata-block chain and decodes STREAMINFO,
@@ -148,6 +153,8 @@ The following changes are deferred until their acceptance tests exist:
   meaningful shared operations;
 - additional manufacturer-specific MakerNote modules beyond the bounded Nikon
   Type 2 reader;
+- vendor-specific RAW container structures and RAF/CR3 payload metadata beyond
+  the current bounded delegation;
 - PSD/PSB resource writers and layer/pixel metadata modules;
 - deeper HEIF/AVIF and media metadata modules, including Matroska chapters,
   cues, attachments, and codec-specific fields;
