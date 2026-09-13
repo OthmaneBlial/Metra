@@ -11,6 +11,7 @@ use std::path::Path;
 use metra_core::{FileFormat, FileInfo, Metadata, MetraError, ParseLimits, Result};
 
 mod flac;
+mod flac_writer;
 mod gif;
 mod icc;
 mod id3;
@@ -28,6 +29,7 @@ mod webp;
 mod xmp;
 
 pub use flac::read_flac;
+pub use flac_writer::{FlacEdit, rewrite_flac, rewrite_flac_path, rewrite_flac_to_vec};
 pub use gif::read_gif;
 pub use id3::read_mp3;
 pub use isobmff::read_isobmff;
