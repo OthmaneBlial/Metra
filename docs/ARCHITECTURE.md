@@ -59,6 +59,10 @@ from those bounded IFDs retain their raw bytes. TIFF also derives GPS
 decimal coordinates, signed altitude, image direction, speed
 in meters per second, and seconds since midnight only after validating their
 rational values, units, and ranges.
+The top-level TIFF IFD chain retains explicit `IFD0`, `IFD1`, and subsequent
+groups, so embedded thumbnail-directory dimensions and compression metadata can
+be inspected without loading or decoding the thumbnail byte range; that range
+is checked independently before it is described as valid.
 The PSD reader validates PSD/PSB sections, emits typed header properties, and
 delegates bounded XMP, IPTC, ICC, and embedded EXIF resources to the shared
 readers. Unknown Photoshop resources remain available as bounded byte values;

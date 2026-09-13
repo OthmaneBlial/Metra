@@ -24,6 +24,8 @@ Initial read-first foundation with narrow validated rewrites:
 - added bounded Ogg Vorbis/Opus comment replacement, deletion, and copy with
   page CRC regeneration, same-packet-size preservation, output validation, and
   atomic replacement;
+- added explicit chained TIFF `IFD1`/`IFD2` traversal for thumbnail-directory
+  metadata while keeping thumbnail pixel payloads out of memory;
 - added bounded PDF Info/XMP inspection and RIFF/WAVE format, INFO, and BWF
   metadata readers;
 - added bounded SVG XML inspection for root geometry, document text, and safe

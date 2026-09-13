@@ -8,6 +8,8 @@ before allocating or traversing metadata.
 
 - magic-byte detection does not trust filename extensions;
 - all TIFF offsets and lengths use checked arithmetic and region bounds;
+- thumbnail IFD offsets and lengths are range-checked before the referenced
+  bytes are described, and thumbnail payloads are never decoded by the reader;
 - IFD entry counts, nested depth, JPEG segments, PNG chunks, and WebP chunks
   are capped;
 - large values are reported and omitted rather than allocated;
