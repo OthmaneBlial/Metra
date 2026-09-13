@@ -26,9 +26,10 @@ expansion and nesting limits before being enabled.
 
 ## Current rewrite safety
 
-Only JPEG comment, PNG `tEXt`, GIF comments, WAV `LIST/INFO`, FLAC Vorbis
-Comment, and common ID3v2 text/comment replacement/deletion/copy is implemented,
-through the library API and the explicit `--set`/`--delete`/`--copy` CLI flags.
+Only JPEG comment, PNG `tEXt`, GIF comments, WebP XMP, WAV `LIST/INFO`, FLAC
+Vorbis Comment, and common ID3v2 text/comment replacement/deletion/copy is
+implemented, through the library API and the explicit `--set`/`--delete`/`--copy`
+CLI flags.
 ID3v2
 unsynchronization, extended headers, and footers are rejected by the writer
 until their round-trip handling is implemented.

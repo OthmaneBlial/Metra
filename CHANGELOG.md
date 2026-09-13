@@ -35,6 +35,8 @@ Initial read-first foundation with narrow validated rewrites:
   fields while preserving other frames, padding, and MPEG audio bytes;
 - added validated GIF comment-extension replacement/deletion/copy while
   preserving color tables, image descriptors, LZW data, and trailers;
+- added validated WebP XMP chunk replacement/deletion/copy with bounded XML
+  validation, RIFF size repair, streamed chunk preservation, and atomic target replacement;
 - added bounded `--jobs` batch inspection with deterministic result ordering;
 - expanded ISO-BMFF inspection with `ispe` dimensions, item/handler fields,
   and direct XMP/EXIF decoding when the metadata boxes are available;

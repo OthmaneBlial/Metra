@@ -68,16 +68,18 @@ out-of-range required read.
 ## Rewrite boundary
 
 The current writer surface is deliberately limited to JPEG COM segments, PNG
-`tEXt` chunks, GIF comment extensions, WAV `LIST/INFO` fields, FLAC Vorbis
-Comment key/value pairs, and common ID3v2 text/comment frames. The ID3 writer requires a tag without
+`tEXt` chunks, GIF comment extensions, WebP `XMP ` chunks, WAV `LIST/INFO`
+fields, FLAC Vorbis Comment key/value pairs, and common ID3v2 text/comment
+frames. The WebP writer validates replacement packets with the bounded XMP
+parser. The ID3 writer requires a tag without
 unsynchronization, extended-header, or footer flags. Each library writer
 validates its source through the reader before writing, streams the original
 container while preserving untargeted bytes, validates the temporary output
 with the reader again, syncs it, and atomically renames a same-directory
 temporary file. The CLI exposes `--set`/`--delete`/`--copy` for
 `JPEG:Comment`, `PNG:Text:<keyword>`, `WAV:<INFO field>`,
-`FLAC:<Vorbis field>`, `ID3:<text field>`, and `GIF:Comment`; generic tag
-mutation and other format writers remain deferred until their round-trip
+`FLAC:<Vorbis field>`, `ID3:<text field>`, `GIF:Comment`, and `WebP:XMP`; generic
+tag mutation and other format writers remain deferred until their round-trip
 acceptance tests exist.
 
 ## Output contract

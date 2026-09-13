@@ -29,10 +29,10 @@
     },
     "WebP": {
       "read": "partial",
-      "write": "planned",
+      "write": "partial",
       "create": "planned",
-      "delete": "planned",
-      "lossless_rewrite": "planned",
+      "delete": "partial",
+      "lossless_rewrite": "partial",
       "streaming": "partial"
     },
     "HEIF": { "read": "partial", "write": "planned", "streaming": "partial" },
