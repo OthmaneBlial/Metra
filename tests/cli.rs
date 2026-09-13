@@ -183,6 +183,28 @@ fn xmp_packet(format: &str) -> String {
     )
 }
 
+fn minimal_avi_with_title(title: &str) -> Vec<u8> {
+    let mut info_chunk = b"INAM".to_vec();
+    info_chunk.extend_from_slice(&(title.len() as u32).to_le_bytes());
+    info_chunk.extend_from_slice(title.as_bytes());
+    if title.len() % 2 == 1 {
+        info_chunk.push(0);
+    }
+    let mut info_payload = b"INFO".to_vec();
+    info_payload.extend_from_slice(&info_chunk);
+    let mut info_list = b"LIST".to_vec();
+    info_list.extend_from_slice(&(info_payload.len() as u32).to_le_bytes());
+    info_list.extend_from_slice(&info_payload);
+    if info_payload.len() % 2 == 1 {
+        info_list.push(0);
+    }
+    let mut bytes = b"RIFF".to_vec();
+    bytes.extend_from_slice(&((4 + info_list.len()) as u32).to_le_bytes());
+    bytes.extend_from_slice(b"AVI ");
+    bytes.extend_from_slice(&info_list);
+    bytes
+}
+
 fn minimal_svg_document(title: &str, description: &str, comment: &str) -> Vec<u8> {
     format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\"><!-- {comment} --><title>{title}</title><desc>{description}</desc><rect width=\"2\" height=\"2\"/></svg>"
@@ -912,6 +934,50 @@ fn cli_can_set_and_copy_existing_psd_xmp() {
         metra::read(&target)
             .unwrap()
             .find("XMP:dc:format")
+            .unwrap()
+            .display_value(),
+        "source"
+    );
+}
+
+#[test]
+fn cli_can_set_and_copy_existing_avi_info() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.file("source.avi", &minimal_avi_with_title("source"));
+    let target = directory.file("target.avi", &minimal_avi_with_title("target"));
+
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "AVI:Title=edited",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("AVI:Title")
+            .unwrap()
+            .display_value(),
+        "edited"
+    );
+
+    let copy_assignment = format!("AVI:Title={}", source.to_str().expect("UTF-8 test path"));
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            &copy_assignment,
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("AVI:Title")
             .unwrap()
             .display_value(),
         "source"
