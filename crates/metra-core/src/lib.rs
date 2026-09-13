@@ -541,6 +541,144 @@ const TAG_DEFINITIONS: &[TagDefinition] = &[
         description: "ICC blue matrix column",
     },
     TagDefinition {
+        namespace: "MakerNotes",
+        id: 0x0001,
+        name: "Nikon:Version",
+        description: "Nikon MakerNote version",
+    },
+    TagDefinition {
+        namespace: "MakerNotes",
+        id: 0x0002,
+        name: "Nikon:ISO",
+        description: "Nikon MakerNote ISO speed",
+    },
+    TagDefinition {
+        namespace: "MakerNotes",
+        id: 0x0004,
+        name: "Nikon:Quality",
+        description: "Nikon MakerNote image quality",
+    },
+    TagDefinition {
+        namespace: "MakerNotes",
+        id: 0x0005,
+        name: "Nikon:WhiteBalance",
+        description: "Nikon MakerNote white balance",
+    },
+    TagDefinition {
+        namespace: "MakerNotes",
+        id: 0x0006,
+        name: "Nikon:Sharpness",
+        description: "Nikon MakerNote sharpness",
+    },
+    TagDefinition {
+        namespace: "MakerNotes",
+        id: 0x0007,
+        name: "Nikon:FocusMode",
+        description: "Nikon MakerNote focus mode",
+    },
+    TagDefinition {
+        namespace: "MakerNotes",
+        id: 0x0008,
+        name: "Nikon:FlashSetting",
+        description: "Nikon MakerNote flash setting",
+    },
+    TagDefinition {
+        namespace: "MakerNotes",
+        id: 0x0009,
+        name: "Nikon:FlashType",
+        description: "Nikon MakerNote flash type",
+    },
+    TagDefinition {
+        namespace: "MakerNotes",
+        id: 0x000B,
+        name: "Nikon:WhiteBalanceFineTune",
+        description: "Nikon MakerNote white-balance fine tune",
+    },
+    TagDefinition {
+        namespace: "MakerNotes",
+        id: 0x000C,
+        name: "Nikon:ColorMode",
+        description: "Nikon MakerNote color mode",
+    },
+    TagDefinition {
+        namespace: "MakerNotes",
+        id: 0x0080,
+        name: "Nikon:ImageAdjustment",
+        description: "Nikon MakerNote image adjustment",
+    },
+    TagDefinition {
+        namespace: "MakerNotes",
+        id: 0x0081,
+        name: "Nikon:ToneCompensation",
+        description: "Nikon MakerNote tone compensation",
+    },
+    TagDefinition {
+        namespace: "MakerNotes",
+        id: 0x0082,
+        name: "Nikon:Adapter",
+        description: "Nikon MakerNote adapter",
+    },
+    TagDefinition {
+        namespace: "MakerNotes",
+        id: 0x0083,
+        name: "Nikon:LensType",
+        description: "Nikon MakerNote lens type",
+    },
+    TagDefinition {
+        namespace: "MakerNotes",
+        id: 0x0084,
+        name: "Nikon:Lens",
+        description: "Nikon MakerNote lens",
+    },
+    TagDefinition {
+        namespace: "MakerNotes",
+        id: 0x0085,
+        name: "Nikon:ManualFocusDistance",
+        description: "Nikon MakerNote manual-focus distance",
+    },
+    TagDefinition {
+        namespace: "MakerNotes",
+        id: 0x0086,
+        name: "Nikon:DigitalZoom",
+        description: "Nikon MakerNote digital zoom",
+    },
+    TagDefinition {
+        namespace: "MakerNotes",
+        id: 0x0087,
+        name: "Nikon:FlashMode",
+        description: "Nikon MakerNote flash mode",
+    },
+    TagDefinition {
+        namespace: "MakerNotes",
+        id: 0x0088,
+        name: "Nikon:AFPoint",
+        description: "Nikon MakerNote autofocus point",
+    },
+    TagDefinition {
+        namespace: "MakerNotes",
+        id: 0x0089,
+        name: "Nikon:ShootingMode",
+        description: "Nikon MakerNote shooting mode",
+    },
+    TagDefinition {
+        namespace: "MakerNotes",
+        id: 0x008B,
+        name: "Nikon:LensStops",
+        description: "Nikon MakerNote lens stops",
+    },
+    TagDefinition {
+        namespace: "MakerNotes",
+        id: 0x0093,
+        name: "Nikon:NEFCompression",
+        description: "Nikon MakerNote NEF compression",
+    },
+    TagDefinition {
+        namespace: "MakerNotes",
+        id: 0x0094,
+        name: "Nikon:Saturation",
+        description: "Nikon MakerNote saturation",
+    },
+    TagDefinition {
         namespace: "Interop",
         id: 0x0001,
         name: "InteroperabilityIndex",
@@ -565,11 +703,12 @@ pub fn tag_definition(namespace: &str, id: u32) -> TagDefinition {
                 "Interop" => "Interop",
                 "IPTC" => "IPTC",
                 "ICC" => "ICC",
+                "MakerNotes" => "MakerNotes",
                 _ => "EXIF",
             },
             id,
             name: "Unknown",
-            description: "Unknown TIFF tag",
+            description: "Unknown metadata tag",
         })
 }
 
@@ -1238,6 +1377,7 @@ mod tests {
         );
         assert_eq!(tag_definition("EXIF", 0x829A).name, "ExposureTime");
         assert_eq!(tag_definition("EXIF", 0xA434).name, "LensModel");
+        assert_eq!(tag_definition("MakerNotes", 0x0002).name, "Nikon:ISO");
 
         let tag = Tag {
             namespace: "EXIF".to_owned(),

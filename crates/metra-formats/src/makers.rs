@@ -1,4 +1,6 @@
-use metra_core::{Metadata, ParseLimits, Source, Tag, TagValue, ValueType, Warning};
+use metra_core::{
+    Metadata, ParseLimits, Source, Tag, TagValue, ValueType, Warning, tag_definition,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct MakerNoteIdentity {
@@ -219,9 +221,10 @@ fn parse_nikon_entry(
         };
         (value_bytes, value_start)
     };
-    let Some(name) = nikon_tag_name(id) else {
+    let definition = tag_definition("MakerNotes", u32::from(id));
+    if definition.name == "Unknown" {
         return;
-    };
+    }
     let Some(value) = decode_value(type_id, count, value_bytes, endian) else {
         return;
     };
@@ -230,8 +233,8 @@ fn parse_nikon_entry(
         namespace: "MakerNotes".to_owned(),
         group: "Nikon".to_owned(),
         id: Some(u32::from(id)),
-        name: format!("Nikon:{name}"),
-        description: Some("Nikon MakerNote property".to_owned()),
+        name: definition.name.to_owned(),
+        description: Some(definition.description.to_owned()),
         raw_value: Some(value_bytes.to_vec()),
         value,
         value_type,
@@ -330,35 +333,6 @@ fn value_type(value: &TagValue) -> ValueType {
         TagValue::Structure(_) => ValueType::Structure,
         TagValue::Unknown { .. } => ValueType::Unknown,
     }
-}
-
-fn nikon_tag_name(id: u16) -> Option<&'static str> {
-    Some(match id {
-        0x0001 => "Version",
-        0x0002 => "ISO",
-        0x0004 => "Quality",
-        0x0005 => "WhiteBalance",
-        0x0006 => "Sharpness",
-        0x0007 => "FocusMode",
-        0x0008 => "FlashSetting",
-        0x0009 => "FlashType",
-        0x000B => "WhiteBalanceFineTune",
-        0x000C => "ColorMode",
-        0x0080 => "ImageAdjustment",
-        0x0081 => "ToneCompensation",
-        0x0082 => "Adapter",
-        0x0083 => "LensType",
-        0x0084 => "Lens",
-        0x0085 => "ManualFocusDistance",
-        0x0086 => "DigitalZoom",
-        0x0087 => "FlashMode",
-        0x0088 => "AFPoint",
-        0x0089 => "ShootingMode",
-        0x008B => "LensStops",
-        0x0093 => "NEFCompression",
-        0x0094 => "Saturation",
-        _ => return None,
-    })
 }
 
 fn identify(bytes: &[u8]) -> Option<MakerNoteIdentity> {
