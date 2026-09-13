@@ -73,6 +73,7 @@ fn corpus_supported_tags_can_be_compared_with_oracle() {
         .expect("METRA_ORACLE must point to an ExifTool-compatible executable");
     let mut compared_files = 0_usize;
     let mut matched_tags = 0_usize;
+    let mut matched_values = 0_usize;
     let mut metra_tags = 0_usize;
 
     for path in files {
@@ -106,14 +107,126 @@ fn corpus_supported_tags_can_be_compared_with_oracle() {
             .expect("oracle JSON should contain one metadata object");
         compared_files += 1;
         metra_tags += metadata.tags().len();
-        matched_tags += metadata
-            .tags()
-            .iter()
-            .filter(|tag| object.contains_key(tag.key().as_str()))
-            .count();
+        for tag in metadata.tags() {
+            let Some(key) = oracle_key_candidates(tag)
+                .into_iter()
+                .find(|key| object.contains_key(key))
+            else {
+                continue;
+            };
+            matched_tags += 1;
+            if let Some(value) = object.get(&key) {
+                matched_values += usize::from(oracle_value_matches(&tag.value, value));
+            }
+        }
     }
 
     eprintln!(
-        "differential summary: compared_files={compared_files}, metra_tags={metra_tags}, oracle_key_matches={matched_tags}"
+        "differential summary: compared_files={compared_files}, metra_tags={metra_tags}, oracle_key_matches={matched_tags}, oracle_value_matches={matched_values}"
     );
+}
+
+fn oracle_key_candidates(tag: &metra::Tag) -> Vec<String> {
+    let name = match (tag.namespace.as_str(), tag.name.as_str()) {
+        ("IPTC", "Byline") => "By-line",
+        ("IPTC", "BylineTitle") => "By-lineTitle",
+        ("IPTC", "CaptionAbstract") => "Caption-Abstract",
+        ("IPTC", "Country") => "Country-PrimaryLocationName",
+        ("IPTC", "CountryCode") => "Country-PrimaryLocationCode",
+        ("IPTC", "OriginalTransmissionReference") => "OriginalTransmissionReference",
+        ("IPTC", "ProvinceState") => "Province-State",
+        ("IPTC", "WriterEditor") => "Writer-Editor",
+        ("ICC", "Copyright") => "ProfileCopyright",
+        ("ICC", "Description") => "ProfileDescription",
+        ("ICC", "CreationDate") => "ProfileDateTime",
+        ("ICC", "DeviceClass") => "ProfileClass",
+        ("ICC", "Manufacturer") => "DeviceManufacturer",
+        ("ICC", "Platform") => "PrimaryPlatform",
+        ("ICC", "Version") => "ProfileVersion",
+        ("ICC", "ColorSpace") => "ColorSpaceData",
+        ("ICC", "Illuminant") => "ConnectionSpaceIlluminant",
+        _ => tag.name.as_str(),
+    };
+
+    match tag.namespace.as_str() {
+        "EXIF" => {
+            let group = match tag.group.as_str() {
+                "IFD-next" => "IFD1",
+                other => other,
+            };
+            vec![format!("{group}:{name}")]
+        }
+        "XMP" => tag
+            .name
+            .split_once(':')
+            .map(|(prefix, property)| format!("XMP-{prefix}:{property}"))
+            .into_iter()
+            .collect(),
+        "IPTC" => ["IPTC", "IPTC2", "IPTC3"]
+            .into_iter()
+            .map(|group| format!("{group}:{name}"))
+            .collect(),
+        "ICC" => {
+            let group = if matches!(
+                tag.name.as_str(),
+                "ColorSpace"
+                    | "CreationDate"
+                    | "DeviceClass"
+                    | "Illuminant"
+                    | "Manufacturer"
+                    | "Model"
+                    | "PCS"
+                    | "Platform"
+                    | "ProfileSize"
+                    | "RenderingIntent"
+                    | "Version"
+            ) {
+                "ICC-header"
+            } else {
+                "ICC_Profile"
+            };
+            vec![format!("{group}:{name}")]
+        }
+        "JPEG" if tag.group == "COM" => vec![format!("File:{name}")],
+        "JFIF" => vec![format!("JFIF:{name}")],
+        "ISOBMFF" => vec![format!("QuickTime:{name}"), format!("{name}")],
+        _ => vec![format!("{}:{name}", tag.namespace)],
+    }
+}
+
+fn oracle_value_matches(value: &metra::TagValue, oracle: &Value) -> bool {
+    match value {
+        metra::TagValue::String(value) => oracle.as_str() == Some(value),
+        metra::TagValue::Unsigned(value) => oracle.as_u64() == Some(*value),
+        metra::TagValue::Signed(value) => oracle.as_i64() == Some(*value),
+        metra::TagValue::Float(value) => oracle_number_matches(*value, oracle),
+        metra::TagValue::Rational {
+            numerator,
+            denominator,
+        } => rational_matches(*numerator as f64, *denominator as f64, oracle),
+        metra::TagValue::UnsignedRational {
+            numerator,
+            denominator,
+        } => rational_matches(*numerator as f64, *denominator as f64, oracle),
+        metra::TagValue::Array(values) => oracle.as_array().is_some_and(|items| {
+            items.len() == values.len()
+                && values
+                    .iter()
+                    .zip(items)
+                    .all(|(value, item)| oracle_value_matches(value, item))
+        }),
+        metra::TagValue::Bytes(_)
+        | metra::TagValue::Structure(_)
+        | metra::TagValue::Unknown { .. } => false,
+    }
+}
+
+fn oracle_number_matches(value: f64, oracle: &Value) -> bool {
+    oracle
+        .as_f64()
+        .is_some_and(|other| (value - other).abs() <= 1e-9 * value.abs().max(other.abs()).max(1.0))
+}
+
+fn rational_matches(numerator: f64, denominator: f64, oracle: &Value) -> bool {
+    denominator != 0.0 && oracle_number_matches(numerator / denominator, oracle)
 }
