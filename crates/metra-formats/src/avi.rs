@@ -108,6 +108,7 @@ fn scan_region<R: Read + Seek>(
         );
         return Ok(());
     }
+    let mut stream_type = None;
     while cursor < end {
         if *chunk_count >= limits.max_jpeg_segments {
             metadata
@@ -200,7 +201,24 @@ fn scan_region<R: Read + Seek>(
                 file_length,
                 "AVI strh",
             )? {
+                if bytes.len() >= 4 {
+                    stream_type = Some(bytes[..4].try_into().expect("AVI stream type"));
+                }
                 parse_strh(&bytes, payload_start, metadata);
+            }
+        } else if in_hdrl && kind == b"strf" {
+            if let Some(bytes) = read_payload(
+                reader,
+                payload_start,
+                payload_length,
+                metadata,
+                limits,
+                materialized,
+                path,
+                file_length,
+                "AVI strf",
+            )? {
+                parse_strf(&bytes, stream_type, payload_start, metadata);
             }
         } else if in_info
             && let Some(bytes) = read_payload(
@@ -523,6 +541,215 @@ fn parse_strh(bytes: &[u8], offset: u64, metadata: &mut Metadata) {
     }
 }
 
+fn parse_strf(bytes: &[u8], stream_type: Option<[u8; 4]>, offset: u64, metadata: &mut Metadata) {
+    match stream_type.as_ref() {
+        Some(b"vids") => parse_video_strf(bytes, offset, metadata),
+        Some(b"auds") => parse_audio_strf(bytes, offset, metadata),
+        _ => metadata.add_warning(
+            Warning::new(
+                "unsupported-avi-strf",
+                "AVI stream format has no recognized video or audio stream type",
+            )
+            .at(offset),
+        ),
+    }
+}
+
+fn parse_video_strf(bytes: &[u8], offset: u64, metadata: &mut Metadata) {
+    const BITMAPINFOHEADER_LENGTH: usize = 40;
+    if bytes.len() < BITMAPINFOHEADER_LENGTH {
+        metadata.add_warning(
+            Warning::new(
+                "truncated-avi-video-strf",
+                "AVI video stream format is shorter than 40 bytes",
+            )
+            .at(offset),
+        );
+        return;
+    }
+    add_tag(
+        metadata,
+        "StreamFormatSize",
+        TagValue::Unsigned(u64::from(read_u32(bytes, 0))),
+        ValueType::UnsignedInteger,
+        offset,
+        4,
+        "AVI/strf/video",
+    );
+    add_tag(
+        metadata,
+        "StreamWidth",
+        TagValue::Signed(i64::from(read_i32(bytes, 4))),
+        ValueType::SignedInteger,
+        offset + 4,
+        4,
+        "AVI/strf/video",
+    );
+    add_tag(
+        metadata,
+        "StreamHeight",
+        TagValue::Signed(i64::from(read_i32(bytes, 8))),
+        ValueType::SignedInteger,
+        offset + 8,
+        4,
+        "AVI/strf/video",
+    );
+    add_tag(
+        metadata,
+        "StreamPlanes",
+        TagValue::Unsigned(u64::from(read_u16(bytes, 12))),
+        ValueType::UnsignedInteger,
+        offset + 12,
+        2,
+        "AVI/strf/video",
+    );
+    add_tag(
+        metadata,
+        "StreamBitCount",
+        TagValue::Unsigned(u64::from(read_u16(bytes, 14))),
+        ValueType::UnsignedInteger,
+        offset + 14,
+        2,
+        "AVI/strf/video",
+    );
+    let compression = fourcc_trimmed(&bytes[16..20]);
+    if !compression.is_empty() {
+        add_tag(
+            metadata,
+            "StreamCompression",
+            TagValue::String(compression),
+            ValueType::String,
+            offset + 16,
+            4,
+            "AVI/strf/video",
+        );
+    }
+    add_tag(
+        metadata,
+        "StreamImageSize",
+        TagValue::Unsigned(u64::from(read_u32(bytes, 20))),
+        ValueType::UnsignedInteger,
+        offset + 20,
+        4,
+        "AVI/strf/video",
+    );
+    add_tag(
+        metadata,
+        "StreamXPelsPerMeter",
+        TagValue::Signed(i64::from(read_i32(bytes, 24))),
+        ValueType::SignedInteger,
+        offset + 24,
+        4,
+        "AVI/strf/video",
+    );
+    add_tag(
+        metadata,
+        "StreamYPelsPerMeter",
+        TagValue::Signed(i64::from(read_i32(bytes, 28))),
+        ValueType::SignedInteger,
+        offset + 28,
+        4,
+        "AVI/strf/video",
+    );
+    add_tag(
+        metadata,
+        "StreamColorUsed",
+        TagValue::Unsigned(u64::from(read_u32(bytes, 32))),
+        ValueType::UnsignedInteger,
+        offset + 32,
+        4,
+        "AVI/strf/video",
+    );
+    add_tag(
+        metadata,
+        "StreamImportantColors",
+        TagValue::Unsigned(u64::from(read_u32(bytes, 36))),
+        ValueType::UnsignedInteger,
+        offset + 36,
+        4,
+        "AVI/strf/video",
+    );
+}
+
+fn parse_audio_strf(bytes: &[u8], offset: u64, metadata: &mut Metadata) {
+    const WAVEFORMAT_LENGTH: usize = 16;
+    if bytes.len() < WAVEFORMAT_LENGTH {
+        metadata.add_warning(
+            Warning::new(
+                "truncated-avi-audio-strf",
+                "AVI audio stream format is shorter than 16 bytes",
+            )
+            .at(offset),
+        );
+        return;
+    }
+    add_tag(
+        metadata,
+        "StreamFormatTag",
+        TagValue::Unsigned(u64::from(read_u16(bytes, 0))),
+        ValueType::UnsignedInteger,
+        offset,
+        2,
+        "AVI/strf/audio",
+    );
+    add_tag(
+        metadata,
+        "StreamChannels",
+        TagValue::Unsigned(u64::from(read_u16(bytes, 2))),
+        ValueType::UnsignedInteger,
+        offset + 2,
+        2,
+        "AVI/strf/audio",
+    );
+    add_tag(
+        metadata,
+        "StreamSamplesPerSecond",
+        TagValue::Unsigned(u64::from(read_u32(bytes, 4))),
+        ValueType::UnsignedInteger,
+        offset + 4,
+        4,
+        "AVI/strf/audio",
+    );
+    add_tag(
+        metadata,
+        "StreamAvgBytesPerSecond",
+        TagValue::Unsigned(u64::from(read_u32(bytes, 8))),
+        ValueType::UnsignedInteger,
+        offset + 8,
+        4,
+        "AVI/strf/audio",
+    );
+    add_tag(
+        metadata,
+        "StreamBlockAlign",
+        TagValue::Unsigned(u64::from(read_u16(bytes, 12))),
+        ValueType::UnsignedInteger,
+        offset + 12,
+        2,
+        "AVI/strf/audio",
+    );
+    add_tag(
+        metadata,
+        "StreamBitsPerSample",
+        TagValue::Unsigned(u64::from(read_u16(bytes, 14))),
+        ValueType::UnsignedInteger,
+        offset + 14,
+        2,
+        "AVI/strf/audio",
+    );
+    if bytes.len() >= 18 {
+        add_tag(
+            metadata,
+            "StreamExtraSize",
+            TagValue::Unsigned(u64::from(read_u16(bytes, 16))),
+            ValueType::UnsignedInteger,
+            offset + 16,
+            2,
+            "AVI/strf/audio",
+        );
+    }
+}
+
 fn parse_info(kind: &[u8], bytes: &[u8], offset: u64, metadata: &mut Metadata) {
     let name = match kind {
         b"INAM" => "Title",
@@ -608,6 +835,10 @@ fn read_i16(bytes: &[u8], offset: usize) -> i16 {
     i16::from_le_bytes(bytes[offset..offset + 2].try_into().expect("AVI i16"))
 }
 
+fn read_u16(bytes: &[u8], offset: usize) -> u16 {
+    u16::from_le_bytes(bytes[offset..offset + 2].try_into().expect("AVI u16"))
+}
+
 fn read_at<R: Read + Seek>(
     reader: &mut R,
     offset: u64,
@@ -684,7 +915,17 @@ mod tests {
         strh[32..36].copy_from_slice(&120_u32.to_le_bytes());
         strh[52..54].copy_from_slice(&1_920_i16.to_le_bytes());
         strh[54..56].copy_from_slice(&1_080_i16.to_le_bytes());
-        let strl = list(b"strl", &chunk(b"strh", &strh));
+        let mut strf = vec![0_u8; 40];
+        strf[0..4].copy_from_slice(&40_u32.to_le_bytes());
+        strf[4..8].copy_from_slice(&1_920_i32.to_le_bytes());
+        strf[8..12].copy_from_slice(&1_080_i32.to_le_bytes());
+        strf[12..14].copy_from_slice(&1_u16.to_le_bytes());
+        strf[14..16].copy_from_slice(&24_u16.to_le_bytes());
+        strf[16..20].copy_from_slice(b"H264");
+        strf[20..24].copy_from_slice(&(1_920_u32 * 1_080 * 3).to_le_bytes());
+        let mut stream_list = chunk(b"strh", &strh);
+        stream_list.extend_from_slice(&chunk(b"strf", &strf));
+        let strl = list(b"strl", &stream_list);
         let mut header_list = chunk(b"avih", &avih);
         header_list.extend_from_slice(&strl);
         let hdrl = list(b"hdrl", &header_list);
@@ -747,6 +988,67 @@ mod tests {
         assert_eq!(
             metadata.find("AVI:StreamFrameBottom").unwrap().value,
             TagValue::Signed(1_080)
+        );
+        assert_eq!(
+            metadata.find("AVI:StreamWidth").unwrap().value,
+            TagValue::Signed(1_920)
+        );
+        assert_eq!(
+            metadata.find("AVI:StreamHeight").unwrap().value,
+            TagValue::Signed(1_080)
+        );
+        assert_eq!(
+            metadata
+                .find("AVI:StreamCompression")
+                .unwrap()
+                .display_value(),
+            "H264"
+        );
+    }
+
+    #[test]
+    fn reads_avi_audio_stream_format() {
+        let mut strh = vec![0_u8; STRH_LENGTH];
+        strh[..4].copy_from_slice(b"auds");
+        strh[20..24].copy_from_slice(&1_u32.to_le_bytes());
+        strh[24..28].copy_from_slice(&8_000_u32.to_le_bytes());
+        strh[32..36].copy_from_slice(&8_000_u32.to_le_bytes());
+        let mut strf = vec![0_u8; 18];
+        strf[0..2].copy_from_slice(&1_u16.to_le_bytes());
+        strf[2..4].copy_from_slice(&1_u16.to_le_bytes());
+        strf[4..8].copy_from_slice(&8_000_u32.to_le_bytes());
+        strf[8..12].copy_from_slice(&16_000_u32.to_le_bytes());
+        strf[12..14].copy_from_slice(&2_u16.to_le_bytes());
+        strf[14..16].copy_from_slice(&16_u16.to_le_bytes());
+        let mut stream_list = chunk(b"strh", &strh);
+        stream_list.extend_from_slice(&chunk(b"strf", &strf));
+        let hdrl = list(b"hdrl", &list(b"strl", &stream_list));
+        let mut bytes = b"RIFF".to_vec();
+        bytes.extend_from_slice(&((4 + hdrl.len()) as u32).to_le_bytes());
+        bytes.extend_from_slice(b"AVI ");
+        bytes.extend_from_slice(&hdrl);
+        let info = FileInfo::new(
+            "audio-stream.avi".into(),
+            bytes.len() as u64,
+            metra_core::FileFormat::Avi,
+        );
+        let metadata = read_avi(&mut Cursor::new(bytes), info, ParseLimits::default())
+            .expect("AVI audio stream fixture should parse");
+        assert_eq!(
+            metadata.find("AVI:StreamFormatTag").unwrap().value,
+            TagValue::Unsigned(1)
+        );
+        assert_eq!(
+            metadata.find("AVI:StreamChannels").unwrap().value,
+            TagValue::Unsigned(1)
+        );
+        assert_eq!(
+            metadata.find("AVI:StreamSamplesPerSecond").unwrap().value,
+            TagValue::Unsigned(8_000)
+        );
+        assert_eq!(
+            metadata.find("AVI:StreamBitsPerSample").unwrap().value,
+            TagValue::Unsigned(16)
         );
     }
 
