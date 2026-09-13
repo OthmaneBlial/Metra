@@ -30,7 +30,7 @@ Implemented today:
 | PNG | Chunk walking, CRC warnings, tEXt/iTXt, eXIf, tIME, pHYs, structured XMP, and ICC presence warnings |
 | WebP | RIFF chunk walking, VP8X dimensions, EXIF, structured XMP, and ICC presence warnings |
 | GIF | GIF87a/GIF89a headers, logical-screen dimensions, comments, and bounded extension validation |
-| ISO-BMFF | HEIF/AVIF/MP4/MOV/M4A brand detection, bounded box walking, and QuickTime-style `ilst` text metadata |
+| ISO-BMFF | HEIF/AVIF/MP4/MOV/M4A brand detection, bounded box walking, `ispe` dimensions, direct XMP/EXIF, and QuickTime-style `ilst` text metadata |
 | MP3 | ID3v2.2/v2.3/v2.4 text, comments, lyrics, attached-picture metadata, ID3v1 fallback, and first MPEG frame properties |
 | FLAC | `STREAMINFO`, Vorbis comments, embedded-picture properties/data, and bounded metadata-block validation |
 | PDF | Header/version, bounded Info dictionaries, PDF string decoding, and embedded XMP packets when directly available |
@@ -141,13 +141,13 @@ are the local validation gate.
 
 ## Roadmap
 
-Avancement global vérifié : **42 %**. Ce chiffre est une moyenne indicative des
+Avancement global vérifié : **43 %**. Ce chiffre est une moyenne indicative des
 sept axes ci-dessous, calculée uniquement sur le code et les tests présents ; il
 ne représente pas un pourcentage de compatibilité ExifTool.
 
 1. **70 %** — Étendre le modèle de lecture et les définitions de tags sans perdre les données brutes.
 2. **30 %** — Ajouter des corpus réels et des tests différentiels JPEG/TIFF/PNG/WebP.
-3. **82 %** — Approfondir HEIF/AVIF et les conteneurs média, puis couvrir les lecteurs restants.
+3. **88 %** — Approfondir HEIF/AVIF et les conteneurs média, puis couvrir les lecteurs restants.
 4. **65 %** — Étendre XMP/IPTC/ICC/ID3 et isoler les espaces MakerNote.
 5. **0 %** — Concevoir l’écriture read-modify-write avec validation et remplacement atomique.
 6. **0 %** — Ajouter `set`/`delete`/`copy` après les tests round-trip.
