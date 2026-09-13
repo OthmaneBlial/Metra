@@ -1,8 +1,9 @@
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{Cursor, Read, Seek, SeekFrom};
 use std::path::Path;
 
 use metra_core::{
-    FileInfo, Metadata, MetraError, ParseLimits, Result, Source, Tag, TagValue, ValueType, Warning,
+    FileFormat, FileInfo, Metadata, MetraError, ParseLimits, Result, Source, Tag, TagValue,
+    ValueType, Warning,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -108,7 +109,19 @@ impl<R: Read + Seek> BoxParser<'_, R> {
                 }
             } else if is_text_item(&header.kind) {
                 self.parse_text_item(&header, metadata)?;
-            } else if &header.kind == b"Exif" || &header.kind == b"xml " {
+            } else if &header.kind == b"ispe" {
+                self.parse_ispe(&header, metadata)?;
+            } else if &header.kind == b"pitm" {
+                self.parse_pitm(&header, metadata)?;
+            } else if &header.kind == b"hdlr" {
+                self.parse_hdlr(&header, metadata)?;
+            } else if &header.kind == b"infe" {
+                self.parse_infe(&header, metadata)?;
+            } else if &header.kind == b"xml " {
+                self.parse_xmp(&header, metadata)?;
+            } else if &header.kind == b"Exif" {
+                self.parse_exif(&header, metadata)?;
+            } else if &header.kind == b"uuid" {
                 metadata.add_warning(
                     Warning::new(
                         "isobmff-embedded-metadata",
@@ -251,6 +264,214 @@ impl<R: Read + Seek> BoxParser<'_, R> {
         Ok(())
     }
 
+    fn parse_ispe(&mut self, header: &BoxHeader, metadata: &mut Metadata) -> Result<()> {
+        let data = self.read_payload(header, "ISO-BMFF ispe")?;
+        if data.len() < 12 {
+            metadata.add_warning(
+                Warning::new(
+                    "truncated-ispe",
+                    "ispe box is shorter than its fixed fields",
+                )
+                .at(header.data_start),
+            );
+            return Ok(());
+        }
+        add_tag(
+            metadata,
+            "ImageWidth",
+            TagValue::Unsigned(u64::from(u32::from_be_bytes(
+                data[4..8].try_into().expect("ispe width"),
+            ))),
+            header.data_start + 4,
+            4,
+        );
+        add_tag(
+            metadata,
+            "ImageHeight",
+            TagValue::Unsigned(u64::from(u32::from_be_bytes(
+                data[8..12].try_into().expect("ispe height"),
+            ))),
+            header.data_start + 8,
+            4,
+        );
+        Ok(())
+    }
+
+    fn parse_pitm(&mut self, header: &BoxHeader, metadata: &mut Metadata) -> Result<()> {
+        let data = self.read_payload(header, "ISO-BMFF pitm")?;
+        if data.len() < 6 {
+            metadata.add_warning(
+                Warning::new(
+                    "truncated-pitm",
+                    "pitm box is shorter than its item identifier",
+                )
+                .at(header.data_start),
+            );
+            return Ok(());
+        }
+        let item_id = if data[0] == 0 {
+            u64::from(u16::from_be_bytes(
+                data[4..6].try_into().expect("pitm item id"),
+            ))
+        } else if data.len() >= 8 {
+            u64::from(u32::from_be_bytes(
+                data[4..8].try_into().expect("pitm item id"),
+            ))
+        } else {
+            metadata.add_warning(
+                Warning::new(
+                    "truncated-pitm",
+                    "versioned pitm item identifier is truncated",
+                )
+                .at(header.data_start),
+            );
+            return Ok(());
+        };
+        add_tag(
+            metadata,
+            "PrimaryItemId",
+            TagValue::Unsigned(item_id),
+            header.data_start + 4,
+            if data[0] == 0 { 2 } else { 4 },
+        );
+        Ok(())
+    }
+
+    fn parse_hdlr(&mut self, header: &BoxHeader, metadata: &mut Metadata) -> Result<()> {
+        let data = self.read_payload(header, "ISO-BMFF hdlr")?;
+        if data.len() < 12 {
+            metadata.add_warning(
+                Warning::new(
+                    "truncated-hdlr",
+                    "hdlr box is shorter than its handler type",
+                )
+                .at(header.data_start),
+            );
+            return Ok(());
+        }
+        add_tag(
+            metadata,
+            "HandlerType",
+            TagValue::String(fourcc(data[8..12].try_into().expect("handler type"))),
+            header.data_start + 8,
+            4,
+        );
+        Ok(())
+    }
+
+    fn parse_infe(&mut self, header: &BoxHeader, metadata: &mut Metadata) -> Result<()> {
+        let data = self.read_payload(header, "ISO-BMFF infe")?;
+        if data.len() < 12 {
+            metadata.add_warning(
+                Warning::new("truncated-infe", "infe box is shorter than its item type")
+                    .at(header.data_start),
+            );
+            return Ok(());
+        }
+        let version = data[0];
+        let (item_id_offset, item_id_length, item_type_offset) = if version == 0 {
+            (4_usize, 2_usize, 8_usize)
+        } else {
+            (4_usize, 4_usize, 12_usize)
+        };
+        if data.len() < item_type_offset + 4 {
+            metadata.add_warning(
+                Warning::new("truncated-infe", "infe item type is truncated").at(header.data_start),
+            );
+            return Ok(());
+        }
+        let item_id = if item_id_length == 2 {
+            u64::from(u16::from_be_bytes(
+                data[item_id_offset..item_id_offset + 2]
+                    .try_into()
+                    .expect("infe item id"),
+            ))
+        } else {
+            u64::from(u32::from_be_bytes(
+                data[item_id_offset..item_id_offset + 4]
+                    .try_into()
+                    .expect("infe item id"),
+            ))
+        };
+        add_tag(
+            metadata,
+            "ItemId",
+            TagValue::Unsigned(item_id),
+            header.data_start + item_id_offset as u64,
+            item_id_length as u64,
+        );
+        add_tag(
+            metadata,
+            "ItemType",
+            TagValue::String(fourcc(
+                data[item_type_offset..item_type_offset + 4]
+                    .try_into()
+                    .expect("infe item type"),
+            )),
+            header.data_start + item_type_offset as u64,
+            4,
+        );
+        Ok(())
+    }
+
+    fn parse_xmp(&mut self, header: &BoxHeader, metadata: &mut Metadata) -> Result<()> {
+        let data = self.read_payload(header, "ISO-BMFF XMP")?;
+        if let Err(error) = crate::xmp::parse_xmp(
+            &data,
+            header.data_start,
+            "ISO-BMFF/xml",
+            metadata,
+            self.limits,
+        ) {
+            metadata.add_warning(
+                Warning::new("invalid-isobmff-xmp", error.to_string()).at(header.data_start),
+            );
+        }
+        Ok(())
+    }
+
+    fn parse_exif(&mut self, header: &BoxHeader, metadata: &mut Metadata) -> Result<()> {
+        let data = self.read_payload(header, "ISO-BMFF EXIF")?;
+        let Some(tiff_offset) = find_tiff_offset(&data) else {
+            metadata.add_warning(
+                Warning::new(
+                    "invalid-isobmff-exif",
+                    "ISO-BMFF Exif box does not contain a TIFF header",
+                )
+                .at(header.data_start),
+            );
+            return Ok(());
+        };
+        let tiff_data = data[tiff_offset..].to_vec();
+        let info = FileInfo::new(
+            self.path.to_path_buf(),
+            tiff_data.len() as u64,
+            FileFormat::Tiff,
+        );
+        match crate::tiff::read_tiff(&mut Cursor::new(tiff_data), info, self.limits) {
+            Ok(mut embedded) => {
+                for mut tag in embedded.tags.drain(..) {
+                    tag.source.container = "ISO-BMFF/Exif".to_owned();
+                    tag.source.offset = tag
+                        .source
+                        .offset
+                        .map(|offset| header.data_start + tiff_offset as u64 + offset);
+                    metadata.add_tag(tag);
+                }
+                for mut warning in embedded.warnings.drain(..) {
+                    warning.offset = warning
+                        .offset
+                        .map(|offset| header.data_start + tiff_offset as u64 + offset);
+                    metadata.add_warning(warning);
+                }
+            }
+            Err(error) => metadata.add_warning(
+                Warning::new("invalid-isobmff-exif", error.to_string()).at(header.data_start),
+            ),
+        }
+        Ok(())
+    }
+
     fn read_payload(&mut self, header: &BoxHeader, context: &str) -> Result<Vec<u8>> {
         let length = header.end.saturating_sub(header.data_start);
         let length = usize::try_from(length).map_err(|_| MetraError::ResourceLimitExceeded {
@@ -344,6 +565,24 @@ fn fourcc(bytes: &[u8; 4]) -> String {
     }
 }
 
+fn find_tiff_offset(data: &[u8]) -> Option<usize> {
+    if data.starts_with(b"Exif\0\0") && data.len() > 6 {
+        return Some(6);
+    }
+    if data.len() >= 4 {
+        let declared = u32::from_be_bytes(data[..4].try_into().expect("Exif item offset")) as usize;
+        let candidate = 4_usize.checked_add(declared)?;
+        if is_tiff_header(data.get(candidate..)?) {
+            return Some(candidate);
+        }
+    }
+    data.windows(4).position(is_tiff_header)
+}
+
+fn is_tiff_header(bytes: &[u8]) -> bool {
+    bytes.starts_with(b"II*\0") || bytes.starts_with(b"MM\0*")
+}
+
 fn add_tag(metadata: &mut Metadata, name: &str, value: TagValue, offset: u64, length: u64) {
     let value_type = match &value {
         TagValue::String(_) => ValueType::String,
@@ -404,8 +643,15 @@ mod tests {
         let ilst = box_with_kind(b"ilst", &title);
         let udta = box_with_kind(b"udta", &ilst);
         let moov = box_with_kind(b"moov", &udta);
+        let ispe = box_with_kind(b"ispe", &[0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 2, 0]);
+        let xmp = box_with_kind(
+            b"xml ",
+            br#"<x:xmpmeta><rdf:RDF><rdf:Description dc:format="image/heic" xmlns:dc="urn:dc"/></rdf:RDF></x:xmpmeta>"#,
+        );
         let mut bytes = ftyp;
         bytes.extend_from_slice(&moov);
+        bytes.extend_from_slice(&ispe);
+        bytes.extend_from_slice(&xmp);
         let info = FileInfo::new("movie.mp4".into(), bytes.len() as u64, FileFormat::Mp4);
         let metadata = read_isobmff(&mut Cursor::new(bytes), info, ParseLimits::default()).unwrap();
         assert_eq!(
@@ -415,6 +661,14 @@ mod tests {
         assert_eq!(
             metadata.find("ISOBMFF:Title").unwrap().display_value(),
             "Metra"
+        );
+        assert_eq!(
+            metadata.find("ISOBMFF:ImageWidth").unwrap().display_value(),
+            "768"
+        );
+        assert_eq!(
+            metadata.find("XMP:dc:format").unwrap().display_value(),
+            "image/heic"
         );
     }
 }

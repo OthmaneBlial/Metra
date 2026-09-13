@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 
 use metra_core::{
@@ -275,7 +274,11 @@ fn tag_definition(namespace: &str, id: u16) -> TagDefinition {
     }
 }
 
-pub fn read_tiff(reader: &mut File, file_info: FileInfo, limits: ParseLimits) -> Result<Metadata> {
+pub fn read_tiff<R: Read + Seek>(
+    reader: &mut R,
+    file_info: FileInfo,
+    limits: ParseLimits,
+) -> Result<Metadata> {
     let length = file_info.size;
     let mut metadata = Metadata::new(file_info);
     parse_tiff_from_reader(reader, 0, length, 0, &mut metadata, limits)?;
