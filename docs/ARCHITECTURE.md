@@ -23,8 +23,9 @@ This crate owns stable, format-independent types:
 
 The model preserves a canonical tag name and underlying numeric identifier when
 available. TIFF/EXIF numeric IDs and IPTC-IIM dataset numbers are retained by
-their readers. Display formatting is a presentation concern and is not a lookup
-contract.
+their readers. `Metadata` exposes both first-match and repeated-match lookup so
+duplicate datasets do not need to be flattened. Display formatting is a
+presentation concern and is not a lookup contract.
 
 ### `metra-formats`
 

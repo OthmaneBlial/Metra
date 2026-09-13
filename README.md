@@ -114,6 +114,10 @@ if let Some(make) = metadata.find("EXIF:Make") {
 if let Some(make) = metadata.find_by_id("EXIF", 0x010F) {
     println!("stable tag = {}", make.identifier().name);
 }
+
+for keyword in metadata.find_all("IPTC:Keywords") {
+    println!("keyword = {}", keyword.display_value());
+}
 ```
 
 The model keeps namespaces explicit (`EXIF`, `GPS`, `PNG`, `WebP`, `JFIF`,
@@ -134,7 +138,8 @@ The JSON schema is versioned at the document level:
 
 Consumers should use `namespace` plus canonical `name` (for example
 `EXIF:DateTimeOriginal`) or `find_by_id` when a format-level numeric identifier
-is available, rather than relying on human display text. The shared tag catalog
+is available, rather than relying on human display text. Use `find_all` or
+`find_all_by_id` when a file can contain repeated blocks or datasets. The shared tag catalog
 is intentionally partial and will grow through generated definitions. IPTC-IIM
 tags retain their numeric dataset identifiers, so `find_by_id("IPTC", 25)` and
 structured output remain stable even when repeated values are represented as arrays.
