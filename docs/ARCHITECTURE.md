@@ -192,8 +192,8 @@ non-zero code when differences or read failures are found.
 The following changes are deferred until their acceptance tests exist:
 
 - additional tag definitions beyond the current generated catalog;
-- a `FormatHandler` capability abstraction once write/create behavior creates
-  meaningful shared operations;
+- a shared write/create/edit operation IR on top of the existing public
+  read-side `FormatHandler` registry;
 - additional manufacturer-specific MakerNote modules beyond the bounded Nikon
   Type 1/2, Canon, Fujifilm, Panasonic, Olympus, and legacy Sony readers;
 - vendor-specific RAW container structures and RAF/CR3 payload metadata beyond

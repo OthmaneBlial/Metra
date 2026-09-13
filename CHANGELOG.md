@@ -54,6 +54,8 @@ Initial read-first foundation with narrow validated rewrites:
   comment extraction without rendering;
 - added bounded extraction of embedded SVG `xmpmeta` packets through the shared
   XMP reader, preserving packet source offsets and warning on invalid packets;
+- added a public `FormatHandler` registry covering every currently advertised
+  format, with shared detection, bounded read dispatch, and capability reports;
 - added shared safe XML character-reference handling for SVG and XMP while
   rejecting custom entities and DOCTYPE declarations;
 - added validated, lossless JPEG COM replacement/deletion with same-directory

@@ -199,9 +199,11 @@ readers only materialize bounded metadata chunks.
 The tag catalog is maintained as tab-separated source data in
 `crates/metra-core/data/tag-definitions.tsv`; `metra-core/build.rs` validates
 its fields and identifiers, then generates the compact Rust lookup table at
-build time. Additional manufacturer-specific MakerNote readers beyond the bounded
-Nikon Type 1/2, Canon, Fujifilm, Panasonic, Olympus, and legacy Sony readers, deeper media
-metadata support, and a generalized rewrite capability layer remain deferred.
+build time. The public `FormatHandler` registry now gives each detected format
+an explicit read contract and capability report. Additional manufacturer-specific
+MakerNote readers beyond the bounded Nikon Type 1/2, Canon, Fujifilm, Panasonic,
+Olympus, and legacy Sony readers, deeper media metadata support, and a generalized
+rewrite/create capability layer remain deferred.
 The current
 format-specific writers remain intentionally narrow and independently tested.
 
