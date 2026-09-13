@@ -118,4 +118,6 @@ Initial read-first foundation with narrow validated rewrites:
   aliases and typed numeric, rational, string, and array value comparisons;
 - added bounded Panasonic RW2 TIFF-dialect detection and EXIF delegation,
   including a real-corpus validation case;
+- added signature-based identification for legacy Canon CRW, Minolta MRW, and
+  Sigma X3F RAW containers with explicit partial-decoding warnings;
 - documented the verified surface and remaining compatibility boundaries.
