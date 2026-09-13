@@ -7,8 +7,8 @@
 use std::path::Path;
 
 pub use metra_core::{
-    FileFormat, FileInfo, Metadata, MetraError, ParseLimits, Result, Source, Tag, TagDefinition,
-    TagValue, ValueType, Warning, tag_definition, tag_definitions,
+    FileFormat, FileInfo, Metadata, MetadataDiff, MetraError, ParseLimits, Result, Source, Tag,
+    TagDefinition, TagDifference, TagValue, ValueType, Warning, tag_definition, tag_definitions,
 };
 pub use metra_formats::{
     DetectedFormat, FlacEdit, GifEdit, JpegEdit, Mp3Edit, PngEdit, SvgEdit, WavEdit, WebpEdit,

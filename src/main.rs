@@ -67,6 +67,24 @@ struct Arguments {
     #[arg(long, conflicts_with_all = ["set", "delete", "copy"])]
     validate: bool,
 
+    /// Compare each positional file against this reference file.
+    #[arg(
+        long,
+        value_name = "REFERENCE",
+        conflicts_with_all = [
+            "set",
+            "delete",
+            "copy",
+            "validate",
+            "json",
+            "jsonl",
+            "csv",
+            "toml",
+            "yaml"
+        ]
+    )]
+    compare: Option<PathBuf>,
+
     /// Traverse directories recursively in deterministic path order.
     #[arg(short = 'r', long)]
     recursive: bool,
@@ -101,6 +119,9 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    if let Some(reference) = arguments.compare.as_deref() {
+        return compare_paths(&paths, reference);
+    }
     if let Some(request) = request {
         return apply_request(&paths, request);
     }
@@ -146,6 +167,66 @@ fn main() -> ExitCode {
     } else {
         ExitCode::from(1)
     }
+}
+
+fn compare_paths(paths: &[PathBuf], reference: &Path) -> ExitCode {
+    let baseline = match metra::read(reference) {
+        Ok(metadata) => metadata,
+        Err(error) => {
+            eprintln!("metra: {}: {error}", reference.display());
+            return ExitCode::from(1);
+        }
+    };
+    let mut failures = 0_usize;
+    for path in paths {
+        match metra::read(path) {
+            Ok(metadata) => {
+                let diff = baseline.diff(&metadata);
+                print_diff(path, reference, &diff);
+                if !diff.added.is_empty() || !diff.removed.is_empty() || !diff.changed.is_empty() {
+                    failures += 1;
+                }
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", path.display());
+                failures += 1;
+            }
+        }
+    }
+    if failures == 0 {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
+fn print_diff(path: &Path, reference: &Path, diff: &metra::MetadataDiff) {
+    println!("{} (against {})", path.display(), reference.display());
+    for tag in &diff.added {
+        println!("  added: {} = {}", tag.key(), tag.display_value());
+    }
+    for tag in &diff.removed {
+        println!("  removed: {} = {}", tag.key(), tag.display_value());
+    }
+    for change in &diff.changed {
+        println!(
+            "  changed: {}: {} -> {}",
+            change.key,
+            display_values(&change.before),
+            display_values(&change.after)
+        );
+    }
+    if diff.added.is_empty() && diff.removed.is_empty() && diff.changed.is_empty() {
+        println!("  no metadata differences");
+    }
+}
+
+fn display_values(values: &[metra::TagValue]) -> String {
+    values
+        .iter()
+        .map(metra::TagValue::to_display_string)
+        .collect::<Vec<_>>()
+        .join(" | ")
 }
 
 enum EditRequest {

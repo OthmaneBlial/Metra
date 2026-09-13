@@ -393,6 +393,40 @@ fn validate_returns_failure_for_recoverable_warnings() {
 }
 
 #[test]
+fn compare_reports_value_changes_and_success_for_equal_metadata() {
+    let directory = TemporaryDirectory::new();
+    let reference = directory.file("reference.png", &minimal_png("reference"));
+    let changed = directory.file("changed.png", &minimal_png("changed"));
+
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--compare",
+            reference.to_str().expect("UTF-8 test path"),
+            changed.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(!output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("diff output should be UTF-8");
+    assert!(stdout.contains("changed: PNG:Text:Comment"));
+
+    let equal = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--compare",
+            reference.to_str().expect("UTF-8 test path"),
+            reference.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(equal.status.success(), "stderr: {:?}", equal.stderr);
+    assert!(
+        String::from_utf8(equal.stdout)
+            .expect("diff output should be UTF-8")
+            .contains("no metadata differences")
+    );
+}
+
+#[test]
 fn jobs_keep_batch_output_in_path_order() {
     let directory = TemporaryDirectory::new();
     let first = directory.file("camera-a.jpg", &minimal_exif_jpeg());

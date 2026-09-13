@@ -605,6 +605,63 @@ impl Metadata {
             .filter(|tag| tag.namespace == namespace && tag.id == Some(id))
             .collect()
     }
+
+    /// Compare tag values while preserving duplicate tags under each key.
+    /// `self` is the baseline and `other` is the candidate document.
+    pub fn diff(&self, other: &Self) -> MetadataDiff {
+        let mut keys = BTreeMap::new();
+        for tag in self.tags.iter().chain(other.tags.iter()) {
+            keys.insert(tag.key(), ());
+        }
+
+        let mut diff = MetadataDiff::default();
+        for key in keys.into_keys() {
+            let before_tags = self
+                .tags
+                .iter()
+                .filter(|tag| tag.key() == key)
+                .collect::<Vec<_>>();
+            let after_tags = other
+                .tags
+                .iter()
+                .filter(|tag| tag.key() == key)
+                .collect::<Vec<_>>();
+            match (before_tags.is_empty(), after_tags.is_empty()) {
+                (true, false) => diff.added.extend(after_tags.into_iter().cloned()),
+                (false, true) => diff.removed.extend(before_tags.into_iter().cloned()),
+                (false, false) => {
+                    let before = before_tags
+                        .iter()
+                        .map(|tag| tag.value.clone())
+                        .collect::<Vec<_>>();
+                    let after = after_tags
+                        .iter()
+                        .map(|tag| tag.value.clone())
+                        .collect::<Vec<_>>();
+                    if before != after {
+                        diff.changed.push(TagDifference { key, before, after });
+                    }
+                }
+                (true, true) => unreachable!("a key comes from at least one metadata tag"),
+            }
+        }
+        diff
+    }
+}
+
+/// Deterministic value-level comparison between two metadata documents.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct MetadataDiff {
+    pub added: Vec<Tag>,
+    pub removed: Vec<Tag>,
+    pub changed: Vec<TagDifference>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TagDifference {
+    pub key: String,
+    pub before: Vec<TagValue>,
+    pub after: Vec<TagValue>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -885,5 +942,42 @@ mod tests {
         );
         assert_eq!(metadata.find_all("EXIF:Make").len(), 1);
         assert_eq!(metadata.find_all_by_id("EXIF", 0x010F).len(), 1);
+    }
+
+    #[test]
+    fn metadata_diff_preserves_additions_removals_and_changes() {
+        let tag = |name: &str, value: &str| Tag {
+            namespace: "XMP".to_owned(),
+            group: "RDF/Description".to_owned(),
+            id: None,
+            name: name.to_owned(),
+            description: None,
+            raw_value: None,
+            value: TagValue::String(value.to_owned()),
+            value_type: ValueType::String,
+            source: Source::default(),
+            writable: false,
+        };
+        let mut before = Metadata::new(FileInfo::new(
+            PathBuf::from("before.jpg"),
+            1,
+            FileFormat::Jpeg,
+        ));
+        before.add_tag(tag("Title", "old"));
+        before.add_tag(tag("Removed", "value"));
+        let mut after = Metadata::new(FileInfo::new(
+            PathBuf::from("after.jpg"),
+            1,
+            FileFormat::Jpeg,
+        ));
+        after.add_tag(tag("Title", "new"));
+        after.add_tag(tag("Added", "value"));
+
+        let diff = before.diff(&after);
+        assert_eq!(diff.added[0].key(), "XMP:Added");
+        assert_eq!(diff.removed[0].key(), "XMP:Removed");
+        assert_eq!(diff.changed[0].key, "XMP:Title");
+        assert_eq!(diff.changed[0].before, vec![TagValue::String("old".into())]);
+        assert_eq!(diff.changed[0].after, vec![TagValue::String("new".into())]);
     }
 }
