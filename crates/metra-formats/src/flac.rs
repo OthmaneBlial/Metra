@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
@@ -116,13 +117,10 @@ pub fn read_flac<R: Read + Seek>(
                 parse_picture(&data, data_offset, limits, &mut metadata);
             }
             1 => {}
-            2 => metadata.add_warning(
-                Warning::new(
-                    "flac-seektable",
-                    "FLAC SEEKTABLE is present but seek points are not decoded",
-                )
-                .at(data_offset),
-            ),
+            2 => {
+                let data = read_at(reader, data_offset, length, &path, "FLAC SEEKTABLE")?;
+                parse_seektable(&data, data_offset, limits, &mut metadata);
+            }
             3 => metadata.add_warning(
                 Warning::new(
                     "flac-vorbis-comment",
@@ -277,6 +275,87 @@ fn parse_streaminfo(data: &[u8], offset: u64, metadata: &mut Metadata) {
             16,
         );
     }
+}
+
+fn parse_seektable(data: &[u8], offset: u64, limits: ParseLimits, metadata: &mut Metadata) {
+    const SEEKPOINT_LENGTH: usize = 18;
+
+    let remainder = data.len() % SEEKPOINT_LENGTH;
+    if remainder != 0 {
+        metadata.add_warning(
+            Warning::new(
+                "invalid-flac-seektable",
+                "SEEKTABLE length is not a multiple of 18 bytes",
+            )
+            .at(offset + (data.len() - remainder) as u64),
+        );
+    }
+
+    let entry_count = data.len() / SEEKPOINT_LENGTH;
+    add_tag(
+        metadata,
+        "SeekPointCount",
+        TagValue::Unsigned(entry_count as u64),
+        ValueType::UnsignedInteger,
+        "SEEKTABLE",
+        offset,
+        data.len() as u64,
+    );
+
+    let materialized_count = entry_count.min(limits.max_jpeg_segments);
+    if materialized_count < entry_count {
+        metadata.add_warning(
+            Warning::new(
+                "flac-seekpoint-limit",
+                format!(
+                    "stopped after {} FLAC seek points",
+                    limits.max_jpeg_segments
+                ),
+            )
+            .at(offset),
+        );
+    }
+
+    let points = data[..materialized_count * SEEKPOINT_LENGTH]
+        .chunks_exact(SEEKPOINT_LENGTH)
+        .map(|entry| {
+            let mut point = BTreeMap::new();
+            point.insert(
+                "SampleNumber".to_owned(),
+                TagValue::Unsigned(u64::from_be_bytes(
+                    entry[..8]
+                        .try_into()
+                        .expect("FLAC seek point sample number"),
+                )),
+            );
+            point.insert(
+                "StreamOffset".to_owned(),
+                TagValue::Unsigned(u64::from_be_bytes(
+                    entry[8..16]
+                        .try_into()
+                        .expect("FLAC seek point stream offset"),
+                )),
+            );
+            point.insert(
+                "FrameSamples".to_owned(),
+                TagValue::Unsigned(u64::from(u16::from_be_bytes(
+                    entry[16..18]
+                        .try_into()
+                        .expect("FLAC seek point frame samples"),
+                ))),
+            );
+            TagValue::Structure(point)
+        })
+        .collect::<Vec<_>>();
+    add_tag(
+        metadata,
+        "SeekPoints",
+        TagValue::Array(points),
+        ValueType::Array,
+        "SEEKTABLE",
+        offset,
+        (materialized_count * SEEKPOINT_LENGTH) as u64,
+    );
 }
 
 fn parse_vorbis_comments(data: &[u8], offset: u64, limits: ParseLimits, metadata: &mut Metadata) {
@@ -662,6 +741,17 @@ mod tests {
         data
     }
 
+    fn seektable() -> Vec<u8> {
+        let mut data = Vec::new();
+        data.extend_from_slice(&0_u64.to_be_bytes());
+        data.extend_from_slice(&0_u64.to_be_bytes());
+        data.extend_from_slice(&4096_u16.to_be_bytes());
+        data.extend_from_slice(&88_200_u64.to_be_bytes());
+        data.extend_from_slice(&12_345_u64.to_be_bytes());
+        data.extend_from_slice(&4096_u16.to_be_bytes());
+        data
+    }
+
     #[test]
     fn reads_streaminfo_and_vorbis_comments() {
         let mut bytes = b"fLaC".to_vec();
@@ -680,6 +770,44 @@ mod tests {
         assert_eq!(
             metadata.find("FLAC:Artist").unwrap().display_value(),
             "Artist"
+        );
+    }
+
+    #[test]
+    fn reads_seektable_points_as_bounded_structures() {
+        let mut bytes = b"fLaC".to_vec();
+        bytes.extend(block(false, 0, &streaminfo()));
+        bytes.extend(block(true, 2, &seektable()));
+        let info = FileInfo::new(
+            "seektable.flac".into(),
+            bytes.len() as u64,
+            FileFormat::Flac,
+        );
+        let metadata = read_flac(&mut Cursor::new(bytes), info, ParseLimits::default())
+            .expect("FLAC seektable fixture should parse");
+
+        assert_eq!(
+            metadata.find("FLAC:SeekPointCount").unwrap().value,
+            TagValue::Unsigned(2)
+        );
+        let points = match &metadata.find("FLAC:SeekPoints").unwrap().value {
+            TagValue::Array(points) => points,
+            value => panic!("expected seek point array, got {value:?}"),
+        };
+        assert_eq!(points.len(), 2);
+        assert_eq!(
+            points[1],
+            TagValue::Structure(BTreeMap::from([
+                ("FrameSamples".to_owned(), TagValue::Unsigned(4096)),
+                ("SampleNumber".to_owned(), TagValue::Unsigned(88_200)),
+                ("StreamOffset".to_owned(), TagValue::Unsigned(12_345)),
+            ]))
+        );
+        assert!(
+            metadata
+                .warnings()
+                .iter()
+                .all(|warning| warning.code != "flac-seektable")
         );
     }
 
