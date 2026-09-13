@@ -4,6 +4,9 @@
 
 Initial read-first foundation with narrow validated rewrites:
 
+- added an isolated legacy-query normalizer for bounded `-json`/`-jsonl` and
+  common single-dash tag aliases, translating them to canonical Metra selectors
+  while retaining the versioned Metra output schema;
 - added a bounded classic TIFF creation API that emits a validated 1x1
   monochrome seed with optional EXIF ASCII fields, plus a no-overwrite atomic
   path helper and resource-limit tests, exposed through the CLI
