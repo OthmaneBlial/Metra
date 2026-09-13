@@ -30,12 +30,15 @@ expansion and nesting limits before being enabled.
 
 ## Current rewrite safety
 
-Only JPEG comment, PNG `tEXt` and uncompressed `iTXt` XMP, GIF comments, WebP
-XMP, SVG title/description/comments, WAV `LIST/INFO`, FLAC Vorbis Comment, and
-common ID3v2 text/comment replacement/deletion/copy is implemented, through
-the library API and the explicit `--set`/`--delete`/`--copy` CLI flags. SVG
-replacement values are XML-escaped, and comment writes reject `--` and a
-trailing `-` so the resulting document remains valid XML.
+Only JPEG comment and known IPTC-IIM datasets in Photoshop APP13 resources,
+PNG `tEXt` and uncompressed `iTXt` XMP, GIF comments, WebP XMP, SVG
+title/description/comments, WAV `LIST/INFO`, FLAC Vorbis Comment, and common
+ID3v2 text/comment replacement/deletion/copy is implemented, through the
+library API and the explicit `--set`/`--delete`/`--copy` CLI flags. IPTC writes
+validate the dataset allowlist, NUL-free values, resource sizes, and APP13
+segment limits; unrelated Photoshop resources are preserved. SVG replacement
+values are XML-escaped, and comment writes reject `--` and a trailing `-` so
+the resulting document remains valid XML.
 ID3v2
 unsynchronization, extended headers, and footers are rejected by the writer
 until their round-trip handling is implemented.
