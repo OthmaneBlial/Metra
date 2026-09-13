@@ -271,6 +271,132 @@ const TAG_DEFINITIONS: &[TagDefinition] = &[
         description: "GPS date",
     },
     TagDefinition {
+        namespace: "IPTC",
+        id: 3,
+        name: "ObjectName",
+        description: "IPTC object name",
+    },
+    TagDefinition {
+        namespace: "IPTC",
+        id: 5,
+        name: "EditStatus",
+        description: "IPTC edit status",
+    },
+    TagDefinition {
+        namespace: "IPTC",
+        id: 10,
+        name: "Urgency",
+        description: "IPTC urgency",
+    },
+    TagDefinition {
+        namespace: "IPTC",
+        id: 15,
+        name: "Category",
+        description: "IPTC category",
+    },
+    TagDefinition {
+        namespace: "IPTC",
+        id: 20,
+        name: "SupplementalCategories",
+        description: "IPTC supplemental categories",
+    },
+    TagDefinition {
+        namespace: "IPTC",
+        id: 25,
+        name: "Keywords",
+        description: "IPTC keywords",
+    },
+    TagDefinition {
+        namespace: "IPTC",
+        id: 55,
+        name: "DateCreated",
+        description: "IPTC creation date",
+    },
+    TagDefinition {
+        namespace: "IPTC",
+        id: 60,
+        name: "TimeCreated",
+        description: "IPTC creation time",
+    },
+    TagDefinition {
+        namespace: "IPTC",
+        id: 80,
+        name: "Byline",
+        description: "IPTC creator",
+    },
+    TagDefinition {
+        namespace: "IPTC",
+        id: 85,
+        name: "BylineTitle",
+        description: "IPTC creator title",
+    },
+    TagDefinition {
+        namespace: "IPTC",
+        id: 90,
+        name: "City",
+        description: "IPTC city",
+    },
+    TagDefinition {
+        namespace: "IPTC",
+        id: 92,
+        name: "SubLocation",
+        description: "IPTC sub-location",
+    },
+    TagDefinition {
+        namespace: "IPTC",
+        id: 95,
+        name: "ProvinceState",
+        description: "IPTC province or state",
+    },
+    TagDefinition {
+        namespace: "IPTC",
+        id: 101,
+        name: "CountryCode",
+        description: "IPTC country code",
+    },
+    TagDefinition {
+        namespace: "IPTC",
+        id: 102,
+        name: "Country",
+        description: "IPTC country",
+    },
+    TagDefinition {
+        namespace: "IPTC",
+        id: 105,
+        name: "Headline",
+        description: "IPTC headline",
+    },
+    TagDefinition {
+        namespace: "IPTC",
+        id: 110,
+        name: "Credit",
+        description: "IPTC credit",
+    },
+    TagDefinition {
+        namespace: "IPTC",
+        id: 115,
+        name: "Source",
+        description: "IPTC source",
+    },
+    TagDefinition {
+        namespace: "IPTC",
+        id: 116,
+        name: "CopyrightNotice",
+        description: "IPTC copyright notice",
+    },
+    TagDefinition {
+        namespace: "IPTC",
+        id: 120,
+        name: "CaptionAbstract",
+        description: "IPTC caption",
+    },
+    TagDefinition {
+        namespace: "IPTC",
+        id: 122,
+        name: "WriterEditor",
+        description: "IPTC writer or editor",
+    },
+    TagDefinition {
         namespace: "Interop",
         id: 0x0001,
         name: "InteroperabilityIndex",
@@ -293,6 +419,8 @@ pub fn tag_definition(namespace: &str, id: u32) -> TagDefinition {
             namespace: match namespace {
                 "GPS" => "GPS",
                 "Interop" => "Interop",
+                "IPTC" => "IPTC",
+                "ICC" => "ICC",
                 _ => "EXIF",
             },
             id,
@@ -710,6 +838,7 @@ mod tests {
         assert_eq!(definition.name, "Make");
         assert!(tag_definitions().iter().any(|item| item.name == "Make"));
         assert_eq!(tag_definition("GPS", 0x000D).name, "GPSSpeed");
+        assert_eq!(tag_definition("IPTC", 25).name, "Keywords");
 
         let tag = Tag {
             namespace: "EXIF".to_owned(),
