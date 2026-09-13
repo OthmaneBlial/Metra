@@ -60,6 +60,47 @@ fn minimal_exif_jpeg() -> Vec<u8> {
     jpeg
 }
 
+fn jpeg_iptc_dataset(dataset: u8, value: &str) -> Vec<u8> {
+    let value = value.as_bytes();
+    let mut bytes = vec![0x1C, 2, dataset];
+    bytes.extend_from_slice(&(value.len() as u16).to_be_bytes());
+    bytes.extend_from_slice(value);
+    bytes
+}
+
+fn jpeg_iptc_resource(datasets: &[Vec<u8>]) -> Vec<u8> {
+    let mut iptc = Vec::new();
+    for dataset in datasets {
+        iptc.extend_from_slice(dataset);
+    }
+
+    let mut resource = b"Photoshop 3.0\0".to_vec();
+    resource.extend_from_slice(b"8BIM");
+    resource.extend_from_slice(&0x0404_u16.to_be_bytes());
+    resource.extend_from_slice(&[0, 0]);
+    resource.extend_from_slice(&(iptc.len() as u32).to_be_bytes());
+    resource.extend_from_slice(&iptc);
+    if iptc.len() & 1 == 1 {
+        resource.push(0);
+    }
+    resource
+}
+
+fn minimal_iptc_jpeg(keywords: &[&str], caption: &str) -> Vec<u8> {
+    let mut datasets = keywords
+        .iter()
+        .map(|value| jpeg_iptc_dataset(25, value))
+        .collect::<Vec<_>>();
+    datasets.push(jpeg_iptc_dataset(120, caption));
+    let app13 = jpeg_iptc_resource(&datasets);
+    let segment_length = u16::try_from(app13.len() + 2).expect("fixture fits in a JPEG segment");
+    let mut jpeg = vec![0xFF, 0xD8, 0xFF, 0xED];
+    jpeg.extend_from_slice(&segment_length.to_be_bytes());
+    jpeg.extend_from_slice(&app13);
+    jpeg.extend_from_slice(&[0xFF, 0xD9]);
+    jpeg
+}
+
 fn minimal_svg() -> Vec<u8> {
     br#"<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" width="32" height="24"><title>CLI vector</title></svg>"#
         .to_vec()
@@ -454,6 +495,74 @@ fn cli_can_copy_a_jpeg_comment_between_files() {
     assert_eq!(
         metadata.find("JPEG:Comment").unwrap().display_value(),
         "copied value"
+    );
+}
+
+#[test]
+fn cli_can_edit_and_copy_jpeg_iptc() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.file(
+        "source-iptc.jpg",
+        &minimal_iptc_jpeg(&["source keyword"], "source caption"),
+    );
+    let target = directory.file(
+        "target-iptc.jpg",
+        &minimal_iptc_jpeg(&["target keyword"], "target caption"),
+    );
+
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "IPTC:Keywords=edited keyword",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("IPTC:Keywords")
+            .unwrap()
+            .display_value(),
+        "edited keyword"
+    );
+
+    let delete = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--delete",
+            "IPTC:Keywords",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(delete.status.success(), "stderr: {:?}", delete.stderr);
+    assert!(
+        metra::read(&target)
+            .unwrap()
+            .find("IPTC:Keywords")
+            .is_none()
+    );
+
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            &format!(
+                "IPTC:CaptionAbstract={}",
+                source.to_str().expect("UTF-8 test path")
+            ),
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("IPTC:CaptionAbstract")
+            .unwrap()
+            .display_value(),
+        "source caption"
     );
 }
 

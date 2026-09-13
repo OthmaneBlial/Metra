@@ -151,6 +151,7 @@ enum EditRequest {
 #[derive(Debug)]
 enum CopyKey {
     JpegComment,
+    JpegIptc(String),
     PngText(String),
     PngXmp,
     WavInfo(String),
@@ -179,6 +180,14 @@ fn parse_edits(
             .split_once('=')
             .ok_or_else(|| "--set expects KEY=VALUE".to_owned())?;
         if key != "JPEG:Comment" {
+            if let Some(name) = iptc_name(key) {
+                return Ok(Some(EditRequest::DirectJpeg(vec![
+                    metra::JpegEdit::SetIptc {
+                        name: name.to_owned(),
+                        value: value.to_owned(),
+                    },
+                ])));
+            }
             if let Some(edit) = svg_set_edit(key, value) {
                 return Ok(Some(EditRequest::DirectSvg(vec![edit])));
             }
@@ -242,6 +251,13 @@ fn parse_edits(
     }
     if let Some(key) = delete {
         if key != "JPEG:Comment" {
+            if let Some(name) = iptc_name(key) {
+                return Ok(Some(EditRequest::DirectJpeg(vec![
+                    metra::JpegEdit::DeleteIptc {
+                        name: name.to_owned(),
+                    },
+                ])));
+            }
             if let Some(edit) = svg_delete_edit(key) {
                 return Ok(Some(EditRequest::DirectSvg(vec![edit])));
             }
@@ -308,6 +324,8 @@ fn parse_edits(
         }
         let key = if key == "JPEG:Comment" {
             CopyKey::JpegComment
+        } else if let Some(name) = iptc_name(key) {
+            CopyKey::JpegIptc(name.to_owned())
         } else if let Some(svg_key) = svg_text_key(key) {
             CopyKey::SvgText(svg_key)
         } else if png_xmp_key(key) {
@@ -346,6 +364,35 @@ fn png_xmp_key(key: &str) -> bool {
     matches!(key, "PNG:XMP" | "PNG:iTXt:XMP")
 }
 
+fn iptc_name(key: &str) -> Option<&str> {
+    let name = key.strip_prefix("IPTC:")?;
+    matches!(
+        name,
+        "ObjectName"
+            | "EditStatus"
+            | "Urgency"
+            | "Category"
+            | "SupplementalCategories"
+            | "Keywords"
+            | "DateCreated"
+            | "TimeCreated"
+            | "Byline"
+            | "BylineTitle"
+            | "City"
+            | "SubLocation"
+            | "ProvinceState"
+            | "CountryCode"
+            | "Country"
+            | "Headline"
+            | "Credit"
+            | "Source"
+            | "CopyrightNotice"
+            | "CaptionAbstract"
+            | "WriterEditor"
+    )
+    .then_some(name)
+}
+
 fn svg_set_edit(key: &str, value: &str) -> Option<metra::SvgEdit> {
     match key {
         "SVG:Title" => Some(metra::SvgEdit::SetTitle(value.to_owned())),
@@ -375,7 +422,7 @@ fn svg_text_key(key: &str) -> Option<SvgTextKey> {
 
 fn unsupported_edit_message(key: &str) -> String {
     format!(
-        "unsupported metadata key {key}; writable keys are JPEG:Comment, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
+        "unsupported metadata key {key}; writable keys are JPEG:Comment, IPTC:<dataset>, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
     )
 }
 
@@ -604,6 +651,33 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path) -> ExitCode {
                 return ExitCode::from(1);
             };
             let edits = [metra::JpegEdit::SetComment(comment.clone())];
+            apply_jpeg_edits(paths, &edits)
+        }
+        CopyKey::JpegIptc(name) => {
+            if source_metadata.file_info.format != metra::FileFormat::Jpeg {
+                eprintln!(
+                    "metra: {}: source format {} is not JPEG",
+                    source.display(),
+                    source_metadata.file_info.format
+                );
+                return ExitCode::from(1);
+            }
+            let key = format!("IPTC:{name}");
+            let Some(value) = source_metadata.find(&key) else {
+                eprintln!("metra: {}: source does not contain {key}", source.display());
+                return ExitCode::from(1);
+            };
+            let metra::TagValue::String(value) = &value.value else {
+                eprintln!(
+                    "metra: {}: {key} contains multiple values; copy a single IPTC dataset",
+                    source.display()
+                );
+                return ExitCode::from(1);
+            };
+            let edits = [metra::JpegEdit::SetIptc {
+                name,
+                value: value.clone(),
+            }];
             apply_jpeg_edits(paths, &edits)
         }
         CopyKey::PngText(keyword) => {
