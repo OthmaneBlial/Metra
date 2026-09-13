@@ -22,6 +22,7 @@ mod inflate;
 mod iptc;
 mod iptc_writer;
 mod isobmff;
+mod isobmff_writer;
 mod jpeg;
 mod makers;
 mod matroska;
@@ -49,6 +50,9 @@ pub use gif_writer::{GifEdit, rewrite_gif, rewrite_gif_path, rewrite_gif_to_vec}
 pub use id3::read_mp3;
 pub use id3_writer::{Mp3Edit, rewrite_mp3, rewrite_mp3_path, rewrite_mp3_to_vec};
 pub use isobmff::read_isobmff;
+pub use isobmff_writer::{
+    IsobmffEdit, rewrite_isobmff, rewrite_isobmff_path, rewrite_isobmff_to_vec,
+};
 pub use jpeg::{JpegEdit, read_jpeg, rewrite_jpeg, rewrite_jpeg_path, rewrite_jpeg_to_vec};
 pub use matroska::read_matroska;
 pub use pdf::read_pdf;

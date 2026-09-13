@@ -242,6 +242,7 @@ fn display_values(values: &[metra::TagValue]) -> String {
 enum EditRequest {
     DirectJpeg(Vec<metra::JpegEdit>),
     DirectTiff(Vec<metra::TiffEdit>),
+    DirectIsobmff(Vec<metra::IsobmffEdit>),
     DirectPng(Vec<metra::PngEdit>),
     DirectWav(Vec<metra::WavEdit>),
     DirectFlac(Vec<metra::FlacEdit>),
@@ -258,6 +259,7 @@ enum CopyKey {
     JpegXmp,
     JpegIptc(String),
     TiffAscii(String),
+    IsobmffText(String),
     PngText(String),
     PngXmp,
     WavInfo(String),
@@ -290,6 +292,14 @@ fn parse_edits(
                 return Ok(Some(EditRequest::DirectTiff(vec![
                     metra::TiffEdit::SetAscii {
                         key: tiff_key.to_owned(),
+                        value: value.to_owned(),
+                    },
+                ])));
+            }
+            if isobmff_text_key(key) {
+                return Ok(Some(EditRequest::DirectIsobmff(vec![
+                    metra::IsobmffEdit::SetText {
+                        key: key.to_owned(),
                         value: value.to_owned(),
                     },
                 ])));
@@ -450,6 +460,8 @@ fn parse_edits(
             CopyKey::JpegComment
         } else if let Some(tiff_key) = tiff_ascii_key(key) {
             CopyKey::TiffAscii(tiff_key.to_owned())
+        } else if isobmff_text_key(key) {
+            CopyKey::IsobmffText(key.to_owned())
         } else if jpeg_xmp_key(key) {
             CopyKey::JpegXmp
         } else if let Some(name) = iptc_name(key) {
@@ -494,6 +506,32 @@ fn tiff_ascii_key(key: &str) -> Option<&str> {
         .iter()
         .any(|prefix| key.starts_with(prefix))
         .then_some(key)
+}
+
+fn isobmff_text_key(key: &str) -> bool {
+    matches!(
+        key,
+        "ISOBMFF:Title"
+            | "ISOBMFF:Artist"
+            | "ISOBMFF:Album"
+            | "ISOBMFF:Year"
+            | "ISOBMFF:Comment"
+            | "ISOBMFF:AlbumArtist"
+            | "ISOBMFF:Description"
+            | "ISOBMFF:PurchaseDate"
+            | "ISOBMFF:Encoder"
+    )
+}
+
+fn is_isobmff_format(format: metra::FileFormat) -> bool {
+    matches!(
+        format,
+        metra::FileFormat::Heif
+            | metra::FileFormat::Avif
+            | metra::FileFormat::Mp4
+            | metra::FileFormat::Mov
+            | metra::FileFormat::M4a
+    )
 }
 
 fn png_xmp_key(key: &str) -> bool {
@@ -562,7 +600,7 @@ fn svg_text_key(key: &str) -> Option<SvgTextKey> {
 
 fn unsupported_edit_message(key: &str) -> String {
     format!(
-        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:XMP, IPTC:<dataset>, TIFF:EXIF:<ASCII tag>, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
+        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:XMP, IPTC:<dataset>, TIFF:EXIF:<ASCII tag>, ISOBMFF:<text field>, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
     )
 }
 
@@ -652,6 +690,7 @@ fn apply_request(paths: &[PathBuf], request: EditRequest, limits: ParseLimits) -
     match request {
         EditRequest::DirectJpeg(edits) => apply_jpeg_edits(paths, &edits, limits),
         EditRequest::DirectTiff(edits) => apply_tiff_edits(paths, &edits, limits),
+        EditRequest::DirectIsobmff(edits) => apply_isobmff_edits(paths, &edits, limits),
         EditRequest::DirectPng(edits) => apply_png_edits(paths, &edits, limits),
         EditRequest::DirectWav(edits) => apply_wav_edits(paths, &edits, limits),
         EditRequest::DirectFlac(edits) => apply_flac_edits(paths, &edits, limits),
@@ -711,6 +750,43 @@ fn apply_tiff_edits(paths: &[PathBuf], edits: &[metra::TiffEdit], limits: ParseL
             Ok(metadata) => {
                 eprintln!(
                     "metra: {}: {} edits are supported only for TIFF files",
+                    path.display(),
+                    metadata.file_info.format
+                );
+                failures += 1;
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", path.display());
+                failures += 1;
+            }
+        }
+    }
+    if failures == 0 {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
+fn apply_isobmff_edits(
+    paths: &[PathBuf],
+    edits: &[metra::IsobmffEdit],
+    limits: ParseLimits,
+) -> ExitCode {
+    let mut failures = 0_usize;
+    for path in paths {
+        match metra::read_with_limits(path, limits) {
+            Ok(metadata) if is_isobmff_format(metadata.file_info.format) => {
+                if let Err(error) = metra::rewrite_isobmff_path(path, limits, edits) {
+                    eprintln!("metra: {}: {error}", path.display());
+                    failures += 1;
+                } else {
+                    println!("updated: {}", path.display());
+                }
+            }
+            Ok(metadata) => {
+                eprintln!(
+                    "metra: {}: {} edits are supported only for ISO-BMFF files",
                     path.display(),
                     metadata.file_info.format
                 );
@@ -906,6 +982,29 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path, limits: ParseLimit
                 value: value.clone(),
             }];
             apply_tiff_edits(paths, &edits, limits)
+        }
+        CopyKey::IsobmffText(key) => {
+            if !is_isobmff_format(source_metadata.file_info.format) {
+                eprintln!(
+                    "metra: {}: source format {} is not ISO-BMFF",
+                    source.display(),
+                    source_metadata.file_info.format
+                );
+                return ExitCode::from(1);
+            }
+            let Some(tag) = source_metadata.find(&key) else {
+                eprintln!("metra: {}: source does not contain {key}", source.display());
+                return ExitCode::from(1);
+            };
+            let metra::TagValue::String(value) = &tag.value else {
+                eprintln!("metra: {}: {key} is not a string", source.display());
+                return ExitCode::from(1);
+            };
+            let edits = [metra::IsobmffEdit::SetText {
+                key,
+                value: value.clone(),
+            }];
+            apply_isobmff_edits(paths, &edits, limits)
         }
         CopyKey::PngText(keyword) => {
             if source_metadata.file_info.format != metra::FileFormat::Png {

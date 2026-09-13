@@ -343,6 +343,26 @@ fn minimal_webm() -> Vec<u8> {
     .concat()
 }
 
+fn isobmff_box(kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
+    let size = u32::try_from(data.len() + 8).expect("test box fits");
+    let mut bytes = size.to_be_bytes().to_vec();
+    bytes.extend_from_slice(kind);
+    bytes.extend_from_slice(data);
+    bytes
+}
+
+fn minimal_isobmff(title: &str) -> Vec<u8> {
+    let ftyp = isobmff_box(b"ftyp", b"isom\0\0\0\0mp42");
+    let mut data = vec![0, 0, 0, 1, 0, 0, 0, 0];
+    data.extend_from_slice(title.as_bytes());
+    let title_kind = [0xA9, b'n', b'a', b'm'];
+    let title = isobmff_box(&title_kind, &isobmff_box(b"data", &data));
+    let ilst = isobmff_box(b"ilst", &title);
+    let udta = isobmff_box(b"udta", &ilst);
+    let moov = isobmff_box(b"moov", &udta);
+    [ftyp, moov].concat()
+}
+
 fn minimal_raw_tiff() -> Vec<u8> {
     let mut tiff = vec![
         b'I', b'I', 42, 0, 8, 0, 0, 0, // little-endian TIFF header
@@ -700,6 +720,43 @@ fn cli_can_copy_existing_tiff_ascii_from_another_tiff() {
 
     let metadata = metra::read(&target).expect("copied TIFF should remain readable");
     assert_eq!(metadata.find("EXIF:Make").unwrap().display_value(), "Sony");
+}
+
+#[test]
+fn cli_can_set_and_copy_existing_isobmff_text() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.file("source.mp4", &minimal_isobmff("Origin"));
+    let target = directory.file("target.mp4", &minimal_isobmff("Target"));
+
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "ISOBMFF:Title=Source",
+            source.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+
+    let copy_assignment = format!(
+        "ISOBMFF:Title={}",
+        source.to_str().expect("UTF-8 test path")
+    );
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            copy_assignment.as_str(),
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+
+    let metadata = metra::read(&target).expect("copied ISO-BMFF should remain readable");
+    assert_eq!(
+        metadata.find("ISOBMFF:Title").unwrap().display_value(),
+        "Source"
+    );
 }
 
 #[test]

@@ -31,7 +31,7 @@ Implemented today:
 | PNG | Chunk walking, CRC warnings, tEXt/zTXt/iTXt including bounded zlib text, eXIf, tIME, pHYs, structured XMP, and bounded ICC profile headers from `iCCP` |
 | WebP | RIFF chunk walking, VP8X dimensions, EXIF, structured XMP, and typed ICC profiles |
 | GIF | GIF87a/GIF89a headers, logical-screen dimensions, comments, and bounded extension validation |
-| ISO-BMFF | HEIF/AVIF/MP4/MOV/M4A brand detection, bounded box walking, `ispe` dimensions, `pixi` channels, `irot`/`imir` orientation, `pasp` aspect ratio, `colr` nclx values, `auxC` auxiliary type, direct XMP/EXIF, and QuickTime-style `ilst` text metadata |
+| ISO-BMFF | HEIF/AVIF/MP4/MOV/M4A brand detection, bounded box walking, `ispe` dimensions, `pixi` channels, `irot`/`imir` orientation, `pasp` aspect ratio, `colr` nclx values, `auxC` auxiliary type, direct XMP/EXIF, QuickTime-style `ilst` text metadata, and validated in-place edits for existing text values |
 | MP3 | ID3v2.2/v2.3/v2.4 text, comments, lyrics, attached-picture metadata, ID3v1 fallback, and first MPEG frame properties |
 | FLAC | `STREAMINFO`, Vorbis comments, embedded-picture properties/data, and bounded metadata-block validation |
 | PDF | Header/version, bounded Info dictionaries, PDF string decoding, and embedded XMP packets when directly available |
@@ -52,10 +52,13 @@ The library now supports validated, lossless
 JPEG comment, bounded APP1 XMP, and selected IPTC-IIM datasets in Photoshop
 APP13 resources, PNG `tEXt` and uncompressed `iTXt` XMP, GIF comments, WebP XMP, SVG
 title/description/comments, WAV `LIST/INFO`, FLAC Vorbis Comment, and common
-ID3v2 text/comment frames, plus existing TIFF/BigTIFF ASCII values through format-specific rewrite APIs, and the CLI
+ID3v2 text/comment frames, plus existing TIFF/BigTIFF ASCII and ISO-BMFF
+QuickTime text values through format-specific rewrite APIs, and the CLI
 exposes the same narrow operations through `--set`, `--delete`, and `--copy`.
 TIFF ASCII values can also be copied from a TIFF-like source into an existing
 TIFF ASCII field when the target field has enough storage.
+Existing ISO-BMFF text values can be copied between supported ISO-BMFF files
+when the target value slot has enough storage.
 Repeated IPTC datasets remain typed arrays when read; `--copy` accepts only a
 single-valued source dataset, while `--set` replaces all target occurrences
 with one bounded dataset.
@@ -85,6 +88,8 @@ cargo run -- --set 'JPEG:Comment=reviewed' photo.jpg
 cargo run -- --delete JPEG:Comment photo.jpg
 cargo run -- --copy JPEG:Comment=source.jpg target.jpg
 cargo run -- --copy TIFF:EXIF:Make=source.tif target.tif
+cargo run -- --set 'ISOBMFF:Title=reviewed' movie.mp4
+cargo run -- --copy ISOBMFF:Title=source.mp4 target.mp4
 cargo run -- --set 'JPEG:XMP=<x:xmpmeta>...</x:xmpmeta>' photo.jpg
 cargo run -- --delete JPEG:XMP photo.jpg
 cargo run -- --copy JPEG:XMP=source.jpg target.jpg
@@ -221,7 +226,7 @@ are the local validation gate.
 
 ## Roadmap
 
-Avancement global vérifié : **79 %**. Ce chiffre est une moyenne indicative des
+Avancement global vérifié : **80 %**. Ce chiffre est une moyenne indicative des
 huit axes ci-dessous, calculée uniquement sur le code et les tests présents ; il
 ne représente pas un pourcentage de compatibilité ExifTool.
 
@@ -229,8 +234,8 @@ ne représente pas un pourcentage de compatibilité ExifTool.
 2. **30 %** — Ajouter des corpus réels et des tests différentiels JPEG/TIFF/PNG/WebP ; le harnais opt-in est présent, mais aucune exécution de corpus réel n’est comptée.
 3. **95 %** — Approfondir HEIF/AVIF et les conteneurs média, puis couvrir les lecteurs restants ; les lecteurs ISO-BMFF exposent maintenant les propriétés image bornées courantes en plus des marques, XMP/EXIF et textes QuickTime, tandis que les lecteurs PSD/PSB, RAW, AVI et MKV/WebM couvrent leurs en-têtes et métadonnées courantes sans décoder les pixels ou les flux vidéo.
 4. **97 %** — Étendre XMP/IPTC/ICC/ID3 et isoler les espaces MakerNote ; XMP est maintenant réécrit de façon bornée pour JPEG APP1, WebP et PNG, les datasets IPTC-IIM connus peuvent être réécrits dans les ressources Photoshop APP13, les profils ICC fragmentés JPEG, PNG `iCCP` et WebP `ICCP` sont inspectés sous limites avec descriptions texte et valeurs XYZ courantes, les références XML sûres sont décodées sans entités personnalisées, les textes PNG compressés sont déployés sous budget, les champs texte/commentaires ID3v2 courants restent sous limites explicites, et les conteneurs MakerNote courants sont identifiés ; des IFD Nikon Type 2 et Canon bornés exposent maintenant leurs champs connus, avec intégration EXIF et offsets de source absolus testés.
-5. **68 %** — Concevoir l’écriture read-modify-write avec validation et remplacement atomique ; neuf writers bornés couvrent maintenant JPEG, TIFF/BigTIFF, PNG, GIF, WebP, SVG, WAV, FLAC et ID3v2, et les budgets metadata/valeur sont configurables depuis le CLI.
-6. **96 %** — Ajouter `set`/`delete`/`copy` et comparer après les tests round-trip ; les opérations couvrent maintenant JPEG `Comment`/`XMP` et datasets IPTC-IIM connus, PNG `tEXt`/`XMP`, GIF `Comment`, WebP `XMP`, SVG `Title`/`Description`/`Comment`, WAV `LIST/INFO`, FLAC Vorbis Comments, ID3v2 texte/commentaire et la copie de champs ASCII TIFF existants via API et CLI, avec comparaison déterministe des valeurs.
+5. **72 %** — Concevoir l’écriture read-modify-write avec validation et remplacement atomique ; dix writers bornés couvrent maintenant JPEG, TIFF/BigTIFF, PNG, GIF, WebP, SVG, WAV, FLAC, ID3v2 et les champs texte ISO-BMFF existants, et les budgets metadata/valeur sont configurables depuis le CLI.
+6. **97 %** — Ajouter `set`/`delete`/`copy` et comparer après les tests round-trip ; les opérations couvrent maintenant JPEG `Comment`/`XMP` et datasets IPTC-IIM connus, PNG `tEXt`/`XMP`, GIF `Comment`, WebP `XMP`, SVG `Title`/`Description`/`Comment`, WAV `LIST/INFO`, FLAC Vorbis Comments, ID3v2 texte/commentaire, les champs texte ISO-BMFF existants et la copie de champs ASCII TIFF existants via API et CLI, avec comparaison déterministe des valeurs.
 7. **60 %** — Ajouter le traitement parallèle contrôlé, le rendu en flux borné et les benchmarks sur collections réelles.
 8. **100 %** — Étendre les sorties structurées avec CSV, TOML et YAML versionnés.
 

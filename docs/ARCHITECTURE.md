@@ -112,7 +112,7 @@ out-of-range required read.
 ## Rewrite boundary
 
 The current writer surface is deliberately limited to existing TIFF/BigTIFF
-ASCII value slots, JPEG COM segments, APP1
+ASCII value slots, existing ISO-BMFF QuickTime text item values, JPEG COM segments, APP1
 XMP packets, and known IPTC-IIM datasets inside Photoshop APP13 resources, PNG
 `tEXt` chunks and uncompressed `iTXt` XMP chunks, GIF comment extensions, WebP `XMP ` chunks,
 SVG title/description/comment nodes, WAV `LIST/INFO` fields, FLAC Vorbis
@@ -131,7 +131,7 @@ container while preserving untargeted bytes, validates the temporary output
 with the reader again, syncs it, and atomically renames a same-directory
 temporary file. The CLI exposes `--set`/`--delete`/`--copy` for
 `JPEG:Comment`, `IPTC:<dataset>`, `PNG:XMP`, `PNG:Text:<keyword>`, `SVG:Title`/`Description`/`Comment`, `WAV:<INFO field>`,
-`FLAC:<Vorbis field>`, `ID3:<text field>`, `GIF:Comment`, `WebP:XMP`, and
+`FLAC:<Vorbis field>`, `ID3:<text field>`, `ISOBMFF:<text field>`, `GIF:Comment`, `WebP:XMP`, and
 existing `TIFF:EXIF:<ASCII tag>` values; generic
 tag mutation and other format writers remain deferred until their round-trip
 acceptance tests exist.

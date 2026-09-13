@@ -35,8 +35,8 @@
       "lossless_rewrite": "partial",
       "streaming": "partial"
     },
-    "HEIF": { "read": "partial", "write": "planned", "streaming": "partial" },
-    "AVIF": { "read": "partial", "write": "planned", "streaming": "partial" },
+    "HEIF": { "read": "partial", "write": "partial", "streaming": "partial" },
+    "AVIF": { "read": "partial", "write": "partial", "streaming": "partial" },
     "GIF": {
       "read": "partial",
       "write": "partial",
@@ -45,9 +45,9 @@
       "lossless_rewrite": "partial",
       "streaming": "partial"
     },
-    "MP4": { "read": "partial", "write": "planned", "streaming": "partial" },
-    "MOV": { "read": "partial", "write": "planned", "streaming": "partial" },
-    "M4A": { "read": "partial", "write": "planned", "streaming": "partial" },
+    "MP4": { "read": "partial", "write": "partial", "streaming": "partial" },
+    "MOV": { "read": "partial", "write": "partial", "streaming": "partial" },
+    "M4A": { "read": "partial", "write": "partial", "streaming": "partial" },
     "PDF": { "read": "partial", "write": "planned", "streaming": "partial" },
     "MP3": {
       "read": "partial",

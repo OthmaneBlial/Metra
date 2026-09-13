@@ -14,6 +14,9 @@ Initial read-first foundation with narrow validated rewrites:
 - added GIF comment and logical-screen inspection;
 - added ISO-BMFF box walking with HEIF/AVIF/MP4/MOV/M4A brand detection and
   partial QuickTime-style text metadata;
+- added bounded ISO-BMFF QuickTime text replacement and copy for existing
+  values, preserving box sizes and validating atomic output for supported
+  HEIF/AVIF/MP4/MOV/M4A containers;
 - added ID3v2.2/v2.3/v2.4 and ID3v1 text/media-frame inspection plus basic MPEG
   audio-frame properties;
 - added FLAC STREAMINFO, Vorbis comments, embedded-picture inspection, and
