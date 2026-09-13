@@ -83,6 +83,21 @@ pub fn detect_format(bytes: &[u8]) -> Option<DetectedFormat> {
             format: FileFormat::Raw,
             signature: "RAF header",
         })
+    } else if raw::is_crw_header(bytes) {
+        Some(DetectedFormat {
+            format: FileFormat::Raw,
+            signature: "Canon CIFF/CRW header",
+        })
+    } else if raw::is_mrw_header(bytes) {
+        Some(DetectedFormat {
+            format: FileFormat::Raw,
+            signature: "Minolta MRW header",
+        })
+    } else if raw::is_x3f_header(bytes) {
+        Some(DetectedFormat {
+            format: FileFormat::Raw,
+            signature: "Sigma X3F header",
+        })
     } else if raw::is_cr2_header(bytes) {
         Some(DetectedFormat {
             format: FileFormat::Raw,
@@ -389,6 +404,20 @@ mod tests {
         );
         assert_eq!(
             detect_format(b"FUJIFILMCCD-RAW ").unwrap().format,
+            FileFormat::Raw
+        );
+        assert_eq!(
+            detect_format(b"II\x1A\0\0\0HEAPCCDR\0\0\0\0")
+                .unwrap()
+                .format,
+            FileFormat::Raw
+        );
+        assert_eq!(
+            detect_format(b"\0MRM\0\0\0\0").unwrap().format,
+            FileFormat::Raw
+        );
+        assert_eq!(
+            detect_format(b"FOVb\0\0\0\0").unwrap().format,
             FileFormat::Raw
         );
         assert_eq!(

@@ -12,6 +12,9 @@ const RW2_BIG_ENDIAN: &[u8; 4] = b"MM\0U";
 const BIG_TIFF_LITTLE_ENDIAN: &[u8; 4] = b"II+\0";
 const BIG_TIFF_BIG_ENDIAN: &[u8; 4] = b"MM\0+";
 const RAF_SIGNATURE: &[u8; 16] = b"FUJIFILMCCD-RAW ";
+const CRW_SIGNATURE: &[u8; 14] = b"II\x1A\0\0\0HEAPCCDR";
+const MRW_SIGNATURE: &[u8; 4] = b"\0MRM";
+const X3F_SIGNATURE: &[u8; 4] = b"FOVb";
 
 pub fn read_raw<R: Read + Seek>(
     reader: &mut R,
@@ -51,16 +54,33 @@ pub fn read_raw<R: Read + Seek>(
         metadata.sort_tags();
         Ok(metadata)
     } else if prefix.starts_with(RAF_SIGNATURE) {
-        let mut metadata = Metadata::new(file_info);
-        add_identity(&mut metadata, "RAF");
-        metadata.add_warning(
-            Warning::new(
-                "raw-raf-partial",
-                "RAF container identified; Fuji-specific metadata and image payload are not decoded",
-            )
-            .at(0),
-        );
-        Ok(metadata)
+        Ok(read_partial_container(
+            file_info,
+            "RAF",
+            "raw-raf-partial",
+            "RAF container identified; Fuji-specific metadata and image payload are not decoded",
+        ))
+    } else if prefix.starts_with(CRW_SIGNATURE) {
+        Ok(read_partial_container(
+            file_info,
+            "CRW",
+            "raw-crw-partial",
+            "Canon CIFF RAW container identified; CIFF metadata and image payload are not decoded",
+        ))
+    } else if prefix.starts_with(MRW_SIGNATURE) {
+        Ok(read_partial_container(
+            file_info,
+            "MRW",
+            "raw-mrw-partial",
+            "Minolta MRW container identified; MRW metadata and image payload are not decoded",
+        ))
+    } else if prefix.starts_with(X3F_SIGNATURE) {
+        Ok(read_partial_container(
+            file_info,
+            "X3F",
+            "raw-x3f-partial",
+            "Sigma X3F container identified; Foveon metadata and image payload are not decoded",
+        ))
     } else {
         Err(MetraError::InvalidHeader {
             context: "RAW".to_owned(),
@@ -76,6 +96,18 @@ pub(crate) fn is_tiff_header(bytes: &[u8]) -> bool {
         || bytes.starts_with(RW2_BIG_ENDIAN)
         || bytes.starts_with(BIG_TIFF_LITTLE_ENDIAN)
         || bytes.starts_with(BIG_TIFF_BIG_ENDIAN)
+}
+
+pub(crate) fn is_crw_header(bytes: &[u8]) -> bool {
+    bytes.starts_with(CRW_SIGNATURE)
+}
+
+pub(crate) fn is_mrw_header(bytes: &[u8]) -> bool {
+    bytes.starts_with(MRW_SIGNATURE)
+}
+
+pub(crate) fn is_x3f_header(bytes: &[u8]) -> bool {
+    bytes.starts_with(X3F_SIGNATURE)
 }
 
 pub(crate) fn is_cr3_header(bytes: &[u8]) -> bool {
@@ -102,9 +134,24 @@ pub(crate) fn raw_variant(path: &Path) -> Option<&'static str> {
         "orf" => Some("ORF"),
         "rw2" => Some("RW2"),
         "pef" => Some("PEF"),
+        "crw" => Some("CRW"),
+        "mrw" => Some("MRW"),
+        "x3f" => Some("X3F"),
         "raw" => Some("RAW"),
         _ => None,
     }
+}
+
+fn read_partial_container(
+    file_info: FileInfo,
+    variant: &'static str,
+    warning_code: &'static str,
+    message: &'static str,
+) -> Metadata {
+    let mut metadata = Metadata::new(file_info);
+    add_identity(&mut metadata, variant);
+    metadata.add_warning(Warning::new(warning_code, message).at(0));
+    metadata
 }
 
 fn add_identity(metadata: &mut Metadata, variant: &str) {
@@ -251,5 +298,46 @@ mod tests {
                 .iter()
                 .any(|warning| warning.code == "raw-raf-partial")
         );
+    }
+
+    #[test]
+    fn identifies_legacy_raw_signatures_with_explicit_partial_warnings() {
+        for (name, bytes, variant, warning) in [
+            (
+                "capture.crw",
+                b"II\x1A\0\0\0HEAPCCDR\0\0\0\0".as_slice(),
+                "CRW",
+                "raw-crw-partial",
+            ),
+            (
+                "capture.mrw",
+                b"\0MRM\0\0\0\0".as_slice(),
+                "MRW",
+                "raw-mrw-partial",
+            ),
+            (
+                "capture.x3f",
+                b"FOVb\0\0\0\0".as_slice(),
+                "X3F",
+                "raw-x3f-partial",
+            ),
+        ] {
+            let metadata = read_raw(
+                &mut Cursor::new(bytes.to_vec()),
+                file_info(name, bytes),
+                ParseLimits::default(),
+            )
+            .expect("known legacy RAW signature should be identified");
+            assert_eq!(
+                metadata.find("RAW:Variant").unwrap().display_value(),
+                variant
+            );
+            assert!(
+                metadata
+                    .warnings
+                    .iter()
+                    .any(|warning_item| warning_item.code == warning)
+            );
+        }
     }
 }
