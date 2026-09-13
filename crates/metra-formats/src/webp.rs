@@ -5,6 +5,7 @@ use metra_core::{
     FileInfo, Metadata, MetraError, ParseLimits, Result, Source, Tag, TagValue, ValueType, Warning,
 };
 
+use crate::icc::parse_icc_profile;
 use crate::tiff::parse_tiff_from_reader;
 use crate::xmp::parse_xmp;
 
@@ -145,13 +146,12 @@ fn process_chunk(
                     .add_warning(Warning::new("invalid-xmp", error.to_string()).at(data_offset));
             }
         }
-        b"ICCP" => metadata.add_warning(
-            Warning::new(
-                "unsupported-icc",
-                "WebP contains an ICC profile; ICC parsing is planned",
-            )
-            .at(data_offset),
-        ),
+        b"ICCP" => {
+            if let Err(error) = parse_icc_profile(data, data_offset, metadata, limits) {
+                metadata
+                    .add_warning(Warning::new("invalid-icc", error.to_string()).at(data_offset));
+            }
+        }
         _ => {}
     }
     Ok(())
@@ -238,6 +238,23 @@ mod tests {
         bytes
     }
 
+    fn minimal_icc_profile() -> Vec<u8> {
+        let mut profile = vec![0_u8; 132];
+        let profile_size = profile.len() as u32;
+        profile[0..4].copy_from_slice(&profile_size.to_be_bytes());
+        profile[8] = 4;
+        profile[9] = 0x30;
+        profile[12..16].copy_from_slice(b"mntr");
+        profile[16..20].copy_from_slice(b"RGB ");
+        profile[20..24].copy_from_slice(b"XYZ ");
+        profile[36..40].copy_from_slice(b"acsp");
+        profile[40..44].copy_from_slice(b"APPL");
+        profile[48..52].copy_from_slice(b"TEST");
+        profile[52..56].copy_from_slice(b"MODL");
+        profile[64..68].copy_from_slice(&1_u32.to_be_bytes());
+        profile
+    }
+
     #[test]
     fn reads_vp8x_dimensions() {
         let vp8x = [0, 0, 0, 0, 0x7F, 0x02, 0, 0xDF, 0x01, 0];
@@ -256,6 +273,28 @@ mod tests {
         assert_eq!(
             metadata.find("WebP:ImageHeight").unwrap().display_value(),
             "480"
+        );
+    }
+
+    #[test]
+    fn reads_icc_profile_chunk() {
+        let iccp = chunk(b"ICCP", &minimal_icc_profile());
+        let riff_size = 4 + iccp.len() as u32;
+        let mut bytes = b"RIFF".to_vec();
+        bytes.extend_from_slice(&riff_size.to_le_bytes());
+        bytes.extend_from_slice(b"WEBP");
+        bytes.extend_from_slice(&iccp);
+        let info = FileInfo::new("profile.webp".into(), bytes.len() as u64, FileFormat::Webp);
+        let metadata = read_webp(&mut Cursor::new(bytes), info, ParseLimits::default()).unwrap();
+        assert_eq!(
+            metadata.find("ICC:DeviceClass").unwrap().display_value(),
+            "mntr"
+        );
+        assert!(
+            !metadata
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "unsupported-icc")
         );
     }
 }
