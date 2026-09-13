@@ -71,6 +71,28 @@ fn minimal_avi_with_title(title: &str) -> Vec<u8> {
     bytes
 }
 
+fn minimal_webm_with_title(title: &str) -> Vec<u8> {
+    fn element(id: &[u8], data: &[u8]) -> Vec<u8> {
+        assert!(data.len() < 127);
+        let mut output = id.to_vec();
+        output.push(0x80 | data.len() as u8);
+        output.extend_from_slice(data);
+        output
+    }
+
+    let ebml_header = element(&[0x1A, 0x45, 0xDF, 0xA3], &element(&[0x42, 0x82], b"webm"));
+    let simple_tag = [
+        element(&[0x45, 0xA3], b"TITLE"),
+        element(&[0x44, 0x87], title.as_bytes()),
+    ]
+    .concat();
+    let tags = element(
+        &[0x12, 0x54, 0xC3, 0x67],
+        &element(&[0x73, 0x73], &element(&[0x67, 0xC8], &simple_tag)),
+    );
+    [ebml_header, tags].concat()
+}
+
 #[test]
 fn public_reader_api_detects_and_dispatches_in_memory_tiff() {
     let bytes = b"II*\0\0\0\0\0";
@@ -243,6 +265,36 @@ fn public_generic_edit_api_rewrites_and_revalidates_avi_info() {
     )
     .expect("rewritten AVI should remain readable");
     assert_eq!(metadata.find("AVI:Title").unwrap().display_value(), "new");
+}
+
+#[test]
+fn public_generic_edit_api_rewrites_and_revalidates_matroska_tag() {
+    let bytes = minimal_webm_with_title("old");
+    let output = metra::rewrite_metadata_to_vec(
+        &bytes,
+        metra::FileInfo::new(
+            "memory.webm".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::set("Matroska:Tag:TITLE", "new")],
+    )
+    .expect("generic Matroska edit should validate its rewritten bytes");
+
+    let metadata = metra::read_from(
+        &mut std::io::Cursor::new(output),
+        metra::FileInfo::new(
+            "memory.webm".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+    )
+    .expect("rewritten WebM should remain readable");
+    assert_eq!(
+        metadata.find("Matroska:Tag:TITLE").unwrap().display_value(),
+        "new"
+    );
 }
 
 #[test]

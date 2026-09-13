@@ -72,6 +72,9 @@ pub fn rewrite_metadata_path(
         FileFormat::Pdf => crate::rewrite_pdf_path(path, limits, &collect_pdf(edits, format)?),
         FileFormat::Psd => crate::rewrite_psd_path(path, limits, &collect_psd(edits, format)?),
         FileFormat::Avi => crate::rewrite_avi_path(path, limits, &collect_avi(edits, format)?),
+        FileFormat::Mkv | FileFormat::Webm => {
+            crate::rewrite_matroska_path(path, limits, &collect_matroska(edits, format)?)
+        }
         _ => Err(unsupported_format(format)),
     }
 }
@@ -147,6 +150,12 @@ pub fn rewrite_metadata_to_vec(
         FileFormat::Avi => {
             crate::rewrite_avi_to_vec(bytes, file_info, limits, &collect_avi(edits, detected)?)
         }
+        FileFormat::Mkv | FileFormat::Webm => crate::rewrite_matroska_to_vec(
+            bytes,
+            file_info,
+            limits,
+            &collect_matroska(edits, detected)?,
+        ),
         _ => Err(unsupported_format(detected)),
     }
 }
@@ -473,6 +482,24 @@ pub(crate) fn collect_avi(
         .collect()
 }
 
+pub(crate) fn collect_matroska(
+    edits: &[MetadataEdit],
+    format: FileFormat,
+) -> Result<Vec<crate::MatroskaEdit>> {
+    edits
+        .iter()
+        .map(|edit| match edit {
+            MetadataEdit::Set { key, value } => matroska_tag_name(key)
+                .map(|name| crate::MatroskaEdit::SetTag {
+                    name: name.to_owned(),
+                    value: value.clone(),
+                })
+                .ok_or_else(|| unsupported_edit(format, key)),
+            MetadataEdit::Delete { key } => Err(unsupported_edit(format, key)),
+        })
+        .collect()
+}
+
 pub(crate) fn collect_wav(
     edits: &[MetadataEdit],
     format: FileFormat,
@@ -567,6 +594,11 @@ fn avi_info_name(key: &str) -> Option<&str> {
             | "DateTime"
     )
     .then_some(name)
+}
+
+fn matroska_tag_name(key: &str) -> Option<&str> {
+    let name = key.strip_prefix("Matroska:Tag:")?;
+    (!name.is_empty()).then_some(name)
 }
 
 fn pdf_info_name(key: &str) -> Option<&str> {
