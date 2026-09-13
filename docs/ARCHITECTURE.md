@@ -63,9 +63,11 @@ STMN payloads expose bounded header/preview fields and preserve the nested
 payload under the value budget. DJI payloads with a standard IFD expose known
 fields after bounded byte-order selection. Pentax uses its Big Endian IFD and
 root-relative value offsets, and structures selected packed information blocks
-while preserving their raw payloads. GoPro is detected using the parsed
-EXIF manufacturer context, while its proprietary payload remains detection-only;
-proprietary MakerNote tag decoding remains separate. Known and unknown values
+while preserving their raw payloads. JPEG APP6 GoPro `DEVC` records and nested
+`STRM` records are parsed as bounded big-endian typed leaves, with 4-byte
+alignment, raw values, stable FourCC identifiers, and explicit source offsets;
+GoPro is also detected using the parsed EXIF manufacturer context, while its
+proprietary MakerNote payload remains detection-only. Known and unknown values
 from those bounded IFDs retain their raw bytes. TIFF also derives GPS
 decimal coordinates, signed altitude, image direction, speed
 in meters per second, and seconds since midnight only after validating their

@@ -6,6 +6,8 @@ Initial read-first foundation with narrow validated rewrites:
 
 - added bounded JPEG APP1 EXIF ASCII rewrites and source-to-source copies for
   existing fields, preserving segment size and validating the rewritten JPEG;
+- added bounded JPEG APP6 GoPro `DEVC`/`STRM` decoding with stable FourCC tag
+  identifiers, aligned nested records, raw-value retention, and limit checks;
 - added bounded Pentax MakerNote Big Endian IFD decoding, including root-relative
   value offsets and common camera, exposure, preview, and firmware fields;
 - added the public typed metadata model and versioned JSON schema;
