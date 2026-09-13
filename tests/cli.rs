@@ -127,6 +127,36 @@ fn minimal_wav(title: &str) -> Vec<u8> {
     bytes
 }
 
+fn flac_block(last: bool, kind: u8, data: &[u8]) -> Vec<u8> {
+    let length = u32::try_from(data.len()).expect("fixture block should fit");
+    let mut block = vec![if last { 0x80 | kind } else { kind }];
+    block.extend_from_slice(&length.to_be_bytes()[1..]);
+    block.extend_from_slice(data);
+    block
+}
+
+fn minimal_flac(title: &str) -> Vec<u8> {
+    let mut streaminfo = vec![0_u8; 34];
+    streaminfo[0..2].copy_from_slice(&4096_u16.to_be_bytes());
+    streaminfo[2..4].copy_from_slice(&4096_u16.to_be_bytes());
+    let packed = (44_100_u64 << 44) | (1_u64 << 41) | (15_u64 << 36) | 88_200;
+    streaminfo[10..18].copy_from_slice(&packed.to_be_bytes());
+
+    let vendor = b"Metra CLI";
+    let comment = format!("TITLE={title}");
+    let mut vorbis = (vendor.len() as u32).to_le_bytes().to_vec();
+    vorbis.extend_from_slice(vendor);
+    vorbis.extend_from_slice(&1_u32.to_le_bytes());
+    vorbis.extend_from_slice(&(comment.len() as u32).to_le_bytes());
+    vorbis.extend_from_slice(comment.as_bytes());
+
+    let mut bytes = b"fLaC".to_vec();
+    bytes.extend_from_slice(&flac_block(false, 0, &streaminfo));
+    bytes.extend_from_slice(&flac_block(true, 4, &vorbis));
+    bytes.extend_from_slice(&[1, 2, 3, 4]);
+    bytes
+}
+
 fn run(args: &[&Path]) -> std::process::Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_metra"));
     for path in args {
@@ -447,6 +477,60 @@ fn cli_can_edit_and_copy_wav_info() {
         metra::read(&target)
             .unwrap()
             .find("WAV:Title")
+            .unwrap()
+            .display_value(),
+        "source title"
+    );
+}
+
+#[test]
+fn cli_can_edit_and_copy_flac_comments() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.file("source.flac", &minimal_flac("source title"));
+    let target = directory.file("target.flac", &minimal_flac("target title"));
+
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "FLAC:Title=edited title",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("FLAC:Title")
+            .unwrap()
+            .display_value(),
+        "edited title"
+    );
+
+    let delete = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--delete",
+            "FLAC:Title",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(delete.status.success(), "stderr: {:?}", delete.stderr);
+    assert!(metra::read(&target).unwrap().find("FLAC:Title").is_none());
+
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            &format!("FLAC:Title={}", source.to_str().expect("UTF-8 test path")),
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("FLAC:Title")
             .unwrap()
             .display_value(),
         "source title"
