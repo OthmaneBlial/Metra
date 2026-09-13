@@ -521,18 +521,18 @@ mod tests {
 
     #[test]
     fn handlers_without_writers_report_explicit_unsupported_errors() {
-        let handler = handler_for_format(FileFormat::Avi).expect("AVI handler should exist");
-        let mut reader = std::io::Cursor::new(b"RIFFAVI ".to_vec());
+        let handler = handler_for_format(FileFormat::Mkv).expect("MKV handler should exist");
+        let mut reader = std::io::Cursor::new(b"\x1A\x45\xDF\xA3".to_vec());
         let mut writer = std::io::Cursor::new(Vec::new());
         let error = handler
             .write_metadata(
                 &mut reader,
                 &mut writer,
-                FileInfo::new("document.avi".into(), 8, FileFormat::Avi),
+                FileInfo::new("document.mkv".into(), 4, FileFormat::Mkv),
                 ParseLimits::default(),
                 &[MetadataEdit::set("PDF:Title", "new")],
             )
-            .expect_err("AVI has no validated writer");
-        assert!(error.to_string().contains("AVI"));
+            .expect_err("MKV has no validated writer");
+        assert!(error.to_string().contains("MKV"));
     }
 }
