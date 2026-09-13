@@ -23,6 +23,8 @@ Initial read-only foundation:
   temporary files, output re-read validation, and atomic replacement;
 - exposed the supported JPEG comment edits through explicit CLI `--set` and
   `--delete` flags with non-JPEG rejection;
+- added `--copy JPEG:Comment=SOURCE TARGET` with source validation and the same
+  atomic target rewrite path;
 - added bounded `--jobs` batch inspection with deterministic result ordering;
 - expanded ISO-BMFF inspection with `ispe` dimensions, item/handler fields,
   and direct XMP/EXIF decoding when the metadata boxes are available;

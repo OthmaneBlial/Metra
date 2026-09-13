@@ -73,7 +73,8 @@ the original container while preserving untargeted bytes, validates the
 temporary output with the reader again, syncs it, and atomically renames a
 same-directory temporary file. `SetComment` and `DeleteComments` are exposed
 through the library API and the CLI as `--set JPEG:Comment=...` and
-`--delete JPEG:Comment`; generic tag mutation, copy operations, and other
+`--delete JPEG:Comment`, while `--copy JPEG:Comment=SOURCE` reads the source
+before applying the same validated rewrite. Generic tag mutation and other
 format writers remain deferred until their round-trip acceptance tests exist.
 
 ## Output contract

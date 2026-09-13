@@ -81,7 +81,7 @@
     "streaming_output": "partial",
     "set": "partial",
     "delete": "partial",
-    "copy": "planned",
+    "copy": "partial",
     "exiftool_compatibility_mode": "planned"
   }
 }
