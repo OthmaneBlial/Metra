@@ -39,7 +39,9 @@ through the CLI.
 The TIFF reader is the low-level building block for EXIF in JPEG, PNG, WebP,
 and embedded PSD resources. It accepts a bounded random-access region, so embedded offsets remain
 relative to the correct TIFF payload while source offsets can still be
-reported against the containing file. EXIF `UserComment` ASCII/Unicode prefixes
+reported against the containing file. Classic TIFF and BigTIFF headers use the
+same checked parser with variant-specific entry widths and 64-bit values. EXIF
+`UserComment` ASCII/Unicode prefixes
 are decoded while the original bytes remain available. JPEG, PNG, and WebP delegate structured
 XMP to the bounded XML reader; PNG text and `iCCP` chunks use a zlib decoder
 capped by `ParseLimits`; Photoshop resources delegate IPTC IIM parsing,
