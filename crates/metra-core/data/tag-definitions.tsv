@@ -179,4 +179,18 @@ MakerNotes	0x0089	Nikon:ShootingMode	Nikon MakerNote shooting mode
 MakerNotes	0x008B	Nikon:LensStops	Nikon MakerNote lens stops
 MakerNotes	0x0093	Nikon:NEFCompression	Nikon MakerNote NEF compression
 MakerNotes	0x0094	Nikon:Saturation	Nikon MakerNote saturation
+MakerNotes	0x0102	Sony:Quality	Sony MakerNote image quality
+MakerNotes	0x0104	Sony:FlashExposureComp	Sony MakerNote flash exposure compensation
+MakerNotes	0x0105	Sony:Teleconverter	Sony MakerNote teleconverter
+MakerNotes	0x0112	Sony:WhiteBalanceFineTune	Sony MakerNote white-balance fine tune
+MakerNotes	0x2002	Sony:Rating	Sony MakerNote rating
+MakerNotes	0x2004	Sony:Contrast	Sony MakerNote contrast
+MakerNotes	0x2005	Sony:Saturation	Sony MakerNote saturation
+MakerNotes	0x2006	Sony:Sharpness	Sony MakerNote sharpness
+MakerNotes	0x2007	Sony:Brightness	Sony MakerNote brightness
+MakerNotes	0x2008	Sony:LongExposureNoiseReduction	Sony MakerNote long-exposure noise reduction
+MakerNotes	0x2009	Sony:HighISONoiseReduction	Sony MakerNote high-ISO noise reduction
+MakerNotes	0x200A	Sony:HDR	Sony MakerNote HDR mode
+MakerNotes	0x200B	Sony:MultiFrameNoiseReduction	Sony MakerNote multi-frame noise reduction
+MakerNotes	0x200E	Sony:PictureEffect	Sony MakerNote picture effect
 Interop	0x0001	InteroperabilityIndex	Interoperability identifier
