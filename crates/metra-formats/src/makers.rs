@@ -31,7 +31,9 @@ pub(crate) fn inspect_maker_note(
         data_offset,
         bytes.len() as u64,
     );
-    if identity.format == "Nikon Type 2" {
+    if identity.format == "Nikon Type 1" {
+        parse_nikon_type1(bytes, data_offset, metadata, limits);
+    } else if identity.format == "Nikon Type 2" {
         parse_nikon_type2(bytes, data_offset, metadata, limits);
     } else if identity.format == "Canon MakerNote" {
         parse_canon_makernote(bytes, data_offset, metadata, limits);
@@ -101,6 +103,24 @@ fn parse_nikon_type2(bytes: &[u8], data_offset: u64, metadata: &mut Metadata, li
         return;
     };
     parse_nikon_ifd(tiff, first_ifd, endian, data_offset + 10, metadata, limits);
+}
+
+fn parse_nikon_type1(bytes: &[u8], data_offset: u64, metadata: &mut Metadata, limits: ParseLimits) {
+    parse_vendor_little_ifd(
+        bytes,
+        8,
+        data_offset,
+        metadata,
+        limits,
+        VendorIfdConfig {
+            group: "Nikon",
+            name_prefix: "Nikon:",
+            source: "EXIF/MakerNote/NikonType1",
+            warning_prefix: "nikon-type1-makernote",
+            unknown_description: "Unknown Nikon Type 1 MakerNote tag",
+            definition: nikon_type1_tag_definition,
+        },
+    );
 }
 
 fn parse_nikon_ifd(
@@ -1144,6 +1164,20 @@ fn olympus_tag_definition(id: u16) -> Option<(&'static str, &'static str)> {
     })
 }
 
+fn nikon_type1_tag_definition(id: u16) -> Option<(&'static str, &'static str)> {
+    Some(match id {
+        0x0003 => ("Nikon:Quality", "Nikon Type 1 image quality"),
+        0x0004 => ("Nikon:ColorMode", "Nikon Type 1 color mode"),
+        0x0005 => ("Nikon:ImageAdjustment", "Nikon Type 1 image adjustment"),
+        0x0006 => ("Nikon:CCDSensitivity", "Nikon Type 1 CCD sensitivity"),
+        0x0007 => ("Nikon:WhiteBalance", "Nikon Type 1 white balance"),
+        0x0008 => ("Nikon:Focus", "Nikon Type 1 focus mode"),
+        0x000A => ("Nikon:DigitalZoom", "Nikon Type 1 digital zoom"),
+        0x000B => ("Nikon:Converter", "Nikon Type 1 converter"),
+        _ => return None,
+    })
+}
+
 fn read_u16(bytes: &[u8], offset: usize, endian: Endian) -> Option<u16> {
     let bytes = bytes.get(offset..offset.checked_add(2)?)?;
     Some(match endian {
@@ -1298,9 +1332,9 @@ fn value_type(value: &TagValue) -> ValueType {
 
 fn identify(bytes: &[u8]) -> Option<MakerNoteIdentity> {
     if bytes.starts_with(b"Nikon\0") {
-        let format = match bytes.get(6..10) {
-            Some([2, 0, 0, 0]) => "Nikon Type 2",
-            Some([1, 0, 0, 0]) => "Nikon Type 1",
+        let format = match bytes.get(6) {
+            Some(2) => "Nikon Type 2",
+            Some(1) => "Nikon Type 1",
             _ => "Nikon MakerNote",
         };
         return Some(MakerNoteIdentity {
@@ -1426,6 +1460,49 @@ mod tests {
                 .unwrap()
                 .value,
             TagValue::Signed(-2)
+        );
+    }
+
+    #[test]
+    fn reads_bounded_nikon_type_one_ifd_values() {
+        let mut maker_note = b"Nikon\0\x01\0".to_vec();
+        maker_note.extend_from_slice(&2_u16.to_le_bytes());
+        maker_note.extend_from_slice(&[3, 0, 2, 0]);
+        maker_note.extend_from_slice(&5_u32.to_le_bytes());
+        maker_note.extend_from_slice(&40_u32.to_le_bytes());
+        maker_note.extend_from_slice(&[7, 0, 3, 0]);
+        maker_note.extend_from_slice(&1_u32.to_le_bytes());
+        maker_note.extend_from_slice(&1_u16.to_le_bytes());
+        maker_note.extend_from_slice(&[0, 0]);
+        maker_note.extend_from_slice(&[0, 0, 0, 0]);
+        maker_note.resize(40, 0);
+        maker_note.extend_from_slice(b"FINE\0");
+
+        let mut metadata = Metadata::new(FileInfo::new(
+            "nikon-type1.jpg".into(),
+            maker_note.len() as u64,
+            FileFormat::Jpeg,
+        ));
+        inspect_maker_note(&maker_note, 2_100, &mut metadata, ParseLimits::default());
+
+        assert_eq!(
+            metadata.find("MakerNotes:Nikon:Quality").unwrap().value,
+            TagValue::String("FINE".to_owned())
+        );
+        assert_eq!(
+            metadata
+                .find("MakerNotes:Nikon:WhiteBalance")
+                .unwrap()
+                .value,
+            TagValue::Unsigned(1)
+        );
+        assert_eq!(
+            metadata
+                .find("MakerNotes:Nikon:Quality")
+                .unwrap()
+                .source
+                .offset,
+            Some(2_140)
         );
     }
 
