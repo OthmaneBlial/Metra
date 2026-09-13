@@ -104,6 +104,8 @@ Initial read-first foundation with narrow validated rewrites:
 - added a bounded legacy Sony MakerNote IFD reader with shared tag definitions,
   typed values, absolute source offsets, value limits, and raw-byte retention;
   unsupported Sony substructures remain warnings or stable unknown values;
+- added a bounded Fujifilm MakerNote IFD reader with relative-offset handling,
+  shared tag definitions, typed values, source offsets, and unknown-value retention;
 - catalogued the bounded Nikon MakerNote identifiers centrally and covered the
   EXIF integration path with absolute source-offset assertions;
 - added bounded PSD/PSB inspection for headers, dimensions, common Photoshop
