@@ -79,8 +79,8 @@
     "yaml": "supported",
     "parallel_batch": "partial",
     "streaming_output": "partial",
-    "set": "planned",
-    "delete": "planned",
+    "set": "partial",
+    "delete": "partial",
     "copy": "planned",
     "exiftool_compatibility_mode": "planned"
   }

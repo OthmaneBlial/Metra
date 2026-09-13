@@ -26,8 +26,8 @@ expansion and nesting limits before being enabled.
 
 ## Current rewrite safety
 
-Only JPEG comment replacement/deletion is implemented, through the library API;
-the CLI does not mutate files. The writer reads and validates the source first,
+Only JPEG comment replacement/deletion is implemented, through the library API
+and the explicit `--set`/`--delete` CLI flags. The writer reads and validates the source first,
 copies the container through a same-directory temporary file, syncs and
 re-reads the output, preserves source permissions, and replaces the original
 only after validation. Failures remove the temporary file and leave the source

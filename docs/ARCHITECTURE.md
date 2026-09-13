@@ -72,8 +72,9 @@ library validates the source through the JPEG reader before writing, streams
 the original container while preserving untargeted bytes, validates the
 temporary output with the reader again, syncs it, and atomically renames a
 same-directory temporary file. `SetComment` and `DeleteComments` are exposed
-through the library API; generic tag mutation, copy operations, and CLI
-mutation flags remain deferred until their round-trip acceptance tests exist.
+through the library API and the CLI as `--set JPEG:Comment=...` and
+`--delete JPEG:Comment`; generic tag mutation, copy operations, and other
+format writers remain deferred until their round-trip acceptance tests exist.
 
 ## Output contract
 
