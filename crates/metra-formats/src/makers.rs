@@ -14,7 +14,17 @@ pub(crate) fn inspect_maker_note(
     metadata: &mut Metadata,
     limits: ParseLimits,
 ) {
-    let Some(identity) = identify(bytes) else {
+    inspect_maker_note_with_make(bytes, data_offset, metadata, limits, None);
+}
+
+pub(crate) fn inspect_maker_note_with_make(
+    bytes: &[u8],
+    data_offset: u64,
+    metadata: &mut Metadata,
+    limits: ParseLimits,
+    make: Option<&str>,
+) {
+    let Some(identity) = identify(bytes, make) else {
         return;
     };
     add_tag(
@@ -45,6 +55,8 @@ pub(crate) fn inspect_maker_note(
         parse_panasonic_makernote(bytes, data_offset, metadata, limits);
     } else if identity.format == "Olympus MakerNote" {
         parse_olympus_makernote(bytes, data_offset, metadata, limits);
+    } else if identity.format == "Apple MakerNote" {
+        parse_apple_makernote(bytes, data_offset, metadata, limits);
     }
 }
 
@@ -119,6 +131,7 @@ fn parse_nikon_type1(bytes: &[u8], data_offset: u64, metadata: &mut Metadata, li
             warning_prefix: "nikon-type1-makernote",
             unknown_description: "Unknown Nikon Type 1 MakerNote tag",
             definition: nikon_type1_tag_definition,
+            endian: Endian::Little,
         },
     );
 }
@@ -845,6 +858,7 @@ struct VendorIfdConfig {
     warning_prefix: &'static str,
     unknown_description: &'static str,
     definition: fn(u16) -> Option<(&'static str, &'static str)>,
+    endian: Endian,
 }
 
 fn parse_panasonic_makernote(
@@ -876,6 +890,7 @@ fn parse_panasonic_makernote(
             warning_prefix: "panasonic-makernote",
             unknown_description: "Unknown Panasonic MakerNote tag",
             definition: panasonic_tag_definition,
+            endian: Endian::Little,
         },
     );
 }
@@ -911,6 +926,51 @@ fn parse_olympus_makernote(
             warning_prefix: "olympus-makernote",
             unknown_description: "Unknown Olympus MakerNote tag",
             definition: olympus_tag_definition,
+            endian: Endian::Little,
+        },
+    );
+}
+
+fn parse_apple_makernote(
+    bytes: &[u8],
+    data_offset: u64,
+    metadata: &mut Metadata,
+    limits: ParseLimits,
+) {
+    if bytes.len() < 16 {
+        metadata.add_warning(
+            Warning::new(
+                "truncated-apple-makernote",
+                "Apple MakerNote does not contain a complete IFD header",
+            )
+            .at(data_offset),
+        );
+        return;
+    }
+    if bytes.get(12..14) != Some(b"MM") {
+        metadata.add_warning(
+            Warning::new(
+                "invalid-apple-makernote",
+                "Apple MakerNote does not contain the expected Big Endian marker",
+            )
+            .at(data_offset + 12),
+        );
+        return;
+    }
+    parse_vendor_ifd(
+        bytes,
+        14,
+        data_offset,
+        metadata,
+        limits,
+        VendorIfdConfig {
+            group: "Apple",
+            name_prefix: "Apple:",
+            source: "EXIF/MakerNote/Apple",
+            warning_prefix: "apple-makernote",
+            unknown_description: "Unknown Apple MakerNote tag",
+            definition: apple_tag_definition,
+            endian: Endian::Big,
         },
     );
 }
@@ -923,7 +983,19 @@ fn parse_vendor_little_ifd(
     limits: ParseLimits,
     config: VendorIfdConfig,
 ) {
-    let Some(count) = read_u16(bytes, offset, Endian::Little).map(usize::from) else {
+    parse_vendor_ifd(bytes, offset, data_offset, metadata, limits, config);
+}
+
+fn parse_vendor_ifd(
+    bytes: &[u8],
+    offset: usize,
+    data_offset: u64,
+    metadata: &mut Metadata,
+    limits: ParseLimits,
+    config: VendorIfdConfig,
+) {
+    let endian = config.endian;
+    let Some(count) = read_u16(bytes, offset, endian).map(usize::from) else {
         metadata.add_warning(
             Warning::new(
                 format!("truncated-{}", config.warning_prefix),
@@ -1000,13 +1072,14 @@ fn parse_vendor_little_entry(
     limits: ParseLimits,
     config: VendorIfdConfig,
 ) {
-    let Some(id) = read_u16(entry, 0, Endian::Little) else {
+    let endian = config.endian;
+    let Some(id) = read_u16(entry, 0, endian) else {
         return;
     };
-    let Some(type_id) = read_u16(entry, 2, Endian::Little) else {
+    let Some(type_id) = read_u16(entry, 2, endian) else {
         return;
     };
-    let Some(count) = read_u32(entry, 4, Endian::Little) else {
+    let Some(count) = read_u32(entry, 4, endian) else {
         return;
     };
     let Some(item_size) = type_size(type_id) else {
@@ -1045,7 +1118,7 @@ fn parse_vendor_little_entry(
         entry_offset.saturating_add(8)
     } else {
         let Some(value_offset) =
-            read_u32(entry, 8, Endian::Little).and_then(|value| usize::try_from(value).ok())
+            read_u32(entry, 8, endian).and_then(|value| usize::try_from(value).ok())
         else {
             return;
         };
@@ -1067,7 +1140,7 @@ fn parse_vendor_little_entry(
         );
         return;
     };
-    let Some(value) = decode_value(type_id, count, value_bytes, Endian::Little) else {
+    let Some(value) = decode_value(type_id, count, value_bytes, endian) else {
         return;
     };
     let (name, description) = (config.definition)(id)
@@ -1174,6 +1247,47 @@ fn nikon_type1_tag_definition(id: u16) -> Option<(&'static str, &'static str)> {
         0x0008 => ("Nikon:Focus", "Nikon Type 1 focus mode"),
         0x000A => ("Nikon:DigitalZoom", "Nikon Type 1 digital zoom"),
         0x000B => ("Nikon:Converter", "Nikon Type 1 converter"),
+        _ => return None,
+    })
+}
+
+fn apple_tag_definition(id: u16) -> Option<(&'static str, &'static str)> {
+    Some(match id {
+        0x0001 => ("Apple:MakerNoteVersion", "Apple MakerNote version"),
+        0x0002 => ("Apple:AEMatrix", "Apple auto-exposure matrix"),
+        0x0003 => ("Apple:RunTime", "Apple runtime property list"),
+        0x0004 => ("Apple:AEStable", "Apple auto-exposure stability"),
+        0x0005 => ("Apple:AETarget", "Apple auto-exposure target"),
+        0x0006 => ("Apple:AEAverage", "Apple auto-exposure average"),
+        0x0007 => ("Apple:AFStable", "Apple autofocus stability"),
+        0x0008 => ("Apple:AccelerationVector", "Apple acceleration vector"),
+        0x000C => ("Apple:FocusDistanceRange", "Apple focus distance range"),
+        0x000D => ("Apple:Apple_0x000d", "Unknown Apple MakerNote field 0x000D"),
+        0x000E => ("Apple:Apple_0x000e", "Unknown Apple MakerNote field 0x000E"),
+        0x000F => ("Apple:OISMode", "Apple optical image stabilization mode"),
+        0x0010 => ("Apple:Apple_0x0010", "Unknown Apple MakerNote field 0x0010"),
+        0x0011 => ("Apple:ContentIdentifier", "Apple content identifier"),
+        0x0014 => ("Apple:ImageCaptureType", "Apple image capture type"),
+        0x0015 => ("Apple:ImageUniqueID", "Apple image unique identifier"),
+        0x0017 => ("Apple:LivePhotoVideoIndex", "Apple Live Photo video index"),
+        0x0019 => ("Apple:ImageProcessingFlags", "Apple image processing flags"),
+        0x001A => ("Apple:QualityHint", "Apple photo quality hint"),
+        0x001D => (
+            "Apple:LuminanceNoiseAmplitude",
+            "Apple luminance noise amplitude",
+        ),
+        0x0020 => (
+            "Apple:ImageCaptureRequestID",
+            "Apple image capture request identifier",
+        ),
+        0x0023 => ("Apple:AFPerformance", "Apple autofocus performance"),
+        0x002B => ("Apple:PhotoIdentifier", "Apple photo identifier"),
+        0x002D => ("Apple:ColorTemperature", "Apple color temperature"),
+        0x002E => ("Apple:CameraType", "Apple camera type"),
+        0x002F => ("Apple:FocusPosition", "Apple focus position"),
+        0x0030 => ("Apple:HDRGain", "Apple HDR gain"),
+        0x0038 => ("Apple:AFMeasuredDepth", "Apple measured autofocus depth"),
+        0x003C => ("Apple:AFConfidence", "Apple autofocus confidence"),
         _ => return None,
     })
 }
@@ -1333,7 +1447,13 @@ fn value_type(value: &TagValue) -> ValueType {
     }
 }
 
-fn identify(bytes: &[u8]) -> Option<MakerNoteIdentity> {
+fn identify(bytes: &[u8], make: Option<&str>) -> Option<MakerNoteIdentity> {
+    if bytes.starts_with(b"Apple iOS\0") {
+        return Some(MakerNoteIdentity {
+            vendor: "Apple",
+            format: "Apple MakerNote",
+        });
+    }
     if bytes.starts_with(b"Nikon\0") {
         let format = match bytes.get(6) {
             Some(2) => "Nikon Type 2",
@@ -1373,6 +1493,36 @@ fn identify(bytes: &[u8]) -> Option<MakerNoteIdentity> {
         return Some(MakerNoteIdentity {
             vendor: "Olympus",
             format: "Olympus MakerNote",
+        });
+    }
+    if bytes.starts_with(b"STMN") {
+        return Some(MakerNoteIdentity {
+            vendor: "Samsung",
+            format: "Samsung STMN MakerNote",
+        });
+    }
+    if bytes.starts_with(b"[ae_dbg_info:") {
+        return Some(MakerNoteIdentity {
+            vendor: "DJI",
+            format: "DJI Debug MakerNote",
+        });
+    }
+    if bytes.starts_with(b"DJI") {
+        return Some(MakerNoteIdentity {
+            vendor: "DJI",
+            format: "DJI MakerNote",
+        });
+    }
+    if make.is_some_and(|value| value.trim().eq_ignore_ascii_case("GoPro")) {
+        return Some(MakerNoteIdentity {
+            vendor: "GoPro",
+            format: "GoPro MakerNote",
+        });
+    }
+    if make.is_some_and(|value| value.trim().eq_ignore_ascii_case("DJI")) {
+        return Some(MakerNoteIdentity {
+            vendor: "DJI",
+            format: "DJI MakerNote",
         });
     }
     None
@@ -1419,6 +1569,79 @@ mod tests {
         assert_eq!(
             metadata.find("MakerNotes:Vendor").unwrap().source.offset,
             Some(100)
+        );
+    }
+
+    #[test]
+    fn reads_bounded_apple_big_endian_ifd_values() {
+        let mut maker_note = b"Apple iOS\0\0\x01MM".to_vec();
+        maker_note.extend_from_slice(&2_u16.to_be_bytes());
+        maker_note.extend_from_slice(&[
+            0x00, 0x01, 0x00, 0x09, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x04,
+        ]);
+        maker_note.extend_from_slice(&[
+            0x00, 0x08, 0x00, 0x0A, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x2C,
+        ]);
+        maker_note.extend_from_slice(&[0, 0, 0, 0]);
+        maker_note.extend_from_slice(&(-1_i32).to_be_bytes());
+        maker_note.extend_from_slice(&2_i32.to_be_bytes());
+
+        let mut metadata = Metadata::new(FileInfo::new(
+            "apple.jpg".into(),
+            maker_note.len() as u64,
+            FileFormat::Jpeg,
+        ));
+        inspect_maker_note(&maker_note, 2_000, &mut metadata, ParseLimits::default());
+
+        assert_eq!(
+            metadata
+                .find("MakerNotes:Apple:MakerNoteVersion")
+                .unwrap()
+                .value,
+            TagValue::Signed(4)
+        );
+        assert_eq!(
+            metadata
+                .find("MakerNotes:Apple:AccelerationVector")
+                .unwrap()
+                .value,
+            TagValue::Rational {
+                numerator: -1,
+                denominator: 2,
+            }
+        );
+        assert_eq!(
+            metadata
+                .find("MakerNotes:Apple:AccelerationVector")
+                .unwrap()
+                .source
+                .offset,
+            Some(2_044)
+        );
+    }
+
+    #[test]
+    fn identifies_samsung_dji_and_gopro_maker_note_families() {
+        assert_eq!(
+            identify(b"STMN001\0", None),
+            Some(MakerNoteIdentity {
+                vendor: "Samsung",
+                format: "Samsung STMN MakerNote",
+            })
+        );
+        assert_eq!(
+            identify(b"[ae_dbg_info:sample", None),
+            Some(MakerNoteIdentity {
+                vendor: "DJI",
+                format: "DJI Debug MakerNote",
+            })
+        );
+        assert_eq!(
+            identify(b"opaque proprietary payload", Some("GoPro")),
+            Some(MakerNoteIdentity {
+                vendor: "GoPro",
+                format: "GoPro MakerNote",
+            })
         );
     }
 
