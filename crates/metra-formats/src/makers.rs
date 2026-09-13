@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use metra_core::{
     Metadata, ParseLimits, Source, Tag, TagValue, ValueType, Warning, tag_definition,
 };
@@ -1316,8 +1318,18 @@ fn parse_vendor_little_entry(
         );
         return;
     };
-    let Some(value) = decode_value(type_id, count, value_bytes, endian) else {
+    let Some(decoded_value) = decode_value(type_id, count, value_bytes, endian) else {
         return;
+    };
+    let value = if config.group == "Apple" && id == 0x0003 {
+        match &decoded_value {
+            TagValue::Bytes(bytes) => parse_apple_runtime_plist(bytes, limits)
+                .map(TagValue::Structure)
+                .unwrap_or(decoded_value),
+            _ => decoded_value,
+        }
+    } else {
+        decoded_value
     };
     let (name, description) = (config.definition)(id)
         .map(|(name, description)| (name.to_owned(), description.to_owned()))
@@ -1622,6 +1634,150 @@ fn decode_value(type_id: u16, count: u32, bytes: &[u8], endian: Endian) -> Optio
     })
 }
 
+fn parse_apple_runtime_plist(
+    bytes: &[u8],
+    limits: ParseLimits,
+) -> Option<BTreeMap<String, TagValue>> {
+    const TRAILER_SIZE: usize = 32;
+    if !bytes.starts_with(b"bplist00") || bytes.len() < 8 + TRAILER_SIZE {
+        return None;
+    }
+    let trailer_start = bytes.len().checked_sub(TRAILER_SIZE)?;
+    let offset_size = usize::from(*bytes.get(trailer_start + 6)?);
+    let object_ref_size = usize::from(*bytes.get(trailer_start + 7)?);
+    if !matches!(offset_size, 1 | 2 | 4 | 8) || !matches!(object_ref_size, 1 | 2 | 4 | 8) {
+        return None;
+    }
+    let object_count = usize::try_from(read_be_sized(bytes, trailer_start + 8, 8)?).ok()?;
+    if object_count == 0 || object_count > limits.max_ifd_entries {
+        return None;
+    }
+    let top_object = usize::try_from(read_be_sized(bytes, trailer_start + 16, 8)?).ok()?;
+    let offset_table = usize::try_from(read_be_sized(bytes, trailer_start + 24, 8)?).ok()?;
+    let table_length = object_count.checked_mul(offset_size)?;
+    let table_end = offset_table.checked_add(table_length)?;
+    if table_end > trailer_start || top_object >= object_count {
+        return None;
+    }
+
+    let mut offsets = Vec::with_capacity(object_count);
+    for index in 0..object_count {
+        let entry_offset = offset_table.checked_add(index.checked_mul(offset_size)?)?;
+        let object_offset =
+            usize::try_from(read_be_sized(bytes, entry_offset, offset_size)?).ok()?;
+        if object_offset >= trailer_start {
+            return None;
+        }
+        offsets.push(object_offset);
+    }
+
+    let object = bplist_object_slice(bytes, &offsets, top_object, trailer_start)?;
+    let (count, refs_start) = bplist_count(object, 0)?;
+    if object.first().copied()? >> 4 != 0xD || count > limits.max_ifd_entries {
+        return None;
+    }
+    let refs_length = count.checked_mul(2)?.checked_mul(object_ref_size)?;
+    if refs_start.checked_add(refs_length)? > object.len() {
+        return None;
+    }
+
+    let mut fields = BTreeMap::new();
+    for index in 0..count {
+        let key_offset = refs_start.checked_add(index.checked_mul(object_ref_size)?)?;
+        let value_offset = refs_start
+            .checked_add(count.checked_mul(object_ref_size)?)?
+            .checked_add(index.checked_mul(object_ref_size)?)?;
+        let key_ref = usize::try_from(read_be_sized(object, key_offset, object_ref_size)?).ok()?;
+        let value_ref =
+            usize::try_from(read_be_sized(object, value_offset, object_ref_size)?).ok()?;
+        let key = bplist_object_slice(bytes, &offsets, key_ref, trailer_start)
+            .and_then(parse_bplist_string)?;
+        let Some(value) = bplist_object_slice(bytes, &offsets, value_ref, trailer_start)
+            .and_then(parse_bplist_integer)
+        else {
+            continue;
+        };
+        fields.insert(key, value);
+    }
+    (!fields.is_empty()).then_some(fields)
+}
+
+fn bplist_object_slice<'a>(
+    bytes: &'a [u8],
+    offsets: &[usize],
+    index: usize,
+    trailer_start: usize,
+) -> Option<&'a [u8]> {
+    let start = *offsets.get(index)?;
+    let end = offsets
+        .iter()
+        .copied()
+        .filter(|offset| *offset > start)
+        .min()
+        .unwrap_or(trailer_start);
+    (start < end && end <= trailer_start).then(|| bytes.get(start..end))?
+}
+
+fn bplist_count(bytes: &[u8], offset: usize) -> Option<(usize, usize)> {
+    let marker = *bytes.get(offset)?;
+    let info = marker & 0x0F;
+    if info != 0x0F {
+        return Some((usize::from(info), offset + 1));
+    }
+    let integer_marker = *bytes.get(offset.checked_add(1)?)?;
+    if integer_marker >> 4 != 0x1 {
+        return None;
+    }
+    let integer_size = 1usize.checked_shl(u32::from(integer_marker & 0x0F))?;
+    let count =
+        usize::try_from(read_be_sized(bytes, offset.checked_add(2)?, integer_size)?).ok()?;
+    Some((count, offset.checked_add(2)?.checked_add(integer_size)?))
+}
+
+fn parse_bplist_string(bytes: &[u8]) -> Option<String> {
+    let marker = *bytes.first()?;
+    let (count, content_offset) = bplist_count(bytes, 0)?;
+    let content = bytes.get(
+        content_offset..content_offset.checked_add(match marker >> 4 {
+            0x5 => count,
+            0x6 => count.checked_mul(2)?,
+            _ => return None,
+        })?,
+    )?;
+    match marker >> 4 {
+        0x5 => String::from_utf8(content.to_vec()).ok(),
+        0x6 => {
+            let units = content
+                .chunks_exact(2)
+                .map(|chunk| u16::from_be_bytes([chunk[0], chunk[1]]))
+                .collect::<Vec<_>>();
+            String::from_utf16(&units).ok()
+        }
+        _ => None,
+    }
+}
+
+fn parse_bplist_integer(bytes: &[u8]) -> Option<TagValue> {
+    let marker = *bytes.first()?;
+    if marker >> 4 != 0x1 {
+        return None;
+    }
+    let integer_size = 1usize.checked_shl(u32::from(marker & 0x0F))?;
+    (integer_size <= 8).then(|| {
+        TagValue::Unsigned(read_be_sized(bytes, 1, integer_size).expect("bounded integer"))
+    })
+}
+
+fn read_be_sized(bytes: &[u8], offset: usize, width: usize) -> Option<u64> {
+    if !matches!(width, 1 | 2 | 4 | 8) {
+        return None;
+    }
+    let bytes = bytes.get(offset..offset.checked_add(width)?)?;
+    Some(bytes.iter().fold(0_u64, |value, byte| {
+        value.wrapping_shl(8) | u64::from(*byte)
+    }))
+}
+
 fn value_type(value: &TagValue) -> ValueType {
     match value {
         TagValue::String(_) => ValueType::String,
@@ -1843,6 +1999,24 @@ mod tests {
                 .offset,
             Some(2_044)
         );
+    }
+
+    #[test]
+    fn decodes_bounded_apple_runtime_binary_plist_integers() {
+        let mut plist = b"bplist00".to_vec();
+        plist.extend_from_slice(&[0xD2, 1, 2, 3, 4]);
+        plist.extend_from_slice(b"Uflags");
+        plist.extend_from_slice(b"Uvalue");
+        plist.extend_from_slice(&[0x10, 1, 0x10, 42]);
+        plist.extend_from_slice(&[8, 13, 19, 25, 27]);
+        plist.extend_from_slice(&[0, 0, 0, 0, 0, 0, 1, 1]);
+        plist.extend_from_slice(&5_u64.to_be_bytes());
+        plist.extend_from_slice(&0_u64.to_be_bytes());
+        plist.extend_from_slice(&29_u64.to_be_bytes());
+
+        let fields = parse_apple_runtime_plist(&plist, ParseLimits::default()).unwrap();
+        assert_eq!(fields.get("flags"), Some(&TagValue::Unsigned(1)));
+        assert_eq!(fields.get("value"), Some(&TagValue::Unsigned(42)));
     }
 
     #[test]
