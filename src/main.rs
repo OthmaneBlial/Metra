@@ -494,6 +494,13 @@ fn parse_edits(
                     },
                 ])));
             }
+            if let Some(name) = avi_info_name(key) {
+                return Ok(Some(EditRequest::DirectAvi(vec![
+                    metra::AviEdit::DeleteInfo {
+                        name: name.to_owned(),
+                    },
+                ])));
+            }
             if let Some(name) = matroska_tag_name(key) {
                 return Ok(Some(EditRequest::DirectMatroska(vec![
                     metra::MatroskaEdit::DeleteTag {

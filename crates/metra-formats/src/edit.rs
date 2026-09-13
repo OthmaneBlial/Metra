@@ -504,7 +504,11 @@ pub(crate) fn collect_avi(
                     value: value.clone(),
                 })
                 .ok_or_else(|| unsupported_edit(format, key)),
-            MetadataEdit::Delete { key } => Err(unsupported_edit(format, key)),
+            MetadataEdit::Delete { key } => avi_info_name(key)
+                .map(|name| crate::AviEdit::DeleteInfo {
+                    name: name.to_owned(),
+                })
+                .ok_or_else(|| unsupported_edit(format, key)),
         })
         .collect()
 }

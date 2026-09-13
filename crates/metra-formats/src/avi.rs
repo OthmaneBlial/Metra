@@ -773,14 +773,16 @@ fn parse_info(kind: &[u8], bytes: &[u8], offset: u64, metadata: &mut Metadata) {
             );
         }
     };
+    let value = String::from_utf8_lossy(bytes)
+        .trim_end_matches('\0')
+        .to_owned();
+    if value.is_empty() {
+        return;
+    }
     add_tag(
         metadata,
         name,
-        TagValue::String(
-            String::from_utf8_lossy(bytes)
-                .trim_end_matches('\0')
-                .to_owned(),
-        ),
+        TagValue::String(value),
         ValueType::String,
         offset,
         bytes.len() as u64,

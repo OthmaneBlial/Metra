@@ -16,6 +16,7 @@ use crate::avi::read_avi;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AviEdit {
     SetInfo { name: String, value: String },
+    DeleteInfo { name: String },
 }
 
 pub fn rewrite_avi<R: Read + Seek, W: Write + Seek>(
@@ -137,7 +138,10 @@ fn collect_patches(
 ) -> Result<Vec<Patch>> {
     let mut patches = Vec::with_capacity(edits.len());
     for edit in edits {
-        let AviEdit::SetInfo { name, value } = edit;
+        let (name, value) = match edit {
+            AviEdit::SetInfo { name, value } => (name, value.as_str()),
+            AviEdit::DeleteInfo { name } => (name, ""),
+        };
         if !is_writable_info_name(name) {
             return Err(MetraError::WriteFailure {
                 message: format!("AVI INFO field {name} is not writable"),
@@ -399,5 +403,27 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.to_string().contains("available"));
+    }
+
+    #[test]
+    fn deletes_existing_info_without_changing_avi_layout() {
+        let bytes = minimal_avi("old");
+        let output = rewrite_avi_to_vec(
+            &bytes,
+            FileInfo::new("editable.avi".into(), bytes.len() as u64, FileFormat::Avi),
+            ParseLimits::default(),
+            &[AviEdit::DeleteInfo {
+                name: "Title".to_owned(),
+            }],
+        )
+        .expect("AVI INFO deletion should succeed");
+        assert_eq!(output.len(), bytes.len());
+        let metadata = read_avi(
+            &mut Cursor::new(output),
+            FileInfo::new("editable.avi".into(), bytes.len() as u64, FileFormat::Avi),
+            ParseLimits::default(),
+        )
+        .expect("deleted AVI should remain readable");
+        assert!(metadata.find("AVI:Title").is_none());
     }
 }
