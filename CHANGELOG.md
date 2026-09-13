@@ -32,6 +32,8 @@ Initial read-first foundation with narrow validated rewrites:
   forcing the reader to materialize skipped audio pages;
 - added bounded WebP dimension parsing for native lossy `VP8 ` and lossless
   `VP8L` frames alongside extended `VP8X` canvases;
+- added bounded TIFF `SubIFDs` offset-array traversal with explicit `SubIFD1`,
+  `SubIFD2`, and subsequent groups;
 - added bounded PDF Info/XMP inspection and RIFF/WAVE format, INFO, and BWF
   metadata readers;
 - added bounded SVG XML inspection for root geometry, document text, and safe

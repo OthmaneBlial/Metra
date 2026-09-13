@@ -10,6 +10,8 @@ before allocating or traversing metadata.
 - all TIFF offsets and lengths use checked arithmetic and region bounds;
 - thumbnail IFD offsets and lengths are range-checked before the referenced
   bytes are described, and thumbnail payloads are never decoded by the reader;
+- `SubIFDs` offset arrays are materialized only within the configured value
+  budget and each referenced directory still passes cycle/depth/range checks;
 - IFD entry counts, nested depth, JPEG segments, PNG chunks, and WebP chunks
   are capped;
 - large values are reported and omitted rather than allocated;
