@@ -139,9 +139,56 @@ pub fn rewrite_metadata_to_vec(
     }
 }
 
+/// Copy one supported string metadata value from a source path to a target
+/// path through the same read-first and atomic rewrite pipeline.
+pub fn copy_metadata_path(
+    source: impl AsRef<Path>,
+    target: impl AsRef<Path>,
+    limits: ParseLimits,
+    key: impl AsRef<str>,
+) -> Result<()> {
+    let source = source.as_ref();
+    let target = target.as_ref();
+    let key = key.as_ref();
+    let source_metadata = crate::read_path_with_limits(source, limits)?;
+    let lookup_key = source_lookup_key(key);
+    let tag = source_metadata
+        .find(lookup_key)
+        .ok_or_else(|| MetraError::InvalidTag {
+            context: "metadata copy".to_owned(),
+            message: format!("source does not contain {key}"),
+        })?;
+    let value = match (&tag.value, lookup_key == "XMP:Packet") {
+        (metra_core::TagValue::String(value), _) => value.clone(),
+        (metra_core::TagValue::Bytes(value), true) => {
+            String::from_utf8(value.clone()).map_err(|_| MetraError::InvalidTag {
+                context: "metadata copy".to_owned(),
+                message: format!("source value {key} is not valid UTF-8"),
+            })?
+        }
+        _ => {
+            return Err(MetraError::InvalidTag {
+                context: "metadata copy".to_owned(),
+                message: format!("source value {key} is not a single string"),
+            });
+        }
+    };
+    rewrite_metadata_path(target, limits, &[MetadataEdit::set(key, value)])
+}
+
 fn unsupported_format(format: FileFormat) -> MetraError {
     MetraError::UnsupportedFormat {
         description: format!("generic metadata edits are not implemented for {format}"),
+    }
+}
+
+fn source_lookup_key(key: &str) -> &str {
+    if let Some(key) = key.strip_prefix("TIFF:") {
+        key
+    } else if jpeg_xmp_key(key) || png_xmp_key(key) || webp_xmp_key(key) {
+        "XMP:Packet"
+    } else {
+        key
     }
 }
 

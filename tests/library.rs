@@ -1,4 +1,6 @@
+use std::fs;
 use std::io::{self, Cursor, Read, Seek, SeekFrom};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 struct ShortReader {
     inner: Cursor<Vec<u8>>,
@@ -102,6 +104,42 @@ fn public_generic_edit_api_rewrites_and_revalidates_jpeg() {
         metadata.find("JPEG:Comment").unwrap().display_value(),
         "new"
     );
+}
+
+#[test]
+fn public_generic_copy_api_reads_source_before_atomic_target_rewrite() {
+    let source_bytes = [
+        0xFF, 0xD8, 0xFF, 0xFE, 0x00, 0x0D, b'f', b'r', b'o', b'm', b' ', b's', b'o', b'u', b'r',
+        b'c', b'e', 0xFF, 0xD9,
+    ];
+    let target_bytes = [
+        0xFF, 0xD8, 0xFF, 0xFE, 0x00, 0x0C, b't', b'a', b'r', b'g', b'e', b't', b' ', b'o', b'l',
+        b'd', 0xFF, 0xD9,
+    ];
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock should be after the Unix epoch")
+        .as_nanos();
+    let source = std::env::temp_dir().join(format!("metra-copy-source-{nonce}.jpg"));
+    let target = std::env::temp_dir().join(format!("metra-copy-target-{nonce}.jpg"));
+    fs::write(&source, source_bytes).expect("source fixture should be writable");
+    fs::write(&target, target_bytes).expect("target fixture should be writable");
+
+    metra::copy_metadata_path(
+        &source,
+        &target,
+        metra::ParseLimits::default(),
+        "JPEG:Comment",
+    )
+    .expect("generic copy should rewrite the target atomically");
+
+    let metadata = metra::read(&target).expect("copied target should remain readable");
+    assert_eq!(
+        metadata.find("JPEG:Comment").unwrap().display_value(),
+        "from source"
+    );
+    fs::remove_file(source).expect("source fixture should be removable");
+    fs::remove_file(target).expect("target fixture should be removable");
 }
 
 #[test]

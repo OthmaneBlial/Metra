@@ -48,7 +48,7 @@ mod xml;
 mod xmp;
 
 pub use avi::read_avi;
-pub use edit::{MetadataEdit, rewrite_metadata_path, rewrite_metadata_to_vec};
+pub use edit::{MetadataEdit, copy_metadata_path, rewrite_metadata_path, rewrite_metadata_to_vec};
 pub use flac::read_flac;
 pub use flac_writer::{FlacEdit, rewrite_flac, rewrite_flac_path, rewrite_flac_to_vec};
 pub use gif::read_gif;
