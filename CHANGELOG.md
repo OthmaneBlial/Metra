@@ -124,4 +124,6 @@ Initial read-first foundation with narrow validated rewrites:
   helper, including native Windows replace-and-write-through behavior;
 - added a Rust Criterion throughput benchmark for bounded stream reads and
   optional reviewed-corpus collection throughput;
+- added standalone, signature-detected XMP packet and ICC profile readers with
+  bounded public stream and path dispatch;
 - documented the verified surface and remaining compatibility boundaries.
