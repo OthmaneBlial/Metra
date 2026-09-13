@@ -169,7 +169,8 @@ tag mutation and other format writers remain deferred until their round-trip
 acceptance tests exist.
 
 The public `MetadataEdit` API is the common string-edit boundary for the
-currently supported narrow operations. `rewrite_metadata_path` keeps the
+currently supported narrow operations. `FormatHandler::write_metadata` gives
+the same dispatch a stream-oriented contract, while `rewrite_metadata_path` keeps the
 safe writer contract by detecting the input first and delegating to the
 format-specific atomic implementation; `rewrite_metadata_to_vec` provides the
 same dispatch for callers that own the byte buffer. Numeric/binary mutation,
@@ -200,8 +201,8 @@ non-zero code when differences or read failures are found.
 The following changes are deferred until their acceptance tests exist:
 
 - additional tag definitions beyond the current generated catalog;
-- a shared write/create/edit operation IR on top of the existing public
-  read-side `FormatHandler` registry;
+- a typed write/create/edit operation IR on top of the existing public
+  `FormatHandler` registry;
 - additional manufacturer-specific MakerNote modules beyond the bounded Nikon
   Type 1/2, Canon, Fujifilm, Panasonic, Olympus, and legacy Sony readers;
 - vendor-specific RAW container structures and RAF/CR3 payload metadata beyond

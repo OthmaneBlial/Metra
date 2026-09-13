@@ -58,6 +58,9 @@ Initial read-first foundation with narrow validated rewrites:
   format, with shared detection, bounded read dispatch, and capability reports;
 - added public canonical `MetadataEdit` set/delete operations with validated
   dispatch to the existing format-specific rewrite APIs for paths and bytes;
+- extended `FormatHandler` with a seekable `write_metadata` contract, routing
+  supported writers through the same canonical edit validation and rejecting
+  formats without a validated writer;
 - added shared safe XML character-reference handling for SVG and XMP while
   rejecting custom entities and DOCTYPE declarations;
 - added validated, lossless JPEG COM replacement/deletion with same-directory
