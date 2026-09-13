@@ -85,6 +85,9 @@ The MP3 reader handles bounded ID3v2 frame tables, ID3v1 fixed fields, and a
 single MPEG frame header without decoding audio payloads.
 The FLAC reader validates the metadata-block chain and decodes STREAMINFO,
 Vorbis comments, and bounded PICTURE blocks without touching audio frames.
+The Ogg reader walks bounded pages and logical streams, reconstructs only the
+first metadata packets, and decodes Vorbis identification/comments, OpusHead,
+OpusTags, and Ogg-FLAC mapping headers without touching coded audio frames.
 The PDF reader scans bounded head/tail windows for Info dictionaries and direct
 XMP packets; the WAV reader walks RIFF chunks and decodes `fmt `, `LIST/INFO`,
 and Broadcast Wave `bext` fields without loading audio data. The SVG reader

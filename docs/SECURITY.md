@@ -19,6 +19,8 @@ before allocating or traversing metadata.
   within the configured profile budget;
 - direct WebP ICC payloads are parsed only after the same profile-size limit is
   checked;
+- Ogg page tables, logical streams, packets, and Vorbis/Opus comment counts are
+  bounded before payload materialization;
 - derived GPS coordinates, altitude, direction, speed, and time values reject
   non-finite rationals and out-of-range references or units before conversion;
 - malformed embedded EXIF can be downgraded to a warning at the container
@@ -40,7 +42,8 @@ expansion and nesting limits before being enabled.
 
 Only JPEG comment, bounded APP1 XMP, and known IPTC-IIM datasets in Photoshop
 APP13 resources, PNG `tEXt` and uncompressed `iTXt` XMP, GIF comments, WebP XMP, SVG
-title/description/comments, WAV `LIST/INFO`, FLAC Vorbis Comment, common
+title/description/comments, WAV `LIST/INFO`, FLAC Vorbis Comment, Ogg metadata
+inspection, common
 ID3v2 text/comment replacement/deletion/copy, bounded TIFF ASCII copy,
 existing ISO-BMFF text replacement/copy, and bounded Canon MakerNote IFD
 inspection are implemented, through the

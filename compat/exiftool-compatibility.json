@@ -65,6 +65,14 @@
       "lossless_rewrite": "partial",
       "streaming": "partial"
     },
+    "OGG": {
+      "read": "partial",
+      "write": "planned",
+      "create": "planned",
+      "delete": "planned",
+      "lossless_rewrite": "planned",
+      "streaming": "partial"
+    },
     "WAV": { "read": "partial", "write": "partial", "delete": "partial", "lossless_rewrite": "partial", "streaming": "partial" },
     "SVG": {
       "read": "partial",
