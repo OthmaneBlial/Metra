@@ -116,4 +116,6 @@ Initial read-first foundation with narrow validated rewrites:
   `MetraError::Cancelled` results, and CLI Ctrl+C handling with exit status 130;
 - strengthened the opt-in corpus differential harness with namespace/group
   aliases and typed numeric, rational, string, and array value comparisons;
+- added bounded Panasonic RW2 TIFF-dialect detection and EXIF delegation,
+  including a real-corpus validation case;
 - documented the verified surface and remaining compatibility boundaries.
