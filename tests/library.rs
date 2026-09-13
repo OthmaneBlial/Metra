@@ -75,6 +75,36 @@ fn public_format_registry_reports_every_read_dispatch_entry() {
 }
 
 #[test]
+fn public_generic_edit_api_rewrites_and_revalidates_jpeg() {
+    let bytes = [
+        0xFF, 0xD8, // SOI
+        0xFF, 0xFE, 0x00, 0x05, b'o', b'l', b'd', // COM
+        0xFF, 0xD9, // EOI
+    ];
+    let output = metra::rewrite_metadata_to_vec(
+        &bytes,
+        metra::FileInfo::new(
+            "memory.jpg".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::set("JPEG:Comment", "new")],
+    )
+    .expect("generic JPEG edit should validate its rewritten bytes");
+
+    let metadata = metra::read_from(
+        &mut std::io::Cursor::new(output),
+        metra::FileInfo::new("memory.jpg".into(), 0, metra::FileFormat::Unknown),
+    )
+    .expect("rewritten JPEG should remain readable");
+    assert_eq!(
+        metadata.find("JPEG:Comment").unwrap().display_value(),
+        "new"
+    );
+}
+
+#[test]
 fn public_batch_api_keeps_input_order_and_supports_streaming() {
     let paths = vec![
         std::env::temp_dir().join("metra-batch-z-does-not-exist"),
