@@ -152,7 +152,8 @@ EXIF ASCII value slots, JPEG COM segments, APP1
 XMP packets, and known IPTC-IIM datasets inside Photoshop APP13 resources, PNG
 `tEXt` chunks and uncompressed `iTXt` XMP chunks, GIF comment extensions, WebP `XMP ` chunks,
 SVG title/description/comment nodes, WAV `LIST/INFO` fields, FLAC Vorbis
-Comment key/value pairs, Ogg Vorbis/Opus comment packets, and common ID3v2 text/comment frames. Ogg
+Comment key/value pairs, Ogg Vorbis/Opus comment packets, common ID3v2 text/comment frames,
+and existing PDF Info literal or hexadecimal string tokens. Ogg
 rewrites preserve the existing packet size and page layout, recompute page CRCs, and refuse
 growth that cannot fit in the original packet; deletions use bounded Vorbis padding when
 available. Ogg-FLAC comment blocks, whether embedded in the mapping packet or in a
@@ -166,6 +167,11 @@ PNG writers validate replacement packets with the bounded XMP parser. The
 JPEG IPTC writer validates dataset names and lengths, rewrites only the target
 dataset in the `0x0404` resource, preserves unrelated Photoshop resources, and
 creates a bounded APP13 resource when needed.
+The PDF writer accepts only existing Info Title, Author, Subject, Keywords,
+Creator, Producer, CreationDate, or ModifyDate literal/hexadecimal string
+tokens. It preserves the token encoding and requires an exactly equal encoded
+byte span, so it never creates objects, rewrites xref tables, or moves unrelated
+PDF bytes.
 The SVG writer validates the source XML, escapes replacement text, rejects
 unsafe comment delimiters, and preserves unrelated source ranges. The ID3 writer requires a tag without
 unsynchronization, extended-header, or footer flags. Each library writer
@@ -178,7 +184,7 @@ backpressure-bounded `read_many_streaming` helpers, plus cancellation-aware
 variants; the CLI uses these same batch APIs before rendering. The CLI exposes
 `--set`/`--delete`/`--copy` for
 `JPEG:Comment`, `JPEG:EXIF:<ASCII tag>`, `IPTC:<dataset>`, `PNG:XMP`, `PNG:Text:<keyword>`, `SVG:Title`/`Description`/`Comment`, `WAV:<INFO field>`,
-`FLAC:<Vorbis field>`, `ID3:<text field>`, `ISOBMFF:<text field>`, `GIF:Comment`, `WebP:XMP`, and
+`FLAC:<Vorbis field>`, `ID3:<text field>`, `ISOBMFF:<text field>`, `PDF:<Info field>`, `GIF:Comment`, `WebP:XMP`, and
 existing `TIFF:EXIF:<ASCII tag>` values; generic
 tag mutation and other format writers remain deferred until their round-trip
 acceptance tests exist.

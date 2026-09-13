@@ -65,6 +65,10 @@ the resulting document remains valid XML.
 JPEG EXIF ASCII writes validate the existing TIFF entry, type, count, offset,
 capacity, and patch range; they never create a missing field or resize the APP1
 segment, and the result is re-read before atomic replacement.
+PDF Info writes are limited to existing literal or hexadecimal string tokens and
+require the replacement to have the same encoded byte length. They do not create
+objects or rewrite xref offsets, so the rest of the PDF byte layout is copied
+unchanged and the temporary output is re-read before replacement.
 Ogg rewrites retain page boundaries, recalculate CRCs, preserve opaque packet
 bytes, and refuse packet growth unless the existing bounded packet can hold it.
 ID3v2

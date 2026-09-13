@@ -4,6 +4,9 @@
 
 Initial read-first foundation with narrow validated rewrites:
 
+- added bounded PDF Info rewrites for existing literal and hexadecimal string
+  tokens, with fixed-span validation, atomic replacement, generic API dispatch,
+  registry support, and CLI `--set`/`--copy` coverage;
 - added bounded JPEG APP1 EXIF ASCII rewrites and source-to-source copies for
   existing fields, preserving segment size and validating the rewritten JPEG;
 - added bounded JPEG APP6 GoPro `DEVC`/`STRM` decoding with stable FourCC tag
