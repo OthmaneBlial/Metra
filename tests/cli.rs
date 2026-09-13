@@ -151,6 +151,38 @@ fn minimal_pdf(title: &str) -> Vec<u8> {
     .into_bytes()
 }
 
+fn minimal_psd_with_xmp(format: &str) -> Vec<u8> {
+    let xmp = xmp_packet(format).into_bytes();
+    let mut resource = b"8BIM".to_vec();
+    resource.extend_from_slice(&0x0424_u16.to_be_bytes());
+    resource.extend_from_slice(&[0, 0]);
+    resource.extend_from_slice(&(xmp.len() as u32).to_be_bytes());
+    resource.extend_from_slice(&xmp);
+    if xmp.len() % 2 == 1 {
+        resource.push(0);
+    }
+    let mut bytes = vec![0_u8; 26];
+    bytes[..4].copy_from_slice(b"8BPS");
+    bytes[4..6].copy_from_slice(&1_u16.to_be_bytes());
+    bytes[12..14].copy_from_slice(&3_u16.to_be_bytes());
+    bytes[14..18].copy_from_slice(&100_u32.to_be_bytes());
+    bytes[18..22].copy_from_slice(&200_u32.to_be_bytes());
+    bytes[22..24].copy_from_slice(&8_u16.to_be_bytes());
+    bytes[24..26].copy_from_slice(&3_u16.to_be_bytes());
+    bytes.extend_from_slice(&0_u32.to_be_bytes());
+    bytes.extend_from_slice(&(resource.len() as u32).to_be_bytes());
+    bytes.extend_from_slice(&resource);
+    bytes.extend_from_slice(&0_u32.to_be_bytes());
+    bytes.extend_from_slice(&0_u16.to_be_bytes());
+    bytes
+}
+
+fn xmp_packet(format: &str) -> String {
+    format!(
+        "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF><rdf:Description xmlns:dc=\"urn:dc\" dc:format=\"{format}\"/></rdf:RDF></x:xmpmeta>"
+    )
+}
+
 fn minimal_svg_document(title: &str, description: &str, comment: &str) -> Vec<u8> {
     format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\"><!-- {comment} --><title>{title}</title><desc>{description}</desc><rect width=\"2\" height=\"2\"/></svg>"
@@ -838,6 +870,51 @@ fn cli_can_set_and_copy_existing_pdf_info() {
             .unwrap()
             .display_value(),
         "Source"
+    );
+}
+
+#[test]
+fn cli_can_set_and_copy_existing_psd_xmp() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.file("source.psd", &minimal_psd_with_xmp("source"));
+    let target = directory.file("target.psd", &minimal_psd_with_xmp("target"));
+    let replacement = xmp_packet("edited");
+
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            &format!("PSD:XMP={replacement}"),
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("XMP:dc:format")
+            .unwrap()
+            .display_value(),
+        "edited"
+    );
+
+    let copy_assignment = format!("PSD:XMP={}", source.to_str().expect("UTF-8 test path"));
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            &copy_assignment,
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("XMP:dc:format")
+            .unwrap()
+            .display_value(),
+        "source"
     );
 }
 

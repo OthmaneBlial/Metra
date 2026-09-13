@@ -263,6 +263,7 @@ enum EditRequest {
     DirectFlac(Vec<metra::FlacEdit>),
     DirectOgg(Vec<metra::OggEdit>),
     DirectPdf(Vec<metra::PdfEdit>),
+    DirectPsd(Vec<metra::PsdEdit>),
     DirectMp3(Vec<metra::Mp3Edit>),
     DirectGif(Vec<metra::GifEdit>),
     DirectWebp(Vec<metra::WebpEdit>),
@@ -284,6 +285,7 @@ enum CopyKey {
     FlacComment(String),
     OggComment(String),
     PdfInfo(String),
+    PsdXmp,
     Mp3Text(String),
     Mp3Comment,
     GifComment,
@@ -331,6 +333,11 @@ fn parse_edits(
                         value: value.to_owned(),
                     },
                 ])));
+            }
+            if psd_xmp_key(key) {
+                return Ok(Some(EditRequest::DirectPsd(vec![metra::PsdEdit::SetXmp(
+                    value.to_owned(),
+                )])));
             }
             if isobmff_text_key(key) {
                 return Ok(Some(EditRequest::DirectIsobmff(vec![
@@ -515,6 +522,8 @@ fn parse_edits(
             CopyKey::TiffAscii(tiff_key.to_owned())
         } else if let Some(name) = pdf_info_name(key) {
             CopyKey::PdfInfo(name.to_owned())
+        } else if psd_xmp_key(key) {
+            CopyKey::PsdXmp
         } else if isobmff_text_key(key) {
             CopyKey::IsobmffText(key.to_owned())
         } else if jpeg_xmp_key(key) {
@@ -579,6 +588,10 @@ fn pdf_info_name(key: &str) -> Option<&str> {
             | "ModifyDate"
     )
     .then_some(name)
+}
+
+fn psd_xmp_key(key: &str) -> bool {
+    matches!(key, "PSD:XMP" | "PSD:ImageResources:XMP" | "XMP:Packet")
 }
 
 fn jpeg_exif_ascii_key(key: &str) -> Option<&str> {
@@ -678,7 +691,7 @@ fn svg_text_key(key: &str) -> Option<SvgTextKey> {
 
 fn unsupported_edit_message(key: &str) -> String {
     format!(
-        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:EXIF:<ASCII tag>, JPEG:XMP, IPTC:<dataset>, TIFF:EXIF:<ASCII tag>, PDF:<Info field>, ISOBMFF:<text field>, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, Ogg:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
+        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:EXIF:<ASCII tag>, JPEG:XMP, IPTC:<dataset>, TIFF:EXIF:<ASCII tag>, PDF:<Info field>, PSD:XMP, ISOBMFF:<text field>, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, Ogg:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
     )
 }
 
@@ -799,6 +812,7 @@ fn apply_request(paths: &[PathBuf], request: EditRequest, limits: ParseLimits) -
         EditRequest::DirectFlac(edits) => apply_flac_edits(paths, &edits, limits),
         EditRequest::DirectOgg(edits) => apply_ogg_edits(paths, &edits, limits),
         EditRequest::DirectPdf(edits) => apply_pdf_edits(paths, &edits, limits),
+        EditRequest::DirectPsd(edits) => apply_psd_edits(paths, &edits, limits),
         EditRequest::DirectMp3(edits) => apply_mp3_edits(paths, &edits, limits),
         EditRequest::DirectGif(edits) => apply_gif_edits(paths, &edits, limits),
         EditRequest::DirectWebp(edits) => apply_webp_edits(paths, &edits, limits),
@@ -1009,6 +1023,39 @@ fn apply_pdf_edits(paths: &[PathBuf], edits: &[metra::PdfEdit], limits: ParseLim
     }
 }
 
+fn apply_psd_edits(paths: &[PathBuf], edits: &[metra::PsdEdit], limits: ParseLimits) -> ExitCode {
+    let mut failures = 0_usize;
+    for path in paths {
+        match metra::read_with_limits(path, limits) {
+            Ok(metadata) if metadata.file_info.format == metra::FileFormat::Psd => {
+                if let Err(error) = metra::rewrite_psd_path(path, limits, edits) {
+                    eprintln!("metra: {}: {error}", path.display());
+                    failures += 1;
+                } else {
+                    println!("updated: {}", path.display());
+                }
+            }
+            Ok(metadata) => {
+                eprintln!(
+                    "metra: {}: {} edits are supported only for PSD/PSB files",
+                    path.display(),
+                    metadata.file_info.format
+                );
+                failures += 1;
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", path.display());
+                failures += 1;
+            }
+        }
+    }
+    if failures == 0 {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
 fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path, limits: ParseLimits) -> ExitCode {
     let source_metadata = match metra::read_with_limits(source, limits) {
         Ok(metadata) => metadata,
@@ -1167,6 +1214,33 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path, limits: ParseLimit
                 value: value.clone(),
             }];
             apply_pdf_edits(paths, &edits, limits)
+        }
+        CopyKey::PsdXmp => {
+            if source_metadata.file_info.format != metra::FileFormat::Psd {
+                eprintln!(
+                    "metra: {}: source format {} is not PSD/PSB",
+                    source.display(),
+                    source_metadata.file_info.format
+                );
+                return ExitCode::from(1);
+            }
+            let Some(packet) = source_metadata.find("XMP:Packet") else {
+                eprintln!(
+                    "metra: {}: source does not contain an XMP packet",
+                    source.display()
+                );
+                return ExitCode::from(1);
+            };
+            let metra::TagValue::Bytes(packet) = &packet.value else {
+                eprintln!("metra: {}: XMP:Packet is not raw bytes", source.display());
+                return ExitCode::from(1);
+            };
+            let Ok(packet) = String::from_utf8(packet.clone()) else {
+                eprintln!("metra: {}: XMP:Packet is not valid UTF-8", source.display());
+                return ExitCode::from(1);
+            };
+            let edits = [metra::PsdEdit::SetXmp(packet)];
+            apply_psd_edits(paths, &edits, limits)
         }
         CopyKey::IsobmffText(key) => {
             if !is_isobmff_format(source_metadata.file_info.format) {
