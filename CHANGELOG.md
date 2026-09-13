@@ -27,6 +27,9 @@ Initial read-first foundation with narrow validated rewrites:
   atomic target rewrite path;
 - added validated PNG `tEXt` replacement/deletion/copy with CRC regeneration,
   streamed image chunks, and atomic target replacement;
+- added validated PNG uncompressed `iTXt` XMP replacement/deletion/copy with
+  bounded XML validation, CRC regeneration, streamed image chunks, and atomic
+  target replacement;
 - added validated WAV `LIST/INFO` replacement/deletion/copy with RIFF size
   repair, streamed audio chunks, and atomic target replacement;
 - added validated FLAC Vorbis Comment replacement/deletion/copy while
