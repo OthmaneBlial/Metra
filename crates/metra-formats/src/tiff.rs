@@ -721,7 +721,137 @@ fn decode_special_value(
     if namespace == "EXIF" && id == 0x9286 && type_id == 7 {
         return decode_user_comment(bytes).map_or(value, TagValue::String);
     }
+    if namespace == "EXIF" && type_id == 2 && matches!(id, 0x0132 | 0x9003 | 0x9004) {
+        return parse_exif_datetime(&value).unwrap_or(value);
+    }
+    if namespace == "GPS" {
+        if id == 0x001D && type_id == 2 {
+            return parse_gps_date(&value).unwrap_or(value);
+        }
+        if id == 0x0007 && type_id == 5 {
+            return parse_gps_time(&value).unwrap_or(value);
+        }
+    }
     value
+}
+
+fn parse_exif_datetime(value: &TagValue) -> Option<TagValue> {
+    let TagValue::String(value) = value else {
+        return None;
+    };
+    let mut parts = value.split([':', ' ', '-']);
+    let year = parts.next()?.parse().ok()?;
+    let month = parts.next()?.parse().ok()?;
+    let day = parts.next()?.parse().ok()?;
+    let hour = parts.next()?.parse().ok()?;
+    let minute = parts.next()?.parse().ok()?;
+    let second = parts.next()?.parse().ok()?;
+    if parts.next().is_some() || !valid_date(year, month, day) || !valid_time(hour, minute, second)
+    {
+        return None;
+    }
+    Some(TagValue::DateTime {
+        year,
+        month,
+        day,
+        hour,
+        minute,
+        second,
+        nanosecond: 0,
+        offset_minutes: None,
+    })
+}
+
+fn parse_gps_date(value: &TagValue) -> Option<TagValue> {
+    let TagValue::String(value) = value else {
+        return None;
+    };
+    let mut parts = value.split(':');
+    let year = parts.next()?.parse().ok()?;
+    let month = parts.next()?.parse().ok()?;
+    let day = parts.next()?.parse().ok()?;
+    if parts.next().is_some() || !valid_date(year, month, day) {
+        return None;
+    }
+    Some(TagValue::Date { year, month, day })
+}
+
+fn parse_gps_time(value: &TagValue) -> Option<TagValue> {
+    let values = match value {
+        TagValue::Array(values) => values,
+        _ => return None,
+    };
+    if values.len() != 3 {
+        return None;
+    }
+    let hour = rational_u8(&values[0], 24)?;
+    let minute = rational_u8(&values[1], 60)?;
+    let (second, nanosecond) = rational_second(&values[2])?;
+    if hour >= 24 || minute >= 60 || second >= 60 {
+        return None;
+    }
+    Some(TagValue::Time {
+        hour,
+        minute,
+        second,
+        nanosecond,
+    })
+}
+
+fn rational_u8(value: &TagValue, exclusive_maximum: u8) -> Option<u8> {
+    let TagValue::UnsignedRational {
+        numerator,
+        denominator,
+    } = value
+    else {
+        return None;
+    };
+    if *denominator == 0 || numerator % denominator != 0 {
+        return None;
+    }
+    let value = numerator / denominator;
+    (value < u64::from(exclusive_maximum))
+        .then(|| u8::try_from(value).ok())
+        .flatten()
+}
+
+fn rational_second(value: &TagValue) -> Option<(u8, u32)> {
+    let TagValue::UnsignedRational {
+        numerator,
+        denominator,
+    } = value
+    else {
+        return None;
+    };
+    if *denominator == 0 {
+        return None;
+    }
+    let second = numerator / denominator;
+    if second >= 60 {
+        return None;
+    }
+    let remainder = numerator % denominator;
+    let nanosecond = remainder.checked_mul(1_000_000_000)? / denominator;
+    Some((u8::try_from(second).ok()?, u32::try_from(nanosecond).ok()?))
+}
+
+fn valid_date(year: u16, month: u8, day: u8) -> bool {
+    (1..=12).contains(&month) && (1..=days_in_month(year, month)).contains(&day)
+}
+
+fn days_in_month(year: u16, month: u8) -> u8 {
+    match month {
+        2 if year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400)) => {
+            29
+        }
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    }
+}
+
+fn valid_time(hour: u8, minute: u8, second: u8) -> bool {
+    hour < 24 && minute < 60 && second < 60
 }
 
 fn decode_user_comment(bytes: &[u8]) -> Option<String> {
@@ -764,6 +894,9 @@ fn value_type(value: &TagValue) -> ValueType {
         TagValue::Unsigned(_) => ValueType::UnsignedInteger,
         TagValue::Signed(_) => ValueType::SignedInteger,
         TagValue::Float(_) => ValueType::Float,
+        TagValue::Date { .. } => ValueType::Date,
+        TagValue::Time { .. } => ValueType::Time,
+        TagValue::DateTime { .. } => ValueType::DateTime,
         TagValue::Rational { .. } => ValueType::Rational,
         TagValue::UnsignedRational { .. } => ValueType::UnsignedRational,
         TagValue::Bytes(_) => ValueType::Bytes,
@@ -1159,7 +1292,16 @@ mod tests {
         );
         assert_eq!(
             metadata.find("EXIF:DateTimeOriginal").unwrap().value,
-            TagValue::String("2026:09:13 12:34:56".into())
+            TagValue::DateTime {
+                year: 2026,
+                month: 9,
+                day: 13,
+                hour: 12,
+                minute: 34,
+                second: 56,
+                nanosecond: 0,
+                offset_minutes: None,
+            }
         );
         assert_eq!(tag_definition("EXIF", 0x0100).name, "ImageWidth");
         assert_eq!(tag_definition("EXIF", 0x0102).name, "BitsPerSample");
@@ -1350,6 +1492,76 @@ mod tests {
         assert_eq!(decode_user_comment(&unicode).as_deref(), Some("Métra"));
 
         assert_eq!(decode_user_comment(b"JIS\0\0\0\0\0text"), None);
+    }
+
+    #[test]
+    fn decodes_valid_exif_and_gps_temporal_values() {
+        let date_time = decode_special_value(
+            "EXIF",
+            0x9003,
+            2,
+            b"2026:09:13 12:34:56\0",
+            TagValue::String("2026:09:13 12:34:56".to_owned()),
+        );
+        assert_eq!(
+            date_time,
+            TagValue::DateTime {
+                year: 2026,
+                month: 9,
+                day: 13,
+                hour: 12,
+                minute: 34,
+                second: 56,
+                nanosecond: 0,
+                offset_minutes: None,
+            }
+        );
+
+        let date = decode_special_value(
+            "GPS",
+            0x001D,
+            2,
+            b"2026:09:13\0",
+            TagValue::String("2026:09:13".to_owned()),
+        );
+        assert_eq!(
+            date,
+            TagValue::Date {
+                year: 2026,
+                month: 9,
+                day: 13,
+            }
+        );
+
+        let time = decode_special_value(
+            "GPS",
+            0x0007,
+            5,
+            &[],
+            TagValue::Array(vec![
+                TagValue::UnsignedRational {
+                    numerator: 12,
+                    denominator: 1,
+                },
+                TagValue::UnsignedRational {
+                    numerator: 34,
+                    denominator: 1,
+                },
+                TagValue::UnsignedRational {
+                    numerator: 56_125,
+                    denominator: 1_000,
+                },
+            ]),
+        );
+        assert_eq!(
+            time,
+            TagValue::Time {
+                hour: 12,
+                minute: 34,
+                second: 56,
+                nanosecond: 125_000_000,
+            }
+        );
     }
 
     #[test]

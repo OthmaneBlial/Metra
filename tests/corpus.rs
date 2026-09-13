@@ -235,6 +235,9 @@ fn oracle_value_matches(value: &metra::TagValue, oracle: &Value) -> bool {
         metra::TagValue::Unsigned(value) => oracle.as_u64() == Some(*value),
         metra::TagValue::Signed(value) => oracle.as_i64() == Some(*value),
         metra::TagValue::Float(value) => oracle_number_matches(*value, oracle),
+        metra::TagValue::Date { .. }
+        | metra::TagValue::Time { .. }
+        | metra::TagValue::DateTime { .. } => oracle.as_str() == Some(&value.to_display_string()),
         metra::TagValue::Rational {
             numerator,
             denominator,

@@ -601,12 +601,42 @@ pub enum TagValue {
     Unsigned(u64),
     Signed(i64),
     Float(f64),
-    Rational { numerator: i64, denominator: i64 },
-    UnsignedRational { numerator: u64, denominator: u64 },
+    Date {
+        year: u16,
+        month: u8,
+        day: u8,
+    },
+    Time {
+        hour: u8,
+        minute: u8,
+        second: u8,
+        nanosecond: u32,
+    },
+    DateTime {
+        year: u16,
+        month: u8,
+        day: u8,
+        hour: u8,
+        minute: u8,
+        second: u8,
+        nanosecond: u32,
+        offset_minutes: Option<i16>,
+    },
+    Rational {
+        numerator: i64,
+        denominator: i64,
+    },
+    UnsignedRational {
+        numerator: u64,
+        denominator: u64,
+    },
     Bytes(Vec<u8>),
     Array(Vec<TagValue>),
     Structure(BTreeMap<String, TagValue>),
-    Unknown { type_id: u16, bytes: Vec<u8> },
+    Unknown {
+        type_id: u16,
+        bytes: Vec<u8>,
+    },
 }
 
 impl TagValue {
@@ -616,6 +646,32 @@ impl TagValue {
             Self::Unsigned(value) => value.to_string(),
             Self::Signed(value) => value.to_string(),
             Self::Float(value) => value.to_string(),
+            Self::Date { year, month, day } => format!("{year:04}-{month:02}-{day:02}"),
+            Self::Time {
+                hour,
+                minute,
+                second,
+                nanosecond,
+            } => format_time(*hour, *minute, *second, *nanosecond),
+            Self::DateTime {
+                year,
+                month,
+                day,
+                hour,
+                minute,
+                second,
+                nanosecond,
+                offset_minutes,
+            } => {
+                let suffix = match offset_minutes {
+                    Some(offset) => format_offset(*offset),
+                    None => String::new(),
+                };
+                format!(
+                    "{year:04}:{month:02}:{day:02} {time}{suffix}",
+                    time = format_time(*hour, *minute, *second, *nanosecond),
+                )
+            }
             Self::Rational {
                 numerator,
                 denominator,
@@ -642,6 +698,31 @@ impl TagValue {
     }
 }
 
+fn format_time(hour: u8, minute: u8, second: u8, nanosecond: u32) -> String {
+    if nanosecond == 0 {
+        format!("{hour:02}:{minute:02}:{second:02}")
+    } else {
+        let fractional = format!("{nanosecond:09}");
+        format!(
+            "{hour:02}:{minute:02}:{second:02}.{}",
+            fractional.trim_end_matches('0')
+        )
+    }
+}
+
+fn format_offset(offset_minutes: i16) -> String {
+    if offset_minutes == 0 {
+        return "Z".to_owned();
+    }
+    let sign = if offset_minutes.is_negative() {
+        '-'
+    } else {
+        '+'
+    };
+    let absolute = offset_minutes.unsigned_abs();
+    format!("{sign}{:02}:{:02}", absolute / 60, absolute % 60)
+}
+
 fn hex_preview(bytes: &[u8]) -> String {
     const MAX_PREVIEW_BYTES: usize = 24;
     let mut result = bytes
@@ -663,6 +744,9 @@ pub enum ValueType {
     UnsignedInteger,
     SignedInteger,
     Float,
+    Date,
+    Time,
+    DateTime,
     Rational,
     UnsignedRational,
     Bytes,
@@ -799,6 +883,38 @@ mod tests {
         let json = serde_json::to_string(&metadata).expect("core types should be serializable");
         assert!(json.contains("schema_version"));
         assert!(json.contains("JPEG"));
+    }
+
+    #[test]
+    fn temporal_values_keep_structured_components_and_stable_display() {
+        let date = TagValue::Date {
+            year: 2026,
+            month: 9,
+            day: 13,
+        };
+        let time = TagValue::Time {
+            hour: 12,
+            minute: 34,
+            second: 56,
+            nanosecond: 125_000_000,
+        };
+        let date_time = TagValue::DateTime {
+            year: 2026,
+            month: 9,
+            day: 13,
+            hour: 12,
+            minute: 34,
+            second: 56,
+            nanosecond: 0,
+            offset_minutes: Some(120),
+        };
+
+        assert_eq!(date.to_display_string(), "2026-09-13");
+        assert_eq!(time.to_display_string(), "12:34:56.125");
+        assert_eq!(date_time.to_display_string(), "2026:09:13 12:34:56+02:00");
+        let json = serde_json::to_string(&date_time).expect("temporal values should serialize");
+        assert!(json.contains("date_time"));
+        assert!(json.contains("offset_minutes"));
     }
 
     #[test]
