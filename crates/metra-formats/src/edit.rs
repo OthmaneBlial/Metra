@@ -850,9 +850,9 @@ mod tests {
         .expect_err("a PNG collector must reject JPEG keys");
         assert!(error.to_string().contains("JPEG:Comment"));
 
-        let error = collect_tiff(&[MetadataEdit::delete("TIFF:EXIF:Make")], FileFormat::Tiff)
-            .expect_err("TIFF deletion is not supported by the in-place writer");
-        assert!(error.to_string().contains("TIFF:EXIF:Make"));
+        let error = collect_tiff(&[MetadataEdit::delete("JPEG:Comment")], FileFormat::Tiff)
+            .expect_err("cross-format TIFF deletion must remain unsupported");
+        assert!(error.to_string().contains("JPEG:Comment"));
     }
 
     #[test]
