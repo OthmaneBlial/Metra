@@ -48,7 +48,7 @@ expansion and nesting limits before being enabled.
 
 ## Current rewrite safety
 
-Only JPEG comment, bounded APP1 XMP, and known IPTC-IIM datasets in Photoshop
+Only JPEG comment, existing APP1 EXIF ASCII slots, bounded APP1 XMP, and known IPTC-IIM datasets in Photoshop
 APP13 resources, PNG `tEXt` and uncompressed `iTXt` XMP, GIF comments, WebP XMP, SVG
 title/description/comments, WAV `LIST/INFO`, FLAC Vorbis Comment, Ogg Vorbis/Opus/Ogg-FLAC
 comment packet rewrites, common
@@ -61,6 +61,9 @@ validate the dataset allowlist, NUL-free values, resource sizes, and APP13
 segment limits; unrelated Photoshop resources are preserved. SVG replacement
 values are XML-escaped, and comment writes reject `--` and a trailing `-` so
 the resulting document remains valid XML.
+JPEG EXIF ASCII writes validate the existing TIFF entry, type, count, offset,
+capacity, and patch range; they never create a missing field or resize the APP1
+segment, and the result is re-read before atomic replacement.
 Ogg rewrites retain page boundaries, recalculate CRCs, preserve opaque packet
 bytes, and refuse packet growth unless the existing bounded packet can hold it.
 ID3v2

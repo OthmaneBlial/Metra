@@ -4,6 +4,8 @@
 
 Initial read-first foundation with narrow validated rewrites:
 
+- added bounded JPEG APP1 EXIF ASCII rewrites and source-to-source copies for
+  existing fields, preserving segment size and validating the rewritten JPEG;
 - added the public typed metadata model and versioned JSON schema;
 - added signature-based detection for JPEG, TIFF, PNG, WebP, PDF, and GIF;
 - added defensive JPEG, TIFF/EXIF, PNG, and WebP readers;

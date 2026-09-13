@@ -143,7 +143,8 @@ out-of-range required read.
 ## Rewrite boundary
 
 The current writer surface is deliberately limited to existing TIFF/BigTIFF
-ASCII value slots, existing ISO-BMFF QuickTime text item values, JPEG COM segments, APP1
+ASCII value slots, existing ISO-BMFF QuickTime text item values, existing JPEG APP1
+EXIF ASCII value slots, JPEG COM segments, APP1
 XMP packets, and known IPTC-IIM datasets inside Photoshop APP13 resources, PNG
 `tEXt` chunks and uncompressed `iTXt` XMP chunks, GIF comment extensions, WebP `XMP ` chunks,
 SVG title/description/comment nodes, WAV `LIST/INFO` fields, FLAC Vorbis
@@ -154,7 +155,9 @@ available. Ogg-FLAC comment blocks, whether embedded in the mapping packet or in
 subsequent metadata packet, use the native metadata-block header and the same
 lossless packet-size rule. New packet/page creation remains planned. TIFF ASCII
 values can be copied from a validated TIFF-like source into an existing target
-slot when the target field has enough storage. The WebP and
+slot when the target field has enough storage. JPEG EXIF ASCII rewrites use the
+existing TIFF entry type/count/offset, require a replacement that fits the
+original slot, and preserve the APP1 segment size. The WebP and
 PNG writers validate replacement packets with the bounded XMP parser. The
 JPEG IPTC writer validates dataset names and lengths, rewrites only the target
 dataset in the `0x0404` resource, preserves unrelated Photoshop resources, and
@@ -170,7 +173,7 @@ with replace and write-through flags. The public facade also exposes determinist
 backpressure-bounded `read_many_streaming` helpers, plus cancellation-aware
 variants; the CLI uses these same batch APIs before rendering. The CLI exposes
 `--set`/`--delete`/`--copy` for
-`JPEG:Comment`, `IPTC:<dataset>`, `PNG:XMP`, `PNG:Text:<keyword>`, `SVG:Title`/`Description`/`Comment`, `WAV:<INFO field>`,
+`JPEG:Comment`, `JPEG:EXIF:<ASCII tag>`, `IPTC:<dataset>`, `PNG:XMP`, `PNG:Text:<keyword>`, `SVG:Title`/`Description`/`Comment`, `WAV:<INFO field>`,
 `FLAC:<Vorbis field>`, `ID3:<text field>`, `ISOBMFF:<text field>`, `GIF:Comment`, `WebP:XMP`, and
 existing `TIFF:EXIF:<ASCII tag>` values; generic
 tag mutation and other format writers remain deferred until their round-trip
