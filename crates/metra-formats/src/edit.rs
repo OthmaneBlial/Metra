@@ -54,6 +54,9 @@ pub fn rewrite_metadata_path(
     match format {
         FileFormat::Jpeg => crate::rewrite_jpeg_path(path, limits, &collect_jpeg(edits, format)?),
         FileFormat::Tiff => crate::rewrite_tiff_path(path, limits, &collect_tiff(edits, format)?),
+        FileFormat::Raw => {
+            crate::rewrite_raw_tiff_path(path, limits, &collect_tiff(edits, format)?)
+        }
         FileFormat::Png => crate::rewrite_png_path(path, limits, &collect_png(edits, format)?),
         FileFormat::Webp => crate::rewrite_webp_path(path, limits, &collect_webp(edits, format)?),
         FileFormat::Heif
@@ -107,6 +110,12 @@ pub fn rewrite_metadata_to_vec(
         FileFormat::Tiff => {
             crate::rewrite_tiff_to_vec(bytes, file_info, limits, &collect_tiff(edits, detected)?)
         }
+        FileFormat::Raw => crate::rewrite_raw_tiff_to_vec(
+            bytes,
+            file_info,
+            limits,
+            &collect_tiff(edits, detected)?,
+        ),
         FileFormat::Png => {
             crate::rewrite_png_to_vec(bytes, file_info, limits, &collect_png(edits, detected)?)
         }

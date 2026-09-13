@@ -93,6 +93,40 @@ fn minimal_webm_with_title(title: &str) -> Vec<u8> {
     [ebml_header, tags].concat()
 }
 
+fn minimal_dng_with_make(make: &str) -> Vec<u8> {
+    let mut bytes = vec![
+        b'I',
+        b'I',
+        42,
+        0,
+        8,
+        0,
+        0,
+        0,
+        1,
+        0, // one IFD0 entry
+        0x0F,
+        0x01,
+        2,
+        0,
+        (make.len() as u16).to_le_bytes()[0],
+        (make.len() as u16).to_le_bytes()[1],
+        0,
+        0,
+        26,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0, // no next IFD
+    ];
+    assert_eq!(bytes.len(), 26);
+    bytes.extend_from_slice(make.as_bytes());
+    bytes
+}
+
 #[test]
 fn public_reader_api_detects_and_dispatches_in_memory_tiff() {
     let bytes = b"II*\0\0\0\0\0";
@@ -295,6 +329,34 @@ fn public_generic_edit_api_rewrites_and_revalidates_matroska_tag() {
         metadata.find("Matroska:Tag:TITLE").unwrap().display_value(),
         "new"
     );
+}
+
+#[test]
+fn public_generic_edit_api_rewrites_and_revalidates_tiff_like_raw() {
+    let bytes = minimal_dng_with_make("Canon\0");
+    let output = metra::rewrite_metadata_to_vec(
+        &bytes,
+        metra::FileInfo::new(
+            "memory.dng".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::set("TIFF:EXIF:Make", "Sony")],
+    )
+    .expect("generic TIFF-like RAW edit should validate its rewritten bytes");
+
+    let metadata = metra::read_from(
+        &mut std::io::Cursor::new(output),
+        metra::FileInfo::new(
+            "memory.dng".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+    )
+    .expect("rewritten DNG should remain readable");
+    assert_eq!(metadata.find("EXIF:Make").unwrap().display_value(), "Sony");
+    assert_eq!(metadata.find("RAW:Variant").unwrap().display_value(), "DNG");
 }
 
 #[test]
