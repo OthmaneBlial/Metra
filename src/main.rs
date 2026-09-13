@@ -24,6 +24,10 @@ struct Arguments {
     #[arg(long, conflicts_with = "json")]
     jsonl: bool,
 
+    /// Emit one CSV row per tag.
+    #[arg(long, conflicts_with_all = ["json", "jsonl"])]
+    csv: bool,
+
     /// Traverse directories recursively in deterministic path order.
     #[arg(short = 'r', long)]
     recursive: bool,
@@ -50,7 +54,9 @@ fn main() -> ExitCode {
     let results = inspect_paths(&paths, arguments.jobs);
 
     let failures = results.iter().filter(|(_, result)| result.is_err()).count();
-    if arguments.json || arguments.jsonl {
+    if arguments.csv {
+        emit_csv(&results);
+    } else if arguments.json || arguments.jsonl {
         emit_json(&results, arguments.jsonl);
     } else {
         for (_, result) in &results {
@@ -207,6 +213,49 @@ fn emit_json(results: &[(PathBuf, metra::Result<Metadata>)], jsonl: bool) {
             eprintln!("metra: {}: {error}", path.display());
         }
     }
+}
+
+fn emit_csv(results: &[(PathBuf, metra::Result<Metadata>)]) {
+    println!("path,format,namespace,group,id,name,value_type,value");
+    for (path, result) in results {
+        let Ok(metadata) = result else {
+            if let Err(error) = result {
+                eprintln!("metra: {}: {error}", path.display());
+            }
+            continue;
+        };
+        if metadata.tags.is_empty() {
+            println!(
+                "{},{},,,,,,",
+                csv_field(&path.display().to_string()),
+                csv_field(&metadata.file_info.format.to_string())
+            );
+            continue;
+        }
+        for tag in &metadata.tags {
+            let id = tag
+                .id
+                .map(|value| format!("0x{value:08X}"))
+                .unwrap_or_default();
+            let value = serde_json::to_string(&tag.value)
+                .unwrap_or_else(|_| format!("\"{}\"", tag.display_value()));
+            println!(
+                "{},{},{},{},{},{},{},{}",
+                csv_field(&path.display().to_string()),
+                csv_field(&metadata.file_info.format.to_string()),
+                csv_field(&tag.namespace),
+                csv_field(&tag.group),
+                csv_field(&id),
+                csv_field(&tag.name),
+                csv_field(&format!("{:?}", tag.value_type)),
+                csv_field(&value)
+            );
+        }
+    }
+}
+
+fn csv_field(value: &str) -> String {
+    format!("\"{}\"", value.replace('"', "\"\""))
 }
 
 fn print_human(metadata: &Metadata) {

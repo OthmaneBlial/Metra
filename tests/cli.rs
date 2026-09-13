@@ -147,3 +147,24 @@ fn jobs_keep_batch_output_in_path_order() {
     );
     assert!(lines.next().is_none());
 }
+
+#[test]
+fn csv_output_contains_typed_tag_rows() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.file("camera.csv.jpg", &minimal_exif_jpeg());
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args(["--csv", path.to_str().expect("UTF-8 test path")])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("CSV output should be UTF-8");
+    assert!(
+        stdout
+            .lines()
+            .next()
+            .is_some_and(|line| { line == "path,format,namespace,group,id,name,value_type,value" })
+    );
+    assert!(stdout.contains("\"EXIF\""));
+    assert!(stdout.contains("\"Make\""));
+    assert!(stdout.contains("\"String\""));
+}
