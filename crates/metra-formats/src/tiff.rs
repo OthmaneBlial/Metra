@@ -311,6 +311,126 @@ fn tag_definition(namespace: &str, id: u16) -> TagDefinition {
             name: "LensSerialNumber",
             description: "Lens serial number",
         },
+        ("EXIF", 0xC612) => TagDefinition {
+            namespace: "DNG",
+            name: "DNGVersion",
+            description: "DNG specification version",
+        },
+        ("EXIF", 0xC613) => TagDefinition {
+            namespace: "DNG",
+            name: "DNGBackwardVersion",
+            description: "Oldest DNG version supported by the file",
+        },
+        ("EXIF", 0xC614) => TagDefinition {
+            namespace: "DNG",
+            name: "UniqueCameraModel",
+            description: "Unique camera model identifier",
+        },
+        ("EXIF", 0xC615) => TagDefinition {
+            namespace: "DNG",
+            name: "LocalizedCameraModel",
+            description: "Localized camera model name",
+        },
+        ("EXIF", 0xC616) => TagDefinition {
+            namespace: "DNG",
+            name: "CFAPlaneColor",
+            description: "CFA plane color order",
+        },
+        ("EXIF", 0xC617) => TagDefinition {
+            namespace: "DNG",
+            name: "CFALayout",
+            description: "CFA layout pattern",
+        },
+        ("EXIF", 0xC618) => TagDefinition {
+            namespace: "DNG",
+            name: "LinearizationTable",
+            description: "Sensor linearization table",
+        },
+        ("EXIF", 0xC619) => TagDefinition {
+            namespace: "DNG",
+            name: "BlackLevelRepeatDim",
+            description: "Black-level repeat dimensions",
+        },
+        ("EXIF", 0xC61A) => TagDefinition {
+            namespace: "DNG",
+            name: "BlackLevel",
+            description: "Sensor black level",
+        },
+        ("EXIF", 0xC61D) => TagDefinition {
+            namespace: "DNG",
+            name: "WhiteLevel",
+            description: "Sensor white level",
+        },
+        ("EXIF", 0xC61E) => TagDefinition {
+            namespace: "DNG",
+            name: "DefaultScale",
+            description: "Default pixel scale",
+        },
+        ("EXIF", 0xC61F) => TagDefinition {
+            namespace: "DNG",
+            name: "DefaultCropOrigin",
+            description: "Default crop origin",
+        },
+        ("EXIF", 0xC620) => TagDefinition {
+            namespace: "DNG",
+            name: "DefaultCropSize",
+            description: "Default crop size",
+        },
+        ("EXIF", 0xC621) => TagDefinition {
+            namespace: "DNG",
+            name: "ColorMatrix1",
+            description: "First camera color matrix",
+        },
+        ("EXIF", 0xC622) => TagDefinition {
+            namespace: "DNG",
+            name: "ColorMatrix2",
+            description: "Second camera color matrix",
+        },
+        ("EXIF", 0xC628) => TagDefinition {
+            namespace: "DNG",
+            name: "AsShotNeutral",
+            description: "As-shot neutral values",
+        },
+        ("EXIF", 0xC629) => TagDefinition {
+            namespace: "DNG",
+            name: "AsShotWhiteXY",
+            description: "As-shot white point",
+        },
+        ("EXIF", 0xC62A) => TagDefinition {
+            namespace: "DNG",
+            name: "BaselineExposure",
+            description: "Baseline exposure adjustment",
+        },
+        ("EXIF", 0xC62F) => TagDefinition {
+            namespace: "DNG",
+            name: "CameraSerialNumber",
+            description: "Camera serial number",
+        },
+        ("EXIF", 0xC630) => TagDefinition {
+            namespace: "DNG",
+            name: "LensInfo",
+            description: "Lens focal length and aperture range",
+        },
+        ("EXIF", 0xC634) => TagDefinition {
+            namespace: "DNG",
+            name: "DNGPrivateData",
+            description: "Private DNG data block",
+        },
+        ("EXIF", 0xC635) => TagDefinition {
+            namespace: "DNG",
+            name: "MakerNoteSafety",
+            description: "MakerNote safety indicator",
+        },
+        ("EXIF", 0xC65A) => TagDefinition {
+            namespace: "DNG",
+            name: "CalibrationIlluminant1",
+            description: "First calibration illuminant",
+        },
+        ("EXIF", 0xC65B) => TagDefinition {
+            namespace: "DNG",
+            name: "CalibrationIlluminant2",
+            description: "Second calibration illuminant",
+        },
         ("GPS", 0x0000) => TagDefinition {
             namespace: "GPS",
             name: "GPSVersionID",
@@ -385,6 +505,7 @@ fn tag_definition(namespace: &str, id: u16) -> TagDefinition {
             namespace: match namespace {
                 "GPS" => "GPS",
                 "Interop" => "Interop",
+                "DNG" => "DNG",
                 _ => "EXIF",
             },
             name: "Unknown",
@@ -1365,6 +1486,14 @@ mod tests {
         bytes
     }
 
+    fn dng_tiff() -> Vec<u8> {
+        vec![
+            b'I', b'I', 42, 0, 8, 0, 0, 0, 1, 0, // one IFD0 entry
+            0x12, 0xC6, 1, 0, 4, 0, 0, 0, 1, 4, 0, 0, // DNGVersion = 1.4.0.0
+            0, 0, 0, 0, // no next IFD
+        ]
+    }
+
     #[test]
     fn parses_nested_ifd_and_typed_values() {
         let bytes = little_endian_tiff();
@@ -1427,6 +1556,27 @@ mod tests {
         assert_eq!(
             metadata.find("EXIF:ImageWidth").unwrap().value,
             TagValue::Unsigned(640)
+        );
+    }
+
+    #[test]
+    fn resolves_common_dng_tag_namespace_and_identifier() {
+        let bytes = dng_tiff();
+        let info = FileInfo::new("capture.dng".into(), bytes.len() as u64, FileFormat::Tiff);
+        let metadata = read_tiff(&mut Cursor::new(bytes), info, ParseLimits::default())
+            .expect("DNG TIFF should parse");
+        let version = metadata
+            .find("DNG:DNGVersion")
+            .expect("DNGVersion should be catalogued");
+        assert_eq!(version.id, Some(0xC612));
+        assert_eq!(
+            version.value,
+            TagValue::Array(vec![
+                TagValue::Unsigned(1),
+                TagValue::Unsigned(4),
+                TagValue::Unsigned(0),
+                TagValue::Unsigned(0),
+            ])
         );
     }
 

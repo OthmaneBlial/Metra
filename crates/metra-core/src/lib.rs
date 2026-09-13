@@ -481,6 +481,150 @@ const TAG_DEFINITIONS: &[TagDefinition] = &[
         description: "IPTC writer or editor",
     },
     TagDefinition {
+        namespace: "DNG",
+        id: 0xC612,
+        name: "DNGVersion",
+        description: "DNG specification version",
+    },
+    TagDefinition {
+        namespace: "DNG",
+        id: 0xC613,
+        name: "DNGBackwardVersion",
+        description: "Oldest DNG version supported by the file",
+    },
+    TagDefinition {
+        namespace: "DNG",
+        id: 0xC614,
+        name: "UniqueCameraModel",
+        description: "Unique camera model identifier",
+    },
+    TagDefinition {
+        namespace: "DNG",
+        id: 0xC615,
+        name: "LocalizedCameraModel",
+        description: "Localized camera model name",
+    },
+    TagDefinition {
+        namespace: "DNG",
+        id: 0xC616,
+        name: "CFAPlaneColor",
+        description: "CFA plane color order",
+    },
+    TagDefinition {
+        namespace: "DNG",
+        id: 0xC617,
+        name: "CFALayout",
+        description: "CFA layout pattern",
+    },
+    TagDefinition {
+        namespace: "DNG",
+        id: 0xC618,
+        name: "LinearizationTable",
+        description: "Sensor linearization table",
+    },
+    TagDefinition {
+        namespace: "DNG",
+        id: 0xC619,
+        name: "BlackLevelRepeatDim",
+        description: "Black-level repeat dimensions",
+    },
+    TagDefinition {
+        namespace: "DNG",
+        id: 0xC61A,
+        name: "BlackLevel",
+        description: "Sensor black level",
+    },
+    TagDefinition {
+        namespace: "DNG",
+        id: 0xC61D,
+        name: "WhiteLevel",
+        description: "Sensor white level",
+    },
+    TagDefinition {
+        namespace: "DNG",
+        id: 0xC61E,
+        name: "DefaultScale",
+        description: "Default pixel scale",
+    },
+    TagDefinition {
+        namespace: "DNG",
+        id: 0xC61F,
+        name: "DefaultCropOrigin",
+        description: "Default crop origin",
+    },
+    TagDefinition {
+        namespace: "DNG",
+        id: 0xC620,
+        name: "DefaultCropSize",
+        description: "Default crop size",
+    },
+    TagDefinition {
+        namespace: "DNG",
+        id: 0xC621,
+        name: "ColorMatrix1",
+        description: "First camera color matrix",
+    },
+    TagDefinition {
+        namespace: "DNG",
+        id: 0xC622,
+        name: "ColorMatrix2",
+        description: "Second camera color matrix",
+    },
+    TagDefinition {
+        namespace: "DNG",
+        id: 0xC628,
+        name: "AsShotNeutral",
+        description: "As-shot neutral values",
+    },
+    TagDefinition {
+        namespace: "DNG",
+        id: 0xC629,
+        name: "AsShotWhiteXY",
+        description: "As-shot white point",
+    },
+    TagDefinition {
+        namespace: "DNG",
+        id: 0xC62A,
+        name: "BaselineExposure",
+        description: "Baseline exposure adjustment",
+    },
+    TagDefinition {
+        namespace: "DNG",
+        id: 0xC62F,
+        name: "CameraSerialNumber",
+        description: "Camera serial number",
+    },
+    TagDefinition {
+        namespace: "DNG",
+        id: 0xC630,
+        name: "LensInfo",
+        description: "Lens focal length and aperture range",
+    },
+    TagDefinition {
+        namespace: "DNG",
+        id: 0xC634,
+        name: "DNGPrivateData",
+        description: "Private DNG data block",
+    },
+    TagDefinition {
+        namespace: "DNG",
+        id: 0xC635,
+        name: "MakerNoteSafety",
+        description: "MakerNote safety indicator",
+    },
+    TagDefinition {
+        namespace: "DNG",
+        id: 0xC65A,
+        name: "CalibrationIlluminant1",
+        description: "First calibration illuminant",
+    },
+    TagDefinition {
+        namespace: "DNG",
+        id: 0xC65B,
+        name: "CalibrationIlluminant2",
+        description: "Second calibration illuminant",
+    },
+    TagDefinition {
         namespace: "ICC",
         id: 0x6465_7363,
         name: "Description",
@@ -704,6 +848,7 @@ pub fn tag_definition(namespace: &str, id: u32) -> TagDefinition {
                 "IPTC" => "IPTC",
                 "ICC" => "ICC",
                 "MakerNotes" => "MakerNotes",
+                "DNG" => "DNG",
                 _ => "EXIF",
             },
             id,
@@ -1438,6 +1583,7 @@ mod tests {
         assert_eq!(tag_definition("EXIF", 0x829A).name, "ExposureTime");
         assert_eq!(tag_definition("EXIF", 0xA434).name, "LensModel");
         assert_eq!(tag_definition("MakerNotes", 0x0002).name, "Nikon:ISO");
+        assert_eq!(tag_definition("DNG", 0xC612).name, "DNGVersion");
 
         let tag = Tag {
             namespace: "EXIF".to_owned(),
