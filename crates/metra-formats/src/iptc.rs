@@ -204,6 +204,7 @@ fn parse_iptc_iim(
             let value = String::from_utf8_lossy(&bytes[cursor..end]).into_owned();
             add_iptc_tag(
                 metadata,
+                u32::from(dataset),
                 name,
                 value,
                 &bytes[cursor..end],
@@ -246,7 +247,14 @@ fn dataset_name(record: u8, dataset: u8) -> Option<&'static str> {
     })
 }
 
-fn add_iptc_tag(metadata: &mut Metadata, name: &str, value: String, raw_value: &[u8], offset: u64) {
+fn add_iptc_tag(
+    metadata: &mut Metadata,
+    id: u32,
+    name: &str,
+    value: String,
+    raw_value: &[u8],
+    offset: u64,
+) {
     if let Some(existing) = metadata
         .tags
         .iter_mut()
@@ -267,7 +275,7 @@ fn add_iptc_tag(metadata: &mut Metadata, name: &str, value: String, raw_value: &
     metadata.add_tag(Tag {
         namespace: "IPTC".to_owned(),
         group: "IIM".to_owned(),
-        id: None,
+        id: Some(id),
         name: name.to_owned(),
         description: Some("IPTC-IIM dataset".to_owned()),
         raw_value: Some(raw_value.to_vec()),
@@ -319,5 +327,6 @@ mod tests {
             metadata.find("IPTC:Keywords").unwrap().value,
             TagValue::Array(_)
         ));
+        assert_eq!(metadata.find("IPTC:Keywords").unwrap().id, Some(25));
     }
 }
