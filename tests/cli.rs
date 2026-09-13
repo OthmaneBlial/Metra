@@ -393,6 +393,31 @@ fn validate_returns_failure_for_recoverable_warnings() {
 }
 
 #[test]
+fn cli_limits_are_applied_to_metadata_reads() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.file("bounded.jpg", &minimal_exif_jpeg());
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--validate",
+            "--max-value-bytes",
+            "4",
+            "--json",
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(!output.status.success());
+    let document: Value = serde_json::from_slice(&output.stdout).expect("JSON output should parse");
+    assert!(
+        document["warnings"]
+            .as_array()
+            .expect("warnings should be an array")
+            .iter()
+            .any(|warning| warning["code"] == "value-limit")
+    );
+}
+
+#[test]
 fn compare_reports_value_changes_and_success_for_equal_metadata() {
     let directory = TemporaryDirectory::new();
     let reference = directory.file("reference.png", &minimal_png("reference"));

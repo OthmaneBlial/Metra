@@ -93,6 +93,14 @@ struct Arguments {
     #[arg(long, default_value_t = 1, value_parser = parse_jobs)]
     jobs: usize,
 
+    /// Maximum total metadata bytes materialized per file.
+    #[arg(long, value_parser = parse_positive_usize)]
+    max_metadata_bytes: Option<usize>,
+
+    /// Maximum bytes materialized for one metadata value.
+    #[arg(long, value_parser = parse_positive_usize)]
+    max_value_bytes: Option<usize>,
+
     /// Files to inspect.
     #[arg(value_name = "FILE", required = true)]
     files: Vec<PathBuf>,
@@ -100,6 +108,7 @@ struct Arguments {
 
 fn main() -> ExitCode {
     let arguments = Arguments::parse();
+    let limits = parse_limits(arguments.max_metadata_bytes, arguments.max_value_bytes);
     let paths = match collect_paths(&arguments.files, arguments.recursive) {
         Ok(paths) => paths,
         Err(message) => {
@@ -120,14 +129,14 @@ fn main() -> ExitCode {
         }
     };
     if let Some(reference) = arguments.compare.as_deref() {
-        return compare_paths(&paths, reference);
+        return compare_paths(&paths, reference, limits);
     }
     if let Some(request) = request {
-        return apply_request(&paths, request);
+        return apply_request(&paths, request, limits);
     }
 
     let failures = if arguments.json || arguments.toml || arguments.yaml {
-        let results = inspect_paths(&paths, arguments.jobs);
+        let results = inspect_paths(&paths, arguments.jobs, limits);
         let failures = results
             .iter()
             .filter(|(_, result)| result_is_failure(result, arguments.validate))
@@ -148,6 +157,7 @@ fn main() -> ExitCode {
             &paths,
             arguments.jobs,
             arguments.validate,
+            limits,
             |path, result| {
                 if arguments.csv {
                     emit_csv_record(&path, &result);
@@ -169,8 +179,8 @@ fn main() -> ExitCode {
     }
 }
 
-fn compare_paths(paths: &[PathBuf], reference: &Path) -> ExitCode {
-    let baseline = match metra::read(reference) {
+fn compare_paths(paths: &[PathBuf], reference: &Path, limits: ParseLimits) -> ExitCode {
+    let baseline = match metra::read_with_limits(reference, limits) {
         Ok(metadata) => metadata,
         Err(error) => {
             eprintln!("metra: {}: {error}", reference.display());
@@ -179,7 +189,7 @@ fn compare_paths(paths: &[PathBuf], reference: &Path) -> ExitCode {
     };
     let mut failures = 0_usize;
     for path in paths {
-        match metra::read(path) {
+        match metra::read_with_limits(path, limits) {
             Ok(metadata) => {
                 let diff = baseline.diff(&metadata);
                 print_diff(path, reference, &diff);
@@ -618,26 +628,26 @@ fn wav_info_name(key: &str) -> Option<&str> {
     .then_some(name)
 }
 
-fn apply_request(paths: &[PathBuf], request: EditRequest) -> ExitCode {
+fn apply_request(paths: &[PathBuf], request: EditRequest, limits: ParseLimits) -> ExitCode {
     match request {
-        EditRequest::DirectJpeg(edits) => apply_jpeg_edits(paths, &edits),
-        EditRequest::DirectPng(edits) => apply_png_edits(paths, &edits),
-        EditRequest::DirectWav(edits) => apply_wav_edits(paths, &edits),
-        EditRequest::DirectFlac(edits) => apply_flac_edits(paths, &edits),
-        EditRequest::DirectMp3(edits) => apply_mp3_edits(paths, &edits),
-        EditRequest::DirectGif(edits) => apply_gif_edits(paths, &edits),
-        EditRequest::DirectWebp(edits) => apply_webp_edits(paths, &edits),
-        EditRequest::DirectSvg(edits) => apply_svg_edits(paths, &edits),
-        EditRequest::Copy { key, source } => apply_copy(paths, key, &source),
+        EditRequest::DirectJpeg(edits) => apply_jpeg_edits(paths, &edits, limits),
+        EditRequest::DirectPng(edits) => apply_png_edits(paths, &edits, limits),
+        EditRequest::DirectWav(edits) => apply_wav_edits(paths, &edits, limits),
+        EditRequest::DirectFlac(edits) => apply_flac_edits(paths, &edits, limits),
+        EditRequest::DirectMp3(edits) => apply_mp3_edits(paths, &edits, limits),
+        EditRequest::DirectGif(edits) => apply_gif_edits(paths, &edits, limits),
+        EditRequest::DirectWebp(edits) => apply_webp_edits(paths, &edits, limits),
+        EditRequest::DirectSvg(edits) => apply_svg_edits(paths, &edits, limits),
+        EditRequest::Copy { key, source } => apply_copy(paths, key, &source, limits),
     }
 }
 
-fn apply_jpeg_edits(paths: &[PathBuf], edits: &[metra::JpegEdit]) -> ExitCode {
+fn apply_jpeg_edits(paths: &[PathBuf], edits: &[metra::JpegEdit], limits: ParseLimits) -> ExitCode {
     let mut failures = 0_usize;
     for path in paths {
-        match metra::read(path) {
+        match metra::read_with_limits(path, limits) {
             Ok(metadata) if metadata.file_info.format == metra::FileFormat::Jpeg => {
-                if let Err(error) = metra::rewrite_jpeg_path(path, ParseLimits::default(), edits) {
+                if let Err(error) = metra::rewrite_jpeg_path(path, limits, edits) {
                     eprintln!("metra: {}: {error}", path.display());
                     failures += 1;
                 } else {
@@ -665,12 +675,12 @@ fn apply_jpeg_edits(paths: &[PathBuf], edits: &[metra::JpegEdit]) -> ExitCode {
     }
 }
 
-fn apply_png_edits(paths: &[PathBuf], edits: &[metra::PngEdit]) -> ExitCode {
+fn apply_png_edits(paths: &[PathBuf], edits: &[metra::PngEdit], limits: ParseLimits) -> ExitCode {
     let mut failures = 0_usize;
     for path in paths {
-        match metra::read(path) {
+        match metra::read_with_limits(path, limits) {
             Ok(metadata) if metadata.file_info.format == metra::FileFormat::Png => {
-                if let Err(error) = metra::rewrite_png_path(path, ParseLimits::default(), edits) {
+                if let Err(error) = metra::rewrite_png_path(path, limits, edits) {
                     eprintln!("metra: {}: {error}", path.display());
                     failures += 1;
                 } else {
@@ -698,12 +708,12 @@ fn apply_png_edits(paths: &[PathBuf], edits: &[metra::PngEdit]) -> ExitCode {
     }
 }
 
-fn apply_svg_edits(paths: &[PathBuf], edits: &[metra::SvgEdit]) -> ExitCode {
+fn apply_svg_edits(paths: &[PathBuf], edits: &[metra::SvgEdit], limits: ParseLimits) -> ExitCode {
     let mut failures = 0_usize;
     for path in paths {
-        match metra::read(path) {
+        match metra::read_with_limits(path, limits) {
             Ok(metadata) if metadata.file_info.format == metra::FileFormat::Svg => {
-                if let Err(error) = metra::rewrite_svg_path(path, ParseLimits::default(), edits) {
+                if let Err(error) = metra::rewrite_svg_path(path, limits, edits) {
                     eprintln!("metra: {}: {error}", path.display());
                     failures += 1;
                 } else {
@@ -731,8 +741,8 @@ fn apply_svg_edits(paths: &[PathBuf], edits: &[metra::SvgEdit]) -> ExitCode {
     }
 }
 
-fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path) -> ExitCode {
-    let source_metadata = match metra::read(source) {
+fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path, limits: ParseLimits) -> ExitCode {
+    let source_metadata = match metra::read_with_limits(source, limits) {
         Ok(metadata) => metadata,
         Err(error) => {
             eprintln!("metra: {}: {error}", source.display());
@@ -761,7 +771,7 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path) -> ExitCode {
                 return ExitCode::from(1);
             };
             let edits = [metra::JpegEdit::SetComment(comment.clone())];
-            apply_jpeg_edits(paths, &edits)
+            apply_jpeg_edits(paths, &edits, limits)
         }
         CopyKey::JpegXmp => {
             if source_metadata.file_info.format != metra::FileFormat::Jpeg {
@@ -788,7 +798,7 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path) -> ExitCode {
                 return ExitCode::from(1);
             };
             let edits = [metra::JpegEdit::SetXmp(packet)];
-            apply_jpeg_edits(paths, &edits)
+            apply_jpeg_edits(paths, &edits, limits)
         }
         CopyKey::JpegIptc(name) => {
             if source_metadata.file_info.format != metra::FileFormat::Jpeg {
@@ -815,7 +825,7 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path) -> ExitCode {
                 name,
                 value: value.clone(),
             }];
-            apply_jpeg_edits(paths, &edits)
+            apply_jpeg_edits(paths, &edits, limits)
         }
         CopyKey::PngText(keyword) => {
             if source_metadata.file_info.format != metra::FileFormat::Png {
@@ -839,7 +849,7 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path) -> ExitCode {
                 keyword,
                 value: text.clone(),
             }];
-            apply_png_edits(paths, &edits)
+            apply_png_edits(paths, &edits, limits)
         }
         CopyKey::PngXmp => {
             if source_metadata.file_info.format != metra::FileFormat::Png {
@@ -866,7 +876,7 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path) -> ExitCode {
                 return ExitCode::from(1);
             };
             let edits = [metra::PngEdit::SetXmp(packet)];
-            apply_png_edits(paths, &edits)
+            apply_png_edits(paths, &edits, limits)
         }
         CopyKey::SvgText(kind) => {
             if source_metadata.file_info.format != metra::FileFormat::Svg {
@@ -895,7 +905,7 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path) -> ExitCode {
                 SvgTextKey::Description => metra::SvgEdit::SetDescription(text.clone()),
                 SvgTextKey::Comment => metra::SvgEdit::SetComment(text.clone()),
             };
-            apply_svg_edits(paths, &[edit])
+            apply_svg_edits(paths, &[edit], limits)
         }
         CopyKey::WavInfo(name) => {
             if source_metadata.file_info.format != metra::FileFormat::Wav {
@@ -919,7 +929,7 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path) -> ExitCode {
                 name,
                 value: text.clone(),
             }];
-            apply_wav_edits(paths, &edits)
+            apply_wav_edits(paths, &edits, limits)
         }
         CopyKey::FlacComment(name) => {
             if source_metadata.file_info.format != metra::FileFormat::Flac {
@@ -943,7 +953,7 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path) -> ExitCode {
                 key: name,
                 value: text.clone(),
             }];
-            apply_flac_edits(paths, &edits)
+            apply_flac_edits(paths, &edits, limits)
         }
         CopyKey::Mp3Comment => {
             if source_metadata.file_info.format != metra::FileFormat::Mp3 {
@@ -966,7 +976,7 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path) -> ExitCode {
                 return ExitCode::from(1);
             };
             let edits = [metra::Mp3Edit::SetComment(comment.clone())];
-            apply_mp3_edits(paths, &edits)
+            apply_mp3_edits(paths, &edits, limits)
         }
         CopyKey::Mp3Text(name) => {
             if source_metadata.file_info.format != metra::FileFormat::Mp3 {
@@ -990,7 +1000,7 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path) -> ExitCode {
                 name,
                 value: text.clone(),
             }];
-            apply_mp3_edits(paths, &edits)
+            apply_mp3_edits(paths, &edits, limits)
         }
         CopyKey::GifComment => {
             if source_metadata.file_info.format != metra::FileFormat::Gif {
@@ -1013,7 +1023,7 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path) -> ExitCode {
                 return ExitCode::from(1);
             };
             let edits = [metra::GifEdit::SetComment(comment.clone())];
-            apply_gif_edits(paths, &edits)
+            apply_gif_edits(paths, &edits, limits)
         }
         CopyKey::WebpXmp => {
             if source_metadata.file_info.format != metra::FileFormat::Webp {
@@ -1040,17 +1050,17 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path) -> ExitCode {
                 return ExitCode::from(1);
             };
             let edits = [metra::WebpEdit::SetXmp(packet)];
-            apply_webp_edits(paths, &edits)
+            apply_webp_edits(paths, &edits, limits)
         }
     }
 }
 
-fn apply_wav_edits(paths: &[PathBuf], edits: &[metra::WavEdit]) -> ExitCode {
+fn apply_wav_edits(paths: &[PathBuf], edits: &[metra::WavEdit], limits: ParseLimits) -> ExitCode {
     let mut failures = 0_usize;
     for path in paths {
-        match metra::read(path) {
+        match metra::read_with_limits(path, limits) {
             Ok(metadata) if metadata.file_info.format == metra::FileFormat::Wav => {
-                if let Err(error) = metra::rewrite_wav_path(path, ParseLimits::default(), edits) {
+                if let Err(error) = metra::rewrite_wav_path(path, limits, edits) {
                     eprintln!("metra: {}: {error}", path.display());
                     failures += 1;
                 } else {
@@ -1078,12 +1088,12 @@ fn apply_wav_edits(paths: &[PathBuf], edits: &[metra::WavEdit]) -> ExitCode {
     }
 }
 
-fn apply_flac_edits(paths: &[PathBuf], edits: &[metra::FlacEdit]) -> ExitCode {
+fn apply_flac_edits(paths: &[PathBuf], edits: &[metra::FlacEdit], limits: ParseLimits) -> ExitCode {
     let mut failures = 0_usize;
     for path in paths {
-        match metra::read(path) {
+        match metra::read_with_limits(path, limits) {
             Ok(metadata) if metadata.file_info.format == metra::FileFormat::Flac => {
-                if let Err(error) = metra::rewrite_flac_path(path, ParseLimits::default(), edits) {
+                if let Err(error) = metra::rewrite_flac_path(path, limits, edits) {
                     eprintln!("metra: {}: {error}", path.display());
                     failures += 1;
                 } else {
@@ -1111,12 +1121,12 @@ fn apply_flac_edits(paths: &[PathBuf], edits: &[metra::FlacEdit]) -> ExitCode {
     }
 }
 
-fn apply_mp3_edits(paths: &[PathBuf], edits: &[metra::Mp3Edit]) -> ExitCode {
+fn apply_mp3_edits(paths: &[PathBuf], edits: &[metra::Mp3Edit], limits: ParseLimits) -> ExitCode {
     let mut failures = 0_usize;
     for path in paths {
-        match metra::read(path) {
+        match metra::read_with_limits(path, limits) {
             Ok(metadata) if metadata.file_info.format == metra::FileFormat::Mp3 => {
-                if let Err(error) = metra::rewrite_mp3_path(path, ParseLimits::default(), edits) {
+                if let Err(error) = metra::rewrite_mp3_path(path, limits, edits) {
                     eprintln!("metra: {}: {error}", path.display());
                     failures += 1;
                 } else {
@@ -1152,12 +1162,12 @@ fn find_mp3_tag<'a>(metadata: &'a Metadata, key: &str) -> Option<&'a metra::Tag>
         .or_else(|| metadata.tags().iter().find(|tag| tag.key() == key))
 }
 
-fn apply_gif_edits(paths: &[PathBuf], edits: &[metra::GifEdit]) -> ExitCode {
+fn apply_gif_edits(paths: &[PathBuf], edits: &[metra::GifEdit], limits: ParseLimits) -> ExitCode {
     let mut failures = 0_usize;
     for path in paths {
-        match metra::read(path) {
+        match metra::read_with_limits(path, limits) {
             Ok(metadata) if metadata.file_info.format == metra::FileFormat::Gif => {
-                if let Err(error) = metra::rewrite_gif_path(path, ParseLimits::default(), edits) {
+                if let Err(error) = metra::rewrite_gif_path(path, limits, edits) {
                     eprintln!("metra: {}: {error}", path.display());
                     failures += 1;
                 } else {
@@ -1185,12 +1195,12 @@ fn apply_gif_edits(paths: &[PathBuf], edits: &[metra::GifEdit]) -> ExitCode {
     }
 }
 
-fn apply_webp_edits(paths: &[PathBuf], edits: &[metra::WebpEdit]) -> ExitCode {
+fn apply_webp_edits(paths: &[PathBuf], edits: &[metra::WebpEdit], limits: ParseLimits) -> ExitCode {
     let mut failures = 0_usize;
     for path in paths {
-        match metra::read(path) {
+        match metra::read_with_limits(path, limits) {
             Ok(metadata) if metadata.file_info.format == metra::FileFormat::Webp => {
-                if let Err(error) = metra::rewrite_webp_path(path, ParseLimits::default(), edits) {
+                if let Err(error) = metra::rewrite_webp_path(path, limits, edits) {
                     eprintln!("metra: {}: {error}", path.display());
                     failures += 1;
                 } else {
@@ -1229,16 +1239,37 @@ fn parse_jobs(value: &str) -> std::result::Result<usize, String> {
     }
 }
 
-fn inspect_paths(paths: &[PathBuf], jobs: usize) -> Vec<(PathBuf, metra::Result<Metadata>)> {
+fn parse_positive_usize(value: &str) -> std::result::Result<usize, String> {
+    let value = value
+        .parse::<usize>()
+        .map_err(|error| format!("invalid positive integer: {error}"))?;
+    if value == 0 {
+        Err("value must be at least 1".to_owned())
+    } else {
+        Ok(value)
+    }
+}
+
+fn parse_limits(max_metadata_bytes: Option<usize>, max_value_bytes: Option<usize>) -> ParseLimits {
+    let mut limits = ParseLimits::default();
+    if let Some(value) = max_metadata_bytes {
+        limits.max_metadata_bytes = value;
+    }
+    if let Some(value) = max_value_bytes {
+        limits.max_value_bytes = value;
+    }
+    limits
+}
+
+fn inspect_paths(
+    paths: &[PathBuf],
+    jobs: usize,
+    limits: ParseLimits,
+) -> Vec<(PathBuf, metra::Result<Metadata>)> {
     if jobs <= 1 || paths.len() <= 1 {
         return paths
             .iter()
-            .map(|path| {
-                (
-                    path.clone(),
-                    metra::read_with_limits(path, ParseLimits::default()),
-                )
-            })
+            .map(|path| (path.clone(), metra::read_with_limits(path, limits)))
             .collect();
     }
 
@@ -1261,7 +1292,7 @@ fn inspect_paths(paths: &[PathBuf], jobs: usize) -> Vec<(PathBuf, metra::Result<
                     let Some(path) = paths.get(index).cloned() else {
                         break;
                     };
-                    let result = metra::read_with_limits(&path, ParseLimits::default());
+                    let result = metra::read_with_limits(&path, limits);
                     if sender.send((index, path, result)).is_err() {
                         break;
                     }
@@ -1280,14 +1311,20 @@ fn inspect_paths(paths: &[PathBuf], jobs: usize) -> Vec<(PathBuf, metra::Result<
         .collect()
 }
 
-fn inspect_paths_streaming<F>(paths: &[PathBuf], jobs: usize, validate: bool, mut emit: F) -> usize
+fn inspect_paths_streaming<F>(
+    paths: &[PathBuf],
+    jobs: usize,
+    validate: bool,
+    limits: ParseLimits,
+    mut emit: F,
+) -> usize
 where
     F: FnMut(PathBuf, metra::Result<Metadata>),
 {
     if jobs <= 1 || paths.len() <= 1 {
         let mut failures = 0;
         for path in paths {
-            let result = metra::read_with_limits(path, ParseLimits::default());
+            let result = metra::read_with_limits(path, limits);
             if result_is_failure(&result, validate) {
                 failures += 1;
             }
@@ -1315,7 +1352,7 @@ where
                     let Some(path) = paths.get(index).cloned() else {
                         break;
                     };
-                    let result = metra::read_with_limits(&path, ParseLimits::default());
+                    let result = metra::read_with_limits(&path, limits);
                     if sender.send((index, path, result)).is_err() {
                         break;
                     }
