@@ -57,6 +57,8 @@ pub(crate) fn inspect_maker_note_with_make(
         parse_olympus_makernote(bytes, data_offset, metadata, limits);
     } else if identity.format == "Apple MakerNote" {
         parse_apple_makernote(bytes, data_offset, metadata, limits);
+    } else if identity.format == "Samsung STMN MakerNote" {
+        parse_samsung_stmn(bytes, data_offset, metadata, limits);
     }
 }
 
@@ -975,6 +977,113 @@ fn parse_apple_makernote(
     );
 }
 
+fn parse_samsung_stmn(
+    bytes: &[u8],
+    data_offset: u64,
+    metadata: &mut Metadata,
+    limits: ParseLimits,
+) {
+    if bytes.len() < 8 {
+        metadata.add_warning(
+            Warning::new(
+                "truncated-samsung-stmn",
+                "Samsung STMN MakerNote version field is truncated",
+            )
+            .at(data_offset),
+        );
+        return;
+    }
+
+    let version = bytes[..8].to_vec();
+    add_maker_value(
+        metadata,
+        MakerValueSpec {
+            group: "Samsung",
+            id: 0,
+            name: "Samsung:MakerNoteVersion",
+            description: "Samsung STMN MakerNote version bytes",
+            source: "EXIF/MakerNote/Samsung/STMN",
+            value: TagValue::Bytes(version.clone()),
+            raw_value: version,
+            data_offset,
+            value_offset: 0,
+        },
+    );
+
+    for (id, name, description, offset) in [
+        (
+            2,
+            "Samsung:PreviewImageStart",
+            "Samsung preview-image start offset",
+            12,
+        ),
+        (
+            3,
+            "Samsung:PreviewImageLength",
+            "Samsung preview-image byte length",
+            16,
+        ),
+    ] {
+        let Some(value) = read_u32(bytes, offset, Endian::Little) else {
+            metadata.add_warning(
+                Warning::new(
+                    "truncated-samsung-stmn",
+                    "Samsung STMN preview-image fields are truncated",
+                )
+                .at(data_offset.saturating_add(offset as u64)),
+            );
+            break;
+        };
+        let raw_value = bytes[offset..offset + 4].to_vec();
+        add_maker_value(
+            metadata,
+            MakerValueSpec {
+                group: "Samsung",
+                id,
+                name,
+                description,
+                source: "EXIF/MakerNote/Samsung/STMN",
+                value: TagValue::Unsigned(u64::from(value)),
+                raw_value,
+                data_offset,
+                value_offset: offset,
+            },
+        );
+    }
+
+    let Some(ifd_payload) = bytes.get(48..) else {
+        return;
+    };
+    if ifd_payload.len() < 4 || ifd_payload[0] == 0 || ifd_payload.get(1..4) != Some(&[0, 0, 0]) {
+        return;
+    }
+    let value_length = ifd_payload.len().min(limits.max_value_bytes);
+    if value_length < ifd_payload.len() {
+        metadata.add_warning(
+            Warning::new(
+                "samsung-stmn-value-limit",
+                "Samsung STMN nested IFD payload was truncated to the value budget",
+            )
+            .at(data_offset.saturating_add(48)),
+        );
+    }
+    let value = ifd_payload[..value_length].to_vec();
+    add_maker_value(
+        metadata,
+        MakerValueSpec {
+            group: "Samsung",
+            id: 11,
+            name: "Samsung:SamsungIFD",
+            description: "Samsung STMN nested IFD payload",
+            source: "EXIF/MakerNote/Samsung/STMN",
+            value: TagValue::Bytes(value.clone()),
+            raw_value: value,
+            data_offset,
+            value_offset: 48,
+        },
+    );
+}
+
 fn parse_vendor_little_ifd(
     bytes: &[u8],
     offset: usize,
@@ -1543,6 +1652,38 @@ fn add_tag(metadata: &mut Metadata, name: &str, value: &str, offset: u64, length
     });
 }
 
+struct MakerValueSpec {
+    group: &'static str,
+    id: u16,
+    name: &'static str,
+    description: &'static str,
+    source: &'static str,
+    value: TagValue,
+    raw_value: Vec<u8>,
+    data_offset: u64,
+    value_offset: usize,
+}
+
+fn add_maker_value(metadata: &mut Metadata, spec: MakerValueSpec) {
+    let value_length = spec.raw_value.len();
+    metadata.add_tag(Tag {
+        namespace: "MakerNotes".to_owned(),
+        group: spec.group.to_owned(),
+        id: Some(u32::from(spec.id)),
+        name: spec.name.to_owned(),
+        description: Some(spec.description.to_owned()),
+        raw_value: Some(spec.raw_value),
+        value_type: value_type(&spec.value),
+        value: spec.value,
+        source: Source::new(
+            spec.source,
+            Some(spec.data_offset.saturating_add(spec.value_offset as u64)),
+            Some(value_length as u64),
+        ),
+        writable: false,
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1642,6 +1783,59 @@ mod tests {
                 vendor: "GoPro",
                 format: "GoPro MakerNote",
             })
+        );
+    }
+
+    #[test]
+    fn reads_bounded_samsung_stmn_fields_without_materializing_preview_data() {
+        let mut maker_note = b"STMN001X\0\0\0\0".to_vec();
+        maker_note.extend_from_slice(&500_u32.to_le_bytes());
+        maker_note.extend_from_slice(&80_u32.to_le_bytes());
+        maker_note.resize(48, 0);
+        maker_note.extend_from_slice(&[1, 0, 0, 0, 0xAA, 0xBB, 0xCC]);
+
+        let mut metadata = Metadata::new(FileInfo::new(
+            "samsung.jpg".into(),
+            maker_note.len() as u64,
+            FileFormat::Jpeg,
+        ));
+        inspect_maker_note(&maker_note, 3_000, &mut metadata, ParseLimits::default());
+
+        assert_eq!(
+            metadata
+                .find("MakerNotes:Samsung:MakerNoteVersion")
+                .unwrap()
+                .value,
+            TagValue::Bytes(b"STMN001X".to_vec())
+        );
+        assert_eq!(
+            metadata
+                .find("MakerNotes:Samsung:PreviewImageStart")
+                .unwrap()
+                .value,
+            TagValue::Unsigned(500)
+        );
+        assert_eq!(
+            metadata
+                .find("MakerNotes:Samsung:PreviewImageLength")
+                .unwrap()
+                .value,
+            TagValue::Unsigned(80)
+        );
+        assert_eq!(
+            metadata
+                .find("MakerNotes:Samsung:SamsungIFD")
+                .unwrap()
+                .value,
+            TagValue::Bytes(vec![1, 0, 0, 0, 0xAA, 0xBB, 0xCC])
+        );
+        assert_eq!(
+            metadata
+                .find("MakerNotes:Samsung:SamsungIFD")
+                .unwrap()
+                .source
+                .offset,
+            Some(3_048)
         );
     }
 
