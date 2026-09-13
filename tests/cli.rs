@@ -922,6 +922,45 @@ fn cli_can_create_minimal_tiff_seed_without_overwrite() {
 }
 
 #[test]
+fn cli_can_create_minimal_png_seed_without_overwrite() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.path.join("created.png");
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--create-png",
+            "Comment=Metra",
+            "--create-png",
+            "Author=Othmane",
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let metadata = metra::read(&path).expect("created PNG should remain readable");
+    assert_eq!(metadata.file_info.format, metra::FileFormat::Png);
+    assert_eq!(
+        metadata.find("PNG:Text:Comment").unwrap().display_value(),
+        "Metra"
+    );
+    assert_eq!(
+        metadata.find("PNG:Text:Author").unwrap().display_value(),
+        "Othmane"
+    );
+
+    let second = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--create-png",
+            "Comment=Other",
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(!second.status.success());
+    assert!(String::from_utf8_lossy(&second.stderr).contains("refusing to overwrite"));
+}
+
+#[test]
 fn cli_can_edit_existing_tiff_ascii_in_place() {
     let directory = TemporaryDirectory::new();
     let path = directory.file("editable.tif", &minimal_raw_tiff());

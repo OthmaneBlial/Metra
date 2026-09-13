@@ -68,6 +68,7 @@ struct Arguments {
             "set",
             "delete",
             "copy",
+            "create_png",
             "json",
             "jsonl",
             "csv",
@@ -78,6 +79,27 @@ struct Arguments {
         ]
     )]
     create_tiff: Vec<String>,
+
+    /// Create a new minimal PNG with one or more tEXt metadata fields.
+    #[arg(
+        long = "create-png",
+        value_name = "KEY=VALUE",
+        action = clap::ArgAction::Append,
+        conflicts_with_all = [
+            "set",
+            "delete",
+            "copy",
+            "create_tiff",
+            "json",
+            "jsonl",
+            "csv",
+            "toml",
+            "yaml",
+            "validate",
+            "compare"
+        ]
+    )]
+    create_png: Vec<String>,
 
     /// Validate inputs and return a failure when any warning is produced.
     #[arg(long, conflicts_with_all = ["set", "delete", "copy"])]
@@ -138,6 +160,29 @@ fn main() -> ExitCode {
             }
         };
         return match metra::create_tiff_path(&arguments.files[0], &options, limits) {
+            Ok(()) => {
+                println!("created: {}", arguments.files[0].display());
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", arguments.files[0].display());
+                ExitCode::from(1)
+            }
+        };
+    }
+    if !arguments.create_png.is_empty() {
+        if arguments.files.len() != 1 {
+            eprintln!("metra: --create-png requires exactly one destination path");
+            return ExitCode::from(2);
+        }
+        let options = match parse_png_create(&arguments.create_png) {
+            Ok(options) => options,
+            Err(message) => {
+                eprintln!("metra: {message}");
+                return ExitCode::from(2);
+            }
+        };
+        return match metra::create_png_path(&arguments.files[0], &options, limits) {
             Ok(()) => {
                 println!("created: {}", arguments.files[0].display());
                 ExitCode::SUCCESS
@@ -238,6 +283,20 @@ fn parse_tiff_create(entries: &[String]) -> Result<metra::TiffCreateOptions, Str
             return Err("--create-tiff requires a non-empty KEY".to_owned());
         }
         options.push_ascii(key, value);
+    }
+    Ok(options)
+}
+
+fn parse_png_create(entries: &[String]) -> Result<metra::PngCreateOptions, String> {
+    let mut options = metra::PngCreateOptions::new();
+    for assignment in entries {
+        let (keyword, value) = assignment
+            .split_once('=')
+            .ok_or_else(|| "--create-png expects KEY=VALUE".to_owned())?;
+        if keyword.is_empty() {
+            return Err("--create-png requires a non-empty KEY".to_owned());
+        }
+        options.push_text(keyword, value);
     }
     Ok(options)
 }
