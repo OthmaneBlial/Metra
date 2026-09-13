@@ -21,6 +21,8 @@ Initial read-first foundation with narrow validated rewrites:
   audio-frame properties;
 - added FLAC STREAMINFO, Vorbis comments, embedded-picture inspection, and
   bounded metadata-block validation;
+- decoded bounded FLAC SEEKTABLE entries as typed seek-point structures while
+  retaining malformed-length and materialization-limit warnings;
 - added bounded Ogg Vorbis/Opus comment replacement, deletion, and copy with
   page CRC regeneration, same-packet-size preservation, output validation, and
   atomic replacement;
