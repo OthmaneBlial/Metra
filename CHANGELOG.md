@@ -17,6 +17,9 @@ Initial read-first foundation with narrow validated rewrites:
 - added a bounded PNG creation API that emits a validated 1x1 RGBA image with
   optional `tEXt` fields, plus a no-overwrite atomic path helper and CLI
   `--create-png KEY=VALUE` coverage;
+- added a bounded WAV creation API that emits a validated 1x1 PCM file with
+  optional `LIST/INFO` fields, plus a no-overwrite atomic path helper and CLI
+  `--create-wav KEY=VALUE` coverage;
 - added bounded CR3 ISO-BMFF text rewrites and zero-fill deletion through
   RAW-variant validation, including generic API, registry, atomic path, and CLI
   `--set`/`--delete`/`--copy`
