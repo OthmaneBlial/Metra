@@ -209,11 +209,6 @@ writer_adapter!(
     super::edit::collect_matroska
 );
 writer_adapter!(
-    write_raw_tiff,
-    super::raw_writer::rewrite_raw_tiff,
-    super::edit::collect_tiff
-);
-writer_adapter!(
     write_wav,
     super::wav_writer::rewrite_wav,
     super::edit::collect_wav
@@ -223,6 +218,26 @@ writer_adapter!(
     super::svg_writer::rewrite_svg,
     super::edit::collect_svg
 );
+
+fn write_raw(
+    mut reader: &mut dyn ReadSeek,
+    mut writer: &mut dyn WriteSeek,
+    file_info: FileInfo,
+    limits: ParseLimits,
+    edits: &[MetadataEdit],
+) -> Result<()> {
+    let metadata = super::raw::read_raw(&mut reader, file_info.clone(), limits)?;
+    let is_cr3 = metadata.find("RAW:Variant").is_some_and(
+        |tag| matches!(&tag.value, metra_core::TagValue::String(variant) if variant == "CR3"),
+    );
+    if is_cr3 {
+        let edits = super::edit::collect_isobmff(edits, file_info.format)?;
+        super::raw_cr3_writer::rewrite_raw_cr3(&mut reader, &mut writer, file_info, limits, &edits)
+    } else {
+        let edits = super::edit::collect_tiff(edits, file_info.format)?;
+        super::raw_writer::rewrite_raw_tiff(&mut reader, &mut writer, file_info, limits, &edits)
+    }
+}
 
 static FORMAT_HANDLERS: &[RegisteredFormatHandler] = &[
     RegisteredFormatHandler {
@@ -338,7 +353,7 @@ static FORMAT_HANDLERS: &[RegisteredFormatHandler] = &[
     RegisteredFormatHandler {
         format: FileFormat::Raw,
         reader: read_raw,
-        writer: Some(write_raw_tiff),
+        writer: Some(write_raw),
     },
 ];
 
@@ -609,6 +624,55 @@ mod tests {
         )
         .expect("registered RAW writer output should remain readable");
         assert_eq!(metadata.find("EXIF:Make").unwrap().display_value(), "Sony");
+    }
+
+    #[test]
+    fn registered_raw_writer_dispatches_cr3_isobmff_edits() {
+        fn box_with_kind(kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
+            let size = u32::try_from(data.len() + 8).expect("test box fits");
+            let mut bytes = size.to_be_bytes().to_vec();
+            bytes.extend_from_slice(kind);
+            bytes.extend_from_slice(data);
+            bytes
+        }
+
+        let ftyp = box_with_kind(b"ftyp", b"crx \0\0\0\0crx ");
+        let data = box_with_kind(b"data", &[&[0, 0, 0, 1, 0, 0, 0, 0], &b"old"[..]].concat());
+        let title_kind = [0xA9, b'n', b'a', b'm'];
+        let title = box_with_kind(&title_kind, &data);
+        let ilst = box_with_kind(b"ilst", &title);
+        let udta = box_with_kind(b"udta", &ilst);
+        let moov = box_with_kind(b"moov", &udta);
+        let bytes = [ftyp, moov].concat();
+
+        let handler = handler_for_format(FileFormat::Raw).expect("RAW handler should exist");
+        let mut reader = std::io::Cursor::new(bytes.clone());
+        let mut writer = std::io::Cursor::new(Vec::new());
+        handler
+            .write_metadata(
+                &mut reader,
+                &mut writer,
+                FileInfo::new("handler.cr3".into(), bytes.len() as u64, FileFormat::Raw),
+                ParseLimits::default(),
+                &[MetadataEdit::set("ISOBMFF:Title", "new")],
+            )
+            .expect("registered CR3 writer should accept ISO-BMFF edits");
+
+        let output = writer.into_inner();
+        let metadata = crate::read_reader(
+            &mut std::io::Cursor::new(output.clone()),
+            FileInfo::new(
+                "handler.cr3".into(),
+                output.len() as u64,
+                FileFormat::Unknown,
+            ),
+        )
+        .expect("registered CR3 writer output should remain readable");
+        assert_eq!(metadata.find("RAW:Variant").unwrap().display_value(), "CR3");
+        assert_eq!(
+            metadata.find("ISOBMFF:Title").unwrap().display_value(),
+            "new"
+        );
     }
 
     #[test]
