@@ -299,7 +299,157 @@ fn parse_packet(packet: &[u8], offset: u64, metadata: &mut Metadata, limits: Par
             offset,
             packet.len() as u64,
         );
+        parse_ogg_flac_mapping(packet, offset, metadata);
     }
+}
+
+fn parse_ogg_flac_mapping(packet: &[u8], offset: u64, metadata: &mut Metadata) {
+    if packet.len() < 13 || packet.get(9..13) != Some(b"fLaC") {
+        metadata.add_warning(
+            Warning::new(
+                "invalid-ogg-flac-mapping",
+                "Ogg-FLAC mapping header does not contain a native FLAC marker",
+            )
+            .at(offset),
+        );
+        return;
+    }
+    let mut cursor = 13_usize;
+    while let Some(header) = packet.get(cursor..cursor.saturating_add(4)) {
+        let block_type = header[0] & 0x7F;
+        let block_length =
+            (usize::from(header[1]) << 16) | (usize::from(header[2]) << 8) | usize::from(header[3]);
+        let data_start = cursor + 4;
+        let Some(data_end) = data_start.checked_add(block_length) else {
+            metadata.add_warning(
+                Warning::new(
+                    "invalid-ogg-flac-mapping",
+                    "Ogg-FLAC block length overflows",
+                )
+                .at(offset + cursor as u64),
+            );
+            return;
+        };
+        let Some(data) = packet.get(data_start..data_end) else {
+            metadata.add_warning(
+                Warning::new(
+                    "truncated-ogg-flac-mapping",
+                    "Ogg-FLAC block exceeds its packet",
+                )
+                .at(offset + data_start as u64),
+            );
+            return;
+        };
+        if block_type == 0 {
+            parse_ogg_flac_streaminfo(data, offset + data_start as u64, metadata);
+            return;
+        }
+        cursor = data_end;
+        if header[0] & 0x80 != 0 {
+            break;
+        }
+    }
+    metadata.add_warning(
+        Warning::new(
+            "missing-ogg-flac-streaminfo",
+            "Ogg-FLAC streaminfo block is missing",
+        )
+        .at(offset),
+    );
+}
+
+fn parse_ogg_flac_streaminfo(data: &[u8], offset: u64, metadata: &mut Metadata) {
+    if data.len() < 34 {
+        metadata.add_warning(
+            Warning::new(
+                "truncated-ogg-flac-streaminfo",
+                "Ogg-FLAC STREAMINFO block is shorter than 34 bytes",
+            )
+            .at(offset),
+        );
+        return;
+    }
+    add_tag(
+        metadata,
+        "BlockSizeMin",
+        TagValue::Unsigned(u64::from(u16::from_be_bytes([data[0], data[1]]))),
+        ValueType::UnsignedInteger,
+        "StreamInfo",
+        offset,
+        2,
+    );
+    add_tag(
+        metadata,
+        "BlockSizeMax",
+        TagValue::Unsigned(u64::from(u16::from_be_bytes([data[2], data[3]]))),
+        ValueType::UnsignedInteger,
+        "StreamInfo",
+        offset + 2,
+        2,
+    );
+    add_tag(
+        metadata,
+        "FrameSizeMin",
+        TagValue::Unsigned(u64::from(read_be_u24(&data[4..7]))),
+        ValueType::UnsignedInteger,
+        "StreamInfo",
+        offset + 4,
+        3,
+    );
+    add_tag(
+        metadata,
+        "FrameSizeMax",
+        TagValue::Unsigned(u64::from(read_be_u24(&data[7..10]))),
+        ValueType::UnsignedInteger,
+        "StreamInfo",
+        offset + 7,
+        3,
+    );
+    let packed = u64::from_be_bytes(data[10..18].try_into().expect("FLAC streaminfo fields"));
+    let sample_rate = packed >> 44;
+    let channels = ((packed >> 41) & 0x07) + 1;
+    let bits_per_sample = ((packed >> 36) & 0x1F) + 1;
+    let total_samples = packed & 0x0F_FFFF_FFFF;
+    for (name, value, field_offset, length) in [
+        ("SampleRate", sample_rate, 10_u64, 8_u64),
+        ("Channels", channels, 10, 8),
+        ("BitsPerSample", bits_per_sample, 10, 8),
+        ("TotalSamples", total_samples, 10, 8),
+    ] {
+        add_tag(
+            metadata,
+            name,
+            TagValue::Unsigned(value),
+            ValueType::UnsignedInteger,
+            "StreamInfo",
+            offset + field_offset,
+            length,
+        );
+    }
+    if sample_rate > 0 && total_samples > 0 {
+        add_tag(
+            metadata,
+            "DurationSeconds",
+            TagValue::Float(total_samples as f64 / sample_rate as f64),
+            ValueType::Float,
+            "StreamInfo",
+            offset + 10,
+            8,
+        );
+    }
+    add_tag(
+        metadata,
+        "MD5Signature",
+        TagValue::Bytes(data[18..34].to_vec()),
+        ValueType::Bytes,
+        "StreamInfo",
+        offset + 18,
+        16,
+    );
+}
+
+fn read_be_u24(bytes: &[u8]) -> u32 {
+    (u32::from(bytes[0]) << 16) | (u32::from(bytes[1]) << 8) | u32::from(bytes[2])
 }
 
 fn parse_vorbis_identification(packet: &[u8], offset: u64, metadata: &mut Metadata) {
@@ -732,6 +882,52 @@ mod tests {
         assert_eq!(
             metadata.find("Ogg:Artist").unwrap().display_value(),
             "Metra"
+        );
+    }
+
+    #[test]
+    fn reads_ogg_flac_streaminfo() {
+        let sample_rate = 8_000_u64;
+        let channels = 2_u64;
+        let bits_per_sample = 8_u64;
+        let total_samples = 100_u64;
+        let packed = (sample_rate << 44)
+            | ((channels - 1) << 41)
+            | ((bits_per_sample - 1) << 36)
+            | total_samples;
+        let mut streaminfo = Vec::new();
+        streaminfo.extend_from_slice(&4608_u16.to_be_bytes());
+        streaminfo.extend_from_slice(&4608_u16.to_be_bytes());
+        streaminfo.extend_from_slice(&[0, 0, 0, 0, 0, 0]);
+        streaminfo.extend_from_slice(&packed.to_be_bytes());
+        streaminfo.extend_from_slice(&[0; 16]);
+
+        let mut packet = vec![0x7F, b'F', b'L', b'A', b'C', 1, 0, 0, 2];
+        packet.extend_from_slice(b"fLaC");
+        packet.extend_from_slice(&[0, 0, 0, 34]);
+        packet.extend_from_slice(&streaminfo);
+        let bytes = page(9, 0, 0x02, &packet);
+        let metadata = read_ogg(
+            &mut Cursor::new(bytes.clone()),
+            info(&bytes),
+            ParseLimits::default(),
+        )
+        .expect("Ogg-FLAC fixture should parse");
+        assert_eq!(
+            metadata.find("Ogg:SampleRate").unwrap().value,
+            TagValue::Unsigned(8_000)
+        );
+        assert_eq!(
+            metadata.find("Ogg:Channels").unwrap().value,
+            TagValue::Unsigned(2)
+        );
+        assert_eq!(
+            metadata.find("Ogg:BitsPerSample").unwrap().value,
+            TagValue::Unsigned(8)
+        );
+        assert_eq!(
+            metadata.find("Ogg:TotalSamples").unwrap().value,
+            TagValue::Unsigned(100)
         );
     }
 
