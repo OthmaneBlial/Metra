@@ -6,7 +6,8 @@ Initial read-first foundation with narrow validated rewrites:
 
 - added a bounded classic TIFF creation API that emits a validated 1x1
   monochrome seed with optional EXIF ASCII fields, plus a no-overwrite atomic
-  path helper and resource-limit tests;
+  path helper and resource-limit tests, exposed through the CLI
+  `--create-tiff KEY=VALUE` option;
 - added bounded CR3 ISO-BMFF text rewrites and zero-fill deletion through
   RAW-variant validation, including generic API, registry, atomic path, and CLI
   `--set`/`--delete`/`--copy`

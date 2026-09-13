@@ -104,6 +104,7 @@ cargo run -- --compare reference.jpg target.jpg
 cargo run -- --set 'JPEG:Comment=reviewed' photo.jpg
 cargo run -- --delete JPEG:Comment photo.jpg
 cargo run -- --copy JPEG:Comment=source.jpg target.jpg
+cargo run -- --create-tiff 'EXIF:Make=Metra' --create-tiff 'EXIF:Artist=Othmane' new.tif
 cargo run -- --set 'JPEG:EXIF:Make=Sony' photo.jpg
 cargo run -- --copy JPEG:EXIF:Make=source.jpg target.jpg
 cargo run -- --copy TIFF:EXIF:Make=source.tif target.tif
