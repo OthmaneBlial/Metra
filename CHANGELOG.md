@@ -24,6 +24,8 @@ Initial read-first foundation with narrow validated rewrites:
 - added bounded Ogg Vorbis/Opus comment replacement, deletion, and copy with
   page CRC regeneration, same-packet-size preservation, output validation, and
   atomic replacement;
+- extended Ogg comment rewriting to native Ogg-FLAC Vorbis Comment blocks while
+  preserving their metadata-block headers and packet sizes;
 - added explicit chained TIFF `IFD1`/`IFD2` traversal for thumbnail-directory
   metadata while keeping thumbnail pixel payloads out of memory;
 - added bounded Ogg-FLAC Vorbis Comment decoding from mapping and subsequent

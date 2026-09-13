@@ -48,7 +48,7 @@ expansion and nesting limits before being enabled.
 
 Only JPEG comment, bounded APP1 XMP, and known IPTC-IIM datasets in Photoshop
 APP13 resources, PNG `tEXt` and uncompressed `iTXt` XMP, GIF comments, WebP XMP, SVG
-title/description/comments, WAV `LIST/INFO`, FLAC Vorbis Comment, Ogg Vorbis/Opus
+title/description/comments, WAV `LIST/INFO`, FLAC Vorbis Comment, Ogg Vorbis/Opus/Ogg-FLAC
 comment packet rewrites, common
 ID3v2 text/comment replacement/deletion/copy, bounded TIFF ASCII copy,
 existing ISO-BMFF text replacement/copy, and bounded Canon MakerNote IFD
