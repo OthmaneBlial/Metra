@@ -45,8 +45,11 @@ The FLAC reader validates the metadata-block chain and decodes STREAMINFO,
 Vorbis comments, and bounded PICTURE blocks without touching audio frames.
 The PDF reader scans bounded head/tail windows for Info dictionaries and direct
 XMP packets; the WAV reader walks RIFF chunks and decodes `fmt `, `LIST/INFO`,
-and Broadcast Wave `bext` fields without loading audio data. Batch workers use a
-bounded atomic work index and restore path order before rendering.
+and Broadcast Wave `bext` fields without loading audio data. The SVG reader
+parses a bounded XML document without rendering it, exposes root dimensions,
+`viewBox`, version, title, description, and comments, and rejects DOCTYPE/entity
+constructs. Batch workers use a bounded atomic work index and restore path order
+before rendering.
 
 ## Parser invariants
 

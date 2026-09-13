@@ -44,7 +44,15 @@
     "PDF": { "read": "partial", "write": "planned", "streaming": "partial" },
     "MP3": { "read": "partial", "write": "planned", "streaming": "partial" },
     "FLAC": { "read": "partial", "write": "planned", "streaming": "partial" },
-    "WAV": { "read": "partial", "write": "planned", "streaming": "partial" }
+    "WAV": { "read": "partial", "write": "planned", "streaming": "partial" },
+    "SVG": {
+      "read": "partial",
+      "write": "planned",
+      "create": "planned",
+      "delete": "planned",
+      "lossless_rewrite": "planned",
+      "streaming": "partial"
+    }
   },
   "metadata_families": {
     "tag_definitions": "partial",
@@ -59,7 +67,8 @@
     "ID3": "partial",
     "QuickTime": "partial",
     "VorbisComments": "partial",
-    "BWF": "partial"
+    "BWF": "partial",
+    "SVGDocument": "partial"
   },
   "cli": {
     "human_readable": "supported",

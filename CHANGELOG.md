@@ -17,6 +17,8 @@ Initial read-only foundation:
   bounded metadata-block validation;
 - added bounded PDF Info/XMP inspection and RIFF/WAVE format, INFO, and BWF
   metadata readers;
+- added bounded SVG XML inspection for root geometry, document text, and safe
+  comment extraction without rendering;
 - added bounded `--jobs` batch inspection with deterministic result ordering;
 - expanded ISO-BMFF inspection with `ispe` dimensions, item/handler fields,
   and direct XMP/EXIF decoding when the metadata boxes are available;

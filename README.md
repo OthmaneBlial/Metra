@@ -12,7 +12,7 @@ pixels and reports unsupported blocks instead of pretending to understand them.
 The first verified vertical slice is:
 
 ```text
-JPEG / TIFF / PNG / WebP / GIF / ISO-BMFF media
+JPEG / TIFF / PNG / WebP / GIF / SVG / ISO-BMFF media
         ↓
 bounded container parsing
         ↓
@@ -35,11 +35,13 @@ Implemented today:
 | FLAC | `STREAMINFO`, Vorbis comments, embedded-picture properties/data, and bounded metadata-block validation |
 | PDF | Header/version, bounded Info dictionaries, PDF string decoding, and embedded XMP packets when directly available |
 | WAV | RIFF/WAVE chunks, `fmt ` audio properties, `LIST/INFO`, Broadcast Wave `bext`, and bounded validation |
+| SVG | Bounded XML detection, root dimensions/version/viewBox, title, description, comments, and nesting/text limits |
 | Output | Human-readable text, JSON, JSON Lines, CSV, TOML, or YAML; schema version `1` is retained in structured output |
 | Batch | Deterministic path ordering with bounded parallel inspection through `--jobs N`; human, JSON Lines, and CSV modes stream results with a bounded out-of-order buffer |
 | Safety | Checked offsets, bounded reads, recursion and entry limits, deterministic recursive traversal, and structured warnings |
 
-Writing, creation, deletion, metadata copying, MakerNotes interpretation, and
+Writing, creation, deletion, metadata copying, SVG embedded-XMP extraction,
+MakerNotes interpretation, and
 full media and ExifTool compatibility are intentionally not advertised as
 implemented yet. Manufacturer-specific MakerNotes are still planned;
 MP3/ID3, FLAC/Vorbis comments, PDF, and WAV are only partially covered. Their
@@ -161,7 +163,7 @@ ne représente pas un pourcentage de compatibilité ExifTool.
 
 1. **80 %** — Étendre le modèle de lecture et les définitions de tags sans perdre les données brutes.
 2. **30 %** — Ajouter des corpus réels et des tests différentiels JPEG/TIFF/PNG/WebP.
-3. **88 %** — Approfondir HEIF/AVIF et les conteneurs média, puis couvrir les lecteurs restants.
+3. **90 %** — Approfondir HEIF/AVIF et les conteneurs média, puis couvrir les lecteurs restants.
 4. **65 %** — Étendre XMP/IPTC/ICC/ID3 et isoler les espaces MakerNote.
 5. **0 %** — Concevoir l’écriture read-modify-write avec validation et remplacement atomique.
 6. **0 %** — Ajouter `set`/`delete`/`copy` après les tests round-trip.
