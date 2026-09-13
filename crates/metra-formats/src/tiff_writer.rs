@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use metra_core::{FileFormat, FileInfo, Metadata, MetraError, ParseLimits, Result, TagValue};
 
+use crate::atomic::atomic_replace;
 use crate::tiff::read_tiff;
 
 /// Safe in-place edits for existing TIFF/BigTIFF ASCII values.
@@ -104,7 +105,7 @@ pub fn rewrite_tiff_path(
                 ),
             }
         })?;
-        fs::rename(&temp_path, &path).map_err(|source| MetraError::WriteFailure {
+        atomic_replace(&temp_path, &path).map_err(|source| MetraError::WriteFailure {
             message: format!("cannot atomically replace {}: {source}", path.display()),
         })?;
         Ok(())

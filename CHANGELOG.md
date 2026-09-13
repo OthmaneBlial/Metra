@@ -120,4 +120,6 @@ Initial read-first foundation with narrow validated rewrites:
   including a real-corpus validation case;
 - added signature-based identification for legacy Canon CRW, Minolta MRW, and
   Sigma X3F RAW containers with explicit partial-decoding warnings;
+- centralized validated path-writer replacement behind a platform-aware atomic
+  helper, including native Windows replace-and-write-through behavior;
 - documented the verified surface and remaining compatibility boundaries.

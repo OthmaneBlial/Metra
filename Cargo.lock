@@ -257,6 +257,7 @@ dependencies = [
  "metra-core",
  "quick-xml",
  "thiserror",
+ "windows-sys",
 ]
 
 [[package]]

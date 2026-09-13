@@ -10,6 +10,7 @@ use std::path::Path;
 
 use metra_core::{FileFormat, FileInfo, Metadata, MetraError, ParseLimits, Result};
 
+mod atomic;
 mod avi;
 mod flac;
 mod flac_writer;

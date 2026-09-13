@@ -9,6 +9,7 @@ use metra_core::{
     ValueType, Warning,
 };
 
+use crate::atomic::atomic_replace;
 use crate::icc::parse_icc_profile;
 use crate::iptc::parse_photoshop_resources;
 use crate::iptc_writer::{
@@ -237,7 +238,7 @@ pub fn rewrite_jpeg_path(
                 ),
             }
         })?;
-        fs::rename(&temp_path, &path).map_err(|source| MetraError::WriteFailure {
+        atomic_replace(&temp_path, &path).map_err(|source| MetraError::WriteFailure {
             message: format!("cannot atomically replace {}: {source}", path.display()),
         })?;
         Ok(())

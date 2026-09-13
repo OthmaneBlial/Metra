@@ -43,7 +43,7 @@ Implemented today:
 | MKV/WebM | EBML signature and document-type detection, bounded `Info`/`Tracks`/`Tags` scanning, typed duration, track, title, codec, and tag values, without decoding clusters |
 | Output | Human-readable text, JSON, JSON Lines, CSV, TOML, or YAML; schema version `1` is retained in structured output |
 | Batch | Deterministic path ordering with bounded parallel inspection through `--jobs N`; human, JSON Lines, and CSV modes stream results with a bounded out-of-order buffer |
-| Safety | Checked offsets, bounded reads, recursion and entry limits, deterministic recursive traversal, safe XML entity handling, and structured warnings |
+| Safety | Checked offsets, bounded reads, recursion and entry limits, deterministic recursive traversal, safe XML entity handling, structured warnings, and platform-aware atomic replacement after output validation |
 
 Generic writing, creation, PSD/PSB/RAW/MKV/WebM writing, SVG embedded-XMP extraction, MakerNote tag
 interpretation beyond the bounded Nikon Type 2 and Canon IFD fields, and full media and

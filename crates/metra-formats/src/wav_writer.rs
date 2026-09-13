@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use metra_core::{FileFormat, FileInfo, MetraError, ParseLimits, Result};
 
+use crate::atomic::atomic_replace;
 use crate::wav::read_wav;
 
 /// Lossless WAV metadata edits for the uncompressed `LIST/INFO` string fields.
@@ -107,7 +108,7 @@ pub fn rewrite_wav_path(
                 ),
             }
         })?;
-        fs::rename(&temp_path, &path).map_err(|source| MetraError::WriteFailure {
+        atomic_replace(&temp_path, &path).map_err(|source| MetraError::WriteFailure {
             message: format!("cannot atomically replace {}: {source}", path.display()),
         })?;
         Ok(())

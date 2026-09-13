@@ -11,3 +11,6 @@ flate2.workspace = true
 metra-core = { path = "../metra-core" }
 quick-xml.workspace = true
 thiserror.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }

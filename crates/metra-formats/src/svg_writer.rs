@@ -8,6 +8,7 @@ use metra_core::{FileFormat, FileInfo, MetraError, ParseLimits, Result};
 use quick_xml::Reader;
 use quick_xml::events::Event;
 
+use crate::atomic::atomic_replace;
 use crate::svg::read_svg;
 use crate::xml::resolve_general_ref;
 
@@ -123,7 +124,7 @@ pub fn rewrite_svg_path(
                 ),
             }
         })?;
-        fs::rename(&temp_path, &path).map_err(|source| MetraError::WriteFailure {
+        atomic_replace(&temp_path, &path).map_err(|source| MetraError::WriteFailure {
             message: format!("cannot atomically replace {}: {source}", path.display()),
         })?;
         Ok(())

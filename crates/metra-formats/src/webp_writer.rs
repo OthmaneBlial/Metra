@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use metra_core::{FileFormat, FileInfo, Metadata, MetraError, ParseLimits, Result};
 
+use crate::atomic::atomic_replace;
 use crate::webp::read_webp;
 use crate::xmp::parse_xmp;
 
@@ -104,7 +105,7 @@ pub fn rewrite_webp_path(
                 ),
             }
         })?;
-        fs::rename(&temp_path, &path).map_err(|source| MetraError::WriteFailure {
+        atomic_replace(&temp_path, &path).map_err(|source| MetraError::WriteFailure {
             message: format!("cannot atomically replace {}: {source}", path.display()),
         })?;
         Ok(())

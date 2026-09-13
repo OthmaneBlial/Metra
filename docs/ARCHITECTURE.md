@@ -131,8 +131,9 @@ unsafe comment delimiters, and preserves unrelated source ranges. The ID3 writer
 unsynchronization, extended-header, or footer flags. Each library writer
 validates its source through the reader before writing, streams the original
 container while preserving untargeted bytes, validates the temporary output
-with the reader again, syncs it, and atomically renames a same-directory
-temporary file. The public facade also exposes deterministic `read_many` and
+with the reader again, syncs it, and replaces the original through a shared
+platform-aware atomic helper. Unix uses `rename`; Windows uses `MoveFileExW`
+with replace and write-through flags. The public facade also exposes deterministic `read_many` and
 backpressure-bounded `read_many_streaming` helpers, plus cancellation-aware
 variants; the CLI uses these same batch APIs before rendering. The CLI exposes
 `--set`/`--delete`/`--copy` for

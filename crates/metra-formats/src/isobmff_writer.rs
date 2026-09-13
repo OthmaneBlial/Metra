@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use metra_core::{FileFormat, FileInfo, Metadata, MetraError, ParseLimits, Result, TagValue};
 
+use crate::atomic::atomic_replace;
 use crate::isobmff::read_isobmff;
 
 /// Safe in-place edits for existing ISO-BMFF text items.
@@ -116,7 +117,7 @@ pub fn rewrite_isobmff_path(
                 ),
             }
         })?;
-        fs::rename(&temp_path, &path).map_err(|source| MetraError::WriteFailure {
+        atomic_replace(&temp_path, &path).map_err(|source| MetraError::WriteFailure {
             message: format!("cannot atomically replace {}: {source}", path.display()),
         })?;
         Ok(())

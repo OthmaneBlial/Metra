@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use metra_core::{FileFormat, FileInfo, MetraError, ParseLimits, Result};
 
+use crate::atomic::atomic_replace;
 use crate::flac::read_flac;
 
 /// Lossless FLAC metadata edits for Vorbis Comment key/value pairs.
@@ -101,7 +102,7 @@ pub fn rewrite_flac_path(
                 ),
             }
         })?;
-        fs::rename(&temp_path, &path).map_err(|source| MetraError::WriteFailure {
+        atomic_replace(&temp_path, &path).map_err(|source| MetraError::WriteFailure {
             message: format!("cannot atomically replace {}: {source}", path.display()),
         })?;
         Ok(())

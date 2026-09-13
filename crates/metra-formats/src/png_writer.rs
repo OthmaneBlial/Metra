@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use metra_core::{FileFormat, FileInfo, Metadata, MetraError, ParseLimits, Result};
 
+use crate::atomic::atomic_replace;
 use crate::png::{PNG_SIGNATURE, crc32, read_png};
 use crate::xmp::parse_xmp;
 
@@ -102,7 +103,7 @@ pub fn rewrite_png_path(
                 ),
             }
         })?;
-        fs::rename(&temp_path, &path).map_err(|source| MetraError::WriteFailure {
+        atomic_replace(&temp_path, &path).map_err(|source| MetraError::WriteFailure {
             message: format!("cannot atomically replace {}: {source}", path.display()),
         })?;
         Ok(())

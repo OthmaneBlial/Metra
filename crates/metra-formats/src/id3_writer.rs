@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use metra_core::{FileFormat, FileInfo, MetraError, ParseLimits, Result};
 
+use crate::atomic::atomic_replace;
 use crate::id3::read_mp3;
 
 /// Narrow, lossless edits for common ID3v2 text and comment frames.
@@ -104,7 +105,7 @@ pub fn rewrite_mp3_path(
                 ),
             }
         })?;
-        fs::rename(&temp_path, &path).map_err(|source| MetraError::WriteFailure {
+        atomic_replace(&temp_path, &path).map_err(|source| MetraError::WriteFailure {
             message: format!("cannot atomically replace {}: {source}", path.display()),
         })?;
         Ok(())
