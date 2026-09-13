@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
@@ -9,14 +10,19 @@ struct TemporaryDirectory {
     path: PathBuf,
 }
 
+static NEXT_DIRECTORY_ID: AtomicU64 = AtomicU64::new(0);
+
 impl TemporaryDirectory {
     fn new() -> Self {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("system clock should be after the Unix epoch")
             .as_nanos();
-        let path =
-            std::env::temp_dir().join(format!("metra-cli-test-{}-{unique}", std::process::id()));
+        let counter = NEXT_DIRECTORY_ID.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "metra-cli-test-{}-{unique}-{counter}",
+            std::process::id()
+        ));
         fs::create_dir(&path).expect("temporary test directory should be creatable");
         Self { path }
     }

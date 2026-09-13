@@ -14,6 +14,7 @@ mod jpeg;
 mod png;
 mod tiff;
 mod webp;
+mod xmp;
 
 pub use jpeg::read_jpeg;
 pub use png::read_png;

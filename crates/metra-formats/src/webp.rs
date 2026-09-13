@@ -6,6 +6,7 @@ use metra_core::{
 };
 
 use crate::tiff::parse_tiff_from_reader;
+use crate::xmp::parse_xmp;
 
 pub fn read_webp<R: Read + Seek>(
     reader: &mut R,
@@ -138,13 +139,12 @@ fn process_chunk(
                 }
             }
         }
-        b"XMP " => metadata.add_warning(
-            Warning::new(
-                "unsupported-xmp",
-                "WebP contains XMP metadata; XMP parsing is planned",
-            )
-            .at(data_offset),
-        ),
+        b"XMP " => {
+            if let Err(error) = parse_xmp(data, data_offset, "WebP/XMP", metadata, limits) {
+                metadata
+                    .add_warning(Warning::new("invalid-xmp", error.to_string()).at(data_offset));
+            }
+        }
         b"ICCP" => metadata.add_warning(
             Warning::new(
                 "unsupported-icc",

@@ -6,6 +6,7 @@ use metra_core::{
 };
 
 use crate::tiff::parse_tiff_from_reader;
+use crate::xmp::parse_xmp;
 
 pub fn read_jpeg<R: Read + Seek>(
     reader: &mut R,
@@ -175,13 +176,19 @@ fn process_segment(
                 );
             }
         }
-        0xE1 if data.starts_with(b"http://ns.adobe.com/xap/1.0/\0") => metadata.add_warning(
-            Warning::new(
-                "unsupported-xmp",
-                "JPEG contains an XMP packet; XMP parsing is planned",
-            )
-            .at(data_offset),
-        ),
+        0xE1 if data.starts_with(b"http://ns.adobe.com/xap/1.0/\0") => {
+            let prefix_len = b"http://ns.adobe.com/xap/1.0/\0".len();
+            if let Err(error) = parse_xmp(
+                &data[prefix_len..],
+                data_offset.saturating_add(prefix_len as u64),
+                "JPEG/APP1-XMP",
+                metadata,
+                limits,
+            ) {
+                metadata
+                    .add_warning(Warning::new("invalid-xmp", error.to_string()).at(data_offset));
+            }
+        }
         0xE2 if data.starts_with(b"ICC_PROFILE\0") => metadata.add_warning(
             Warning::new(
                 "unsupported-icc",
@@ -355,6 +362,24 @@ mod tests {
         assert_eq!(
             metadata.find("JPEG:Comment").unwrap().display_value(),
             "hello from Metra"
+        );
+    }
+
+    #[test]
+    fn reads_structured_xmp_from_app1() {
+        let packet = br#"<x:xmpmeta><rdf:RDF><rdf:Description dc:format="image/jpeg" xmlns:dc="urn:dc"/></rdf:RDF></x:xmpmeta>"#;
+        let mut data = b"http://ns.adobe.com/xap/1.0/\0".to_vec();
+        data.extend_from_slice(packet);
+        let length = u16::try_from(data.len() + 2).unwrap();
+        let mut bytes = vec![0xFF, 0xD8, 0xFF, 0xE1];
+        bytes.extend_from_slice(&length.to_be_bytes());
+        bytes.extend_from_slice(&data);
+        bytes.extend_from_slice(&[0xFF, 0xD9]);
+        let info = FileInfo::new("xmp.jpg".into(), bytes.len() as u64, FileFormat::Jpeg);
+        let metadata = read_jpeg(&mut Cursor::new(bytes), info, ParseLimits::default()).unwrap();
+        assert_eq!(
+            metadata.find("XMP:dc:format").unwrap().display_value(),
+            "image/jpeg"
         );
     }
 

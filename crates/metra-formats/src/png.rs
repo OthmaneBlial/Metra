@@ -6,6 +6,7 @@ use metra_core::{
 };
 
 use crate::tiff::parse_tiff_from_reader;
+use crate::xmp::parse_xmp;
 
 const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1A\n";
 
@@ -135,7 +136,7 @@ fn process_chunk(
     limits: ParseLimits,
 ) -> Result<()> {
     match chunk_type {
-        b"tEXt" => parse_text_chunk(data, data_offset, metadata),
+        b"tEXt" => parse_text_chunk(data, data_offset, metadata, limits),
         b"zTXt" => metadata.add_warning(
             Warning::new(
                 "unsupported-ztxt",
@@ -143,7 +144,7 @@ fn process_chunk(
             )
             .at(data_offset),
         ),
-        b"iTXt" => parse_itxt_chunk(data, data_offset, metadata),
+        b"iTXt" => parse_itxt_chunk(data, data_offset, metadata, limits),
         b"eXIf" => {
             if data.len() < 8 {
                 metadata.add_warning(
@@ -183,7 +184,7 @@ fn process_chunk(
     Ok(())
 }
 
-fn parse_text_chunk(data: &[u8], data_offset: u64, metadata: &mut Metadata) {
+fn parse_text_chunk(data: &[u8], data_offset: u64, metadata: &mut Metadata, limits: ParseLimits) {
     let Some(separator) = data.iter().position(|byte| *byte == 0) else {
         metadata.add_warning(
             Warning::new("invalid-text", "PNG tEXt chunk has no keyword separator").at(data_offset),
@@ -191,11 +192,24 @@ fn parse_text_chunk(data: &[u8], data_offset: u64, metadata: &mut Metadata) {
         return;
     };
     let keyword = String::from_utf8_lossy(&data[..separator]);
-    let value = String::from_utf8_lossy(&data[separator + 1..]).into_owned();
+    let payload = &data[separator + 1..];
+    if keyword == "XML:com.adobe.xmp" {
+        if let Err(error) = parse_xmp(
+            payload,
+            data_offset + u64::try_from(separator + 1).unwrap_or(u64::MAX),
+            "PNG/tEXt-XMP",
+            metadata,
+            limits,
+        ) {
+            metadata.add_warning(Warning::new("invalid-xmp", error.to_string()).at(data_offset));
+        }
+        return;
+    }
+    let value = String::from_utf8_lossy(payload).into_owned();
     add_text_tag(metadata, &keyword, value, data, data_offset, "tEXt");
 }
 
-fn parse_itxt_chunk(data: &[u8], data_offset: u64, metadata: &mut Metadata) {
+fn parse_itxt_chunk(data: &[u8], data_offset: u64, metadata: &mut Metadata, limits: ParseLimits) {
     let mut fields = data.splitn(6, |byte| *byte == 0);
     let Some(keyword) = fields.next() else {
         return;
@@ -224,6 +238,14 @@ fn parse_itxt_chunk(data: &[u8], data_offset: u64, metadata: &mut Metadata) {
         return;
     }
     let keyword = String::from_utf8_lossy(keyword);
+    if keyword == "XML:com.adobe.xmp" {
+        let text_offset =
+            data_offset + u64::try_from(data.len().saturating_sub(text.len())).unwrap_or(0);
+        if let Err(error) = parse_xmp(text, text_offset, "PNG/iTXt-XMP", metadata, limits) {
+            metadata.add_warning(Warning::new("invalid-xmp", error.to_string()).at(data_offset));
+        }
+        return;
+    }
     let value = String::from_utf8_lossy(text).into_owned();
     add_text_tag(metadata, &keyword, value, data, data_offset, "iTXt");
 }

@@ -283,6 +283,7 @@ pub struct ParseLimits {
     pub max_ifd_entries: usize,
     pub max_recursion_depth: usize,
     pub max_jpeg_segments: usize,
+    pub max_xmp_nodes: usize,
 }
 
 impl Default for ParseLimits {
@@ -293,6 +294,7 @@ impl Default for ParseLimits {
             max_ifd_entries: 16_384,
             max_recursion_depth: 16,
             max_jpeg_segments: 4_096,
+            max_xmp_nodes: 10_000,
         }
     }
 }
@@ -315,6 +317,8 @@ pub enum MetraError {
     InvalidOffset { context: String, offset: u64 },
     #[error("invalid metadata tag in {context}: {message}")]
     InvalidTag { context: String, message: String },
+    #[error("invalid XML metadata: {message}")]
+    InvalidXml { message: String },
     #[error("resource limit exceeded for {resource}: {limit}")]
     ResourceLimitExceeded { resource: String, limit: usize },
     #[error("corrupt metadata: {message}")]
