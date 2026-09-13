@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use std::io::{Read, Seek};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, mpsc};
+use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 
 pub use metra_core::{
@@ -162,20 +162,25 @@ where
     }
 
     let shared_paths = Arc::new(paths.to_vec());
-    let next_index = Arc::new(AtomicUsize::new(0));
-    let (sender, receiver) = mpsc::sync_channel(worker_count);
+    let (job_sender, job_receiver) = mpsc::sync_channel(worker_count);
+    let job_receiver = Arc::new(Mutex::new(job_receiver));
+    let (result_sender, receiver) = mpsc::channel();
     let mut pending = BTreeMap::new();
     let mut next_to_emit = 0_usize;
+    let mut next_to_schedule = worker_count;
+    let mut job_sender = Some(job_sender);
 
     thread::scope(|scope| {
         for _ in 0..worker_count {
-            let paths = Arc::clone(&shared_paths);
-            let next_index = Arc::clone(&next_index);
-            let sender = sender.clone();
+            let job_receiver = Arc::clone(&job_receiver);
+            let sender = result_sender.clone();
             scope.spawn(move || {
                 loop {
-                    let index = next_index.fetch_add(1, Ordering::Relaxed);
-                    let Some(path) = paths.get(index).cloned() else {
+                    let job = job_receiver
+                        .lock()
+                        .expect("batch job queue lock should not be poisoned")
+                        .recv();
+                    let Ok((index, path)) = job else {
                         break;
                     };
                     let result = read_with_limits(&path, options.limits);
@@ -185,12 +190,37 @@ where
                 }
             });
         }
-        drop(sender);
+
+        drop(result_sender);
+        for index in 0..worker_count {
+            let path = shared_paths[index].clone();
+            job_sender
+                .as_ref()
+                .expect("batch job sender should be available")
+                .send((index, path))
+                .expect("batch workers should accept initial jobs");
+        }
+        if next_to_schedule == shared_paths.len() {
+            job_sender.take();
+        }
+
         for (index, result) in receiver {
             pending.insert(index, result);
             while let Some(result) = pending.remove(&next_to_emit) {
                 emit(result);
                 next_to_emit += 1;
+                if next_to_schedule < shared_paths.len() {
+                    let path = shared_paths[next_to_schedule].clone();
+                    job_sender
+                        .as_ref()
+                        .expect("batch job sender should be available")
+                        .send((next_to_schedule, path))
+                        .expect("batch workers should accept scheduled jobs");
+                    next_to_schedule += 1;
+                    if next_to_schedule == shared_paths.len() {
+                        job_sender.take();
+                    }
+                }
             }
         }
     });
