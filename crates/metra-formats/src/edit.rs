@@ -50,10 +50,14 @@ pub fn rewrite_metadata_path(
         });
     }
     let path = path.as_ref();
-    let format = crate::read_path_with_limits(path, limits)?.file_info.format;
+    let metadata = crate::read_path_with_limits(path, limits)?;
+    let format = metadata.file_info.format;
     match format {
         FileFormat::Jpeg => crate::rewrite_jpeg_path(path, limits, &collect_jpeg(edits, format)?),
         FileFormat::Tiff => crate::rewrite_tiff_path(path, limits, &collect_tiff(edits, format)?),
+        FileFormat::Raw if is_cr3_metadata(&metadata) => {
+            crate::rewrite_raw_cr3_path(path, limits, &collect_isobmff(edits, format)?)
+        }
         FileFormat::Raw => {
             crate::rewrite_raw_tiff_path(path, limits, &collect_tiff(edits, format)?)
         }
@@ -95,13 +99,12 @@ pub fn rewrite_metadata_to_vec(
             message: "at least one edit is required".to_owned(),
         });
     }
-    let detected = crate::read_reader_with_limits(
+    let detected_metadata = crate::read_reader_with_limits(
         &mut std::io::Cursor::new(bytes),
         file_info.clone(),
         limits,
-    )?
-    .file_info
-    .format;
+    )?;
+    let detected = detected_metadata.file_info.format;
     let file_info = FileInfo::new(file_info.path, bytes.len() as u64, detected);
     match detected {
         FileFormat::Jpeg => {
@@ -110,6 +113,12 @@ pub fn rewrite_metadata_to_vec(
         FileFormat::Tiff => {
             crate::rewrite_tiff_to_vec(bytes, file_info, limits, &collect_tiff(edits, detected)?)
         }
+        FileFormat::Raw if is_cr3_metadata(&detected_metadata) => crate::rewrite_raw_cr3_to_vec(
+            bytes,
+            file_info,
+            limits,
+            &collect_isobmff(edits, detected)?,
+        ),
         FileFormat::Raw => crate::rewrite_raw_tiff_to_vec(
             bytes,
             file_info,
@@ -210,6 +219,12 @@ fn unsupported_format(format: FileFormat) -> MetraError {
     MetraError::UnsupportedFormat {
         description: format!("generic metadata edits are not implemented for {format}"),
     }
+}
+
+fn is_cr3_metadata(metadata: &metra_core::Metadata) -> bool {
+    metadata.find("RAW:Variant").is_some_and(
+        |tag| matches!(&tag.value, metra_core::TagValue::String(variant) if variant == "CR3"),
+    )
 }
 
 fn source_lookup_key(key: &str) -> &str {

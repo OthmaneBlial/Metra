@@ -110,6 +110,28 @@ fn minimal_webm_with_info_title(title: &str) -> Vec<u8> {
     [ebml_header, info].concat()
 }
 
+fn minimal_cr3_with_title(title: &str) -> Vec<u8> {
+    fn box_with_kind(kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
+        let size = u32::try_from(data.len() + 8).expect("test box fits");
+        let mut output = size.to_be_bytes().to_vec();
+        output.extend_from_slice(kind);
+        output.extend_from_slice(data);
+        output
+    }
+
+    let ftyp = box_with_kind(b"ftyp", b"crx \0\0\0\0crx ");
+    let data = box_with_kind(
+        b"data",
+        &[&[0, 0, 0, 1, 0, 0, 0, 0], title.as_bytes()].concat(),
+    );
+    let title_kind = [0xA9, b'n', b'a', b'm'];
+    let title = box_with_kind(&title_kind, &data);
+    let ilst = box_with_kind(b"ilst", &title);
+    let udta = box_with_kind(b"udta", &ilst);
+    let moov = box_with_kind(b"moov", &udta);
+    [ftyp, moov].concat()
+}
+
 fn minimal_dng_with_make(make: &str) -> Vec<u8> {
     let mut bytes = vec![
         b'I',
@@ -404,6 +426,37 @@ fn public_generic_edit_api_rewrites_and_revalidates_tiff_like_raw() {
     .expect("rewritten DNG should remain readable");
     assert_eq!(metadata.find("EXIF:Make").unwrap().display_value(), "Sony");
     assert_eq!(metadata.find("RAW:Variant").unwrap().display_value(), "DNG");
+}
+
+#[test]
+fn public_generic_edit_api_rewrites_and_revalidates_cr3_text() {
+    let bytes = minimal_cr3_with_title("old");
+    let output = metra::rewrite_metadata_to_vec(
+        &bytes,
+        metra::FileInfo::new(
+            "memory.cr3".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::set("ISOBMFF:Title", "new")],
+    )
+    .expect("generic CR3 edit should validate its rewritten bytes");
+
+    let metadata = metra::read_from(
+        &mut std::io::Cursor::new(output),
+        metra::FileInfo::new(
+            "memory.cr3".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+    )
+    .expect("rewritten CR3 should remain readable");
+    assert_eq!(metadata.find("RAW:Variant").unwrap().display_value(), "CR3");
+    assert_eq!(
+        metadata.find("ISOBMFF:Title").unwrap().display_value(),
+        "new"
+    );
 }
 
 #[test]
