@@ -171,6 +171,11 @@ fn tag_definition(namespace: &str, id: u16) -> TagDefinition {
             name: "Artist",
             description: "Person who created the image",
         },
+        ("EXIF", 0x014A) => TagDefinition {
+            namespace: "EXIF",
+            name: "SubIFDs",
+            description: "Offsets to sub-image directories",
+        },
         ("EXIF", 0x0201) => TagDefinition {
             namespace: "EXIF",
             name: "JPEGInterchangeFormat",
@@ -879,6 +884,21 @@ impl<R: Read + Seek> TiffParser<'_, R> {
         } else {
             None
         };
+        let sub_ifd_offsets = if namespace == "EXIF" && id == 0x014A {
+            match &value {
+                TagValue::Unsigned(offset) => vec![*offset],
+                TagValue::Array(values) => values
+                    .iter()
+                    .filter_map(|value| match value {
+                        TagValue::Unsigned(offset) => Some(*offset),
+                        _ => None,
+                    })
+                    .collect(),
+                _ => Vec::new(),
+            }
+        } else {
+            Vec::new()
+        };
         metadata.add_tag(Tag {
             namespace: definition.namespace.to_owned(),
             group: group.to_owned(),
@@ -916,6 +936,13 @@ impl<R: Read + Seek> TiffParser<'_, R> {
                     self.parse_ifd(pointer, nested_namespace, nested_group, depth + 1, metadata)?;
                 }
             }
+        }
+        for (index, offset) in sub_ifd_offsets.into_iter().enumerate() {
+            if offset == 0 {
+                continue;
+            }
+            let group = format!("SubIFD{}", index.saturating_add(1));
+            self.parse_ifd(offset, namespace, &group, depth + 1, metadata)?;
         }
         Ok(())
     }
@@ -1569,6 +1596,50 @@ mod tests {
                 .unwrap()
                 .value,
             TagValue::Unsigned(120)
+        );
+    }
+
+    #[test]
+    fn parses_multiple_subifd_offsets_as_separate_groups() {
+        let mut bytes = vec![
+            b'I', b'I', 42, 0, 8, 0, 0, 0, // classic TIFF header, IFD0 at 8
+            1, 0, // one IFD0 entry
+            0x4A, 0x01, 4, 0, 2, 0, 0, 0, 26, 0, 0, 0, // SubIFDs -> offset array at 26
+            0, 0, 0, 0, // no next IFD
+        ];
+        bytes.extend_from_slice(&50_u32.to_le_bytes());
+        bytes.extend_from_slice(&80_u32.to_le_bytes());
+        bytes.resize(50, 0);
+        bytes.extend_from_slice(&[1, 0, 0x00, 0x01, 4, 0, 1, 0, 0, 0]);
+        bytes.extend_from_slice(&320_u32.to_le_bytes()); // ImageWidth = 320
+        bytes.extend_from_slice(&[0, 0, 0, 0]);
+        bytes.resize(80, 0);
+        bytes.extend_from_slice(&[
+            1, 0, // SubIFD2 has one entry
+            0x01, 0x01, 4, 0, 1, 0, 0, 0, 240, 0, 0, 0, // ImageLength = 240
+            0, 0, 0, 0,
+        ]);
+
+        let info = FileInfo::new("subifds.tif".into(), bytes.len() as u64, FileFormat::Tiff);
+        let metadata = read_tiff(&mut Cursor::new(bytes), info, ParseLimits::default())
+            .expect("SubIFD offsets should parse");
+        assert_eq!(
+            metadata
+                .tags
+                .iter()
+                .find(|tag| tag.group == "SubIFD1" && tag.name == "ImageWidth")
+                .unwrap()
+                .value,
+            TagValue::Unsigned(320)
+        );
+        assert_eq!(
+            metadata
+                .tags
+                .iter()
+                .find(|tag| tag.group == "SubIFD2" && tag.name == "ImageLength")
+                .unwrap()
+                .value,
+            TagValue::Unsigned(240)
         );
     }
 

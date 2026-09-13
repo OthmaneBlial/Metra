@@ -110,6 +110,12 @@ const TAG_DEFINITIONS: &[TagDefinition] = &[
     },
     TagDefinition {
         namespace: "EXIF",
+        id: 0x014A,
+        name: "SubIFDs",
+        description: "Offsets to sub-image directories",
+    },
+    TagDefinition {
+        namespace: "EXIF",
         id: 0x0201,
         name: "JPEGInterchangeFormat",
         description: "Thumbnail offset",
