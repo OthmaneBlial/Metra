@@ -100,7 +100,10 @@ Initial read-first foundation with narrow validated rewrites:
   arrays with typed values, source offsets, and ParseLimits;
 - retained bounded, decodable unknown Nikon and Canon MakerNote values with
   stable fallback names and raw bytes;
-  other detected vendors remain header-only;
+  Fujifilm, Panasonic, and Olympus remain header-only;
+- added a bounded legacy Sony MakerNote IFD reader with shared tag definitions,
+  typed values, absolute source offsets, value limits, and raw-byte retention;
+  unsupported Sony substructures remain warnings or stable unknown values;
 - catalogued the bounded Nikon MakerNote identifiers centrally and covered the
   EXIF integration path with absolute source-offset assertions;
 - added bounded PSD/PSB inspection for headers, dimensions, common Photoshop
