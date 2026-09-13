@@ -202,6 +202,30 @@ fn minimal_mp3(title: &str) -> Vec<u8> {
     bytes
 }
 
+fn webp_chunk(kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
+    let mut chunk = kind.to_vec();
+    chunk.extend_from_slice(&(data.len() as u32).to_le_bytes());
+    chunk.extend_from_slice(data);
+    if data.len() & 1 == 1 {
+        chunk.push(0);
+    }
+    chunk
+}
+
+fn minimal_webp(format: &str) -> Vec<u8> {
+    let xmp = format!(
+        "<x:xmpmeta><rdf:RDF><rdf:Description xmlns:dc=\"urn:dc\" dc:format=\"{format}\"/></rdf:RDF></x:xmpmeta>"
+    );
+    let mut body = webp_chunk(b"VP8X", &[0, 0, 0, 0, 1, 0, 0, 1, 0, 0]);
+    body.extend_from_slice(&webp_chunk(b"VP8 ", &[1, 2, 3]));
+    body.extend_from_slice(&webp_chunk(b"XMP ", xmp.as_bytes()));
+    let mut bytes = b"RIFF".to_vec();
+    bytes.extend_from_slice(&((4 + body.len()) as u32).to_le_bytes());
+    bytes.extend_from_slice(b"WEBP");
+    bytes.extend_from_slice(&body);
+    bytes
+}
+
 fn run(args: &[&Path]) -> std::process::Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_metra"));
     for path in args {
@@ -709,5 +733,59 @@ fn cli_can_edit_and_copy_gif_comments() {
             .unwrap()
             .display_value(),
         "source comment"
+    );
+}
+
+#[test]
+fn cli_can_edit_and_copy_webp_xmp() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.file("source.webp", &minimal_webp("source"));
+    let target = directory.file("target.webp", &minimal_webp("target"));
+
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "WebP:XMP=<x:xmpmeta><rdf:RDF><rdf:Description xmlns:dc=\"urn:dc\" dc:format=\"edited\"/></rdf:RDF></x:xmpmeta>",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("XMP:dc:format")
+            .unwrap()
+            .display_value(),
+        "edited"
+    );
+
+    let delete = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--delete",
+            "WebP:XMP",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(delete.status.success(), "stderr: {:?}", delete.stderr);
+    assert!(metra::read(&target).unwrap().find("XMP:Packet").is_none());
+
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            &format!("WebP:XMP={}", source.to_str().expect("UTF-8 test path")),
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("XMP:dc:format")
+            .unwrap()
+            .display_value(),
+        "source"
     );
 }

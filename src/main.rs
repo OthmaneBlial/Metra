@@ -143,6 +143,7 @@ enum EditRequest {
     DirectFlac(Vec<metra::FlacEdit>),
     DirectMp3(Vec<metra::Mp3Edit>),
     DirectGif(Vec<metra::GifEdit>),
+    DirectWebp(Vec<metra::WebpEdit>),
     Copy { key: CopyKey, source: PathBuf },
 }
 
@@ -155,6 +156,7 @@ enum CopyKey {
     Mp3Text(String),
     Mp3Comment,
     GifComment,
+    WebpXmp,
 }
 
 fn parse_edits(
@@ -209,6 +211,11 @@ fn parse_edits(
                     metra::GifEdit::SetComment(value.to_owned()),
                 ])));
             }
+            if webp_xmp_key(key) {
+                return Ok(Some(EditRequest::DirectWebp(vec![
+                    metra::WebpEdit::SetXmp(value.to_owned()),
+                ])));
+            }
             return Err(unsupported_edit_message(key));
         }
         return Ok(Some(EditRequest::DirectJpeg(vec![
@@ -255,6 +262,11 @@ fn parse_edits(
                     metra::GifEdit::DeleteComments,
                 ])));
             }
+            if webp_xmp_key(key) {
+                return Ok(Some(EditRequest::DirectWebp(vec![
+                    metra::WebpEdit::DeleteXmp,
+                ])));
+            }
             return Err(unsupported_edit_message(key));
         }
         return Ok(Some(EditRequest::DirectJpeg(vec![
@@ -282,6 +294,8 @@ fn parse_edits(
             CopyKey::Mp3Text(name.to_owned())
         } else if key == "GIF:Comment" {
             CopyKey::GifComment
+        } else if webp_xmp_key(key) {
+            CopyKey::WebpXmp
         } else {
             return Err(unsupported_edit_message(key));
         };
@@ -300,7 +314,7 @@ fn png_text_keyword(key: &str) -> Option<&str> {
 
 fn unsupported_edit_message(key: &str) -> String {
     format!(
-        "unsupported metadata key {key}; writable keys are JPEG:Comment, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, ID3:<text field>, or GIF:Comment"
+        "unsupported metadata key {key}; writable keys are JPEG:Comment, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, ID3:<text field>, GIF:Comment, or WebP:XMP"
     )
 }
 
@@ -362,6 +376,10 @@ fn flac_comment_name(key: &str) -> Option<&str> {
     .then_some(name)
 }
 
+fn webp_xmp_key(key: &str) -> bool {
+    matches!(key, "WebP:XMP" | "WEBP:XMP")
+}
+
 fn wav_info_name(key: &str) -> Option<&str> {
     let name = key.strip_prefix("WAV:")?;
     matches!(
@@ -390,6 +408,7 @@ fn apply_request(paths: &[PathBuf], request: EditRequest) -> ExitCode {
         EditRequest::DirectFlac(edits) => apply_flac_edits(paths, &edits),
         EditRequest::DirectMp3(edits) => apply_mp3_edits(paths, &edits),
         EditRequest::DirectGif(edits) => apply_gif_edits(paths, &edits),
+        EditRequest::DirectWebp(edits) => apply_webp_edits(paths, &edits),
         EditRequest::Copy { key, source } => apply_copy(paths, key, &source),
     }
 }
@@ -634,6 +653,33 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path) -> ExitCode {
             let edits = [metra::GifEdit::SetComment(comment.clone())];
             apply_gif_edits(paths, &edits)
         }
+        CopyKey::WebpXmp => {
+            if source_metadata.file_info.format != metra::FileFormat::Webp {
+                eprintln!(
+                    "metra: {}: source format {} is not WebP",
+                    source.display(),
+                    source_metadata.file_info.format
+                );
+                return ExitCode::from(1);
+            }
+            let Some(packet) = source_metadata.find("XMP:Packet") else {
+                eprintln!(
+                    "metra: {}: source does not contain an XMP packet",
+                    source.display()
+                );
+                return ExitCode::from(1);
+            };
+            let metra::TagValue::Bytes(packet) = &packet.value else {
+                eprintln!("metra: {}: XMP:Packet is not raw bytes", source.display());
+                return ExitCode::from(1);
+            };
+            let Ok(packet) = String::from_utf8(packet.clone()) else {
+                eprintln!("metra: {}: XMP:Packet is not valid UTF-8", source.display());
+                return ExitCode::from(1);
+            };
+            let edits = [metra::WebpEdit::SetXmp(packet)];
+            apply_webp_edits(paths, &edits)
+        }
     }
 }
 
@@ -759,6 +805,39 @@ fn apply_gif_edits(paths: &[PathBuf], edits: &[metra::GifEdit]) -> ExitCode {
             Ok(metadata) => {
                 eprintln!(
                     "metra: {}: {} edits are supported only for GIF files",
+                    path.display(),
+                    metadata.file_info.format
+                );
+                failures += 1;
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", path.display());
+                failures += 1;
+            }
+        }
+    }
+    if failures == 0 {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
+fn apply_webp_edits(paths: &[PathBuf], edits: &[metra::WebpEdit]) -> ExitCode {
+    let mut failures = 0_usize;
+    for path in paths {
+        match metra::read(path) {
+            Ok(metadata) if metadata.file_info.format == metra::FileFormat::Webp => {
+                if let Err(error) = metra::rewrite_webp_path(path, ParseLimits::default(), edits) {
+                    eprintln!("metra: {}: {error}", path.display());
+                    failures += 1;
+                } else {
+                    println!("updated: {}", path.display());
+                }
+            }
+            Ok(metadata) => {
+                eprintln!(
+                    "metra: {}: {} edits are supported only for WebP files",
                     path.display(),
                     metadata.file_info.format
                 );
