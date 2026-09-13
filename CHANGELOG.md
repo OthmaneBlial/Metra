@@ -108,6 +108,8 @@ Initial read-first foundation with narrow validated rewrites:
   shared tag definitions, typed values, source offsets, and unknown-value retention;
 - added bounded Panasonic and Olympus MakerNote IFD readers for modern and legacy
   little-endian layouts, with vendor-specific tag resolution and raw-byte retention;
+- added bounded Nikon Type 1 MakerNote IFD decoding at its legacy offset, with
+  version-specific names, typed values, and absolute source offsets;
 - catalogued the bounded Nikon MakerNote identifiers centrally and covered the
   EXIF integration path with absolute source-offset assertions;
 - added bounded PSD/PSB inspection for headers, dimensions, common Photoshop
