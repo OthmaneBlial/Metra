@@ -60,6 +60,11 @@ fn minimal_exif_jpeg() -> Vec<u8> {
     jpeg
 }
 
+fn minimal_svg() -> Vec<u8> {
+    br#"<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" width="32" height="24"><title>CLI vector</title></svg>"#
+        .to_vec()
+}
+
 fn run(args: &[&Path]) -> std::process::Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_metra"));
     for path in args {
@@ -183,4 +188,26 @@ fn toml_and_yaml_outputs_keep_schema_version() {
         assert!(text.contains("schema_version"));
         assert!(text.contains("Sony"));
     }
+}
+
+#[test]
+fn svg_json_output_exposes_document_metadata() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.file("drawing.svg", &minimal_svg());
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args(["--json", path.to_str().expect("UTF-8 test path")])
+        .output()
+        .expect("Metra CLI should start");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let document: Value = serde_json::from_slice(&output.stdout).expect("JSON output should parse");
+    assert_eq!(document["file_info"]["format"], "SVG");
+    assert_eq!(document["file_info"]["mime_type"], "image/svg+xml");
+    assert!(
+        document["tags"]
+            .as_array()
+            .expect("tags should be an array")
+            .iter()
+            .any(|tag| tag["name"] == "Title" && tag["value"]["string"] == "CLI vector")
+    );
 }

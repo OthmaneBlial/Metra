@@ -308,6 +308,7 @@ pub enum FileFormat {
     Mp3,
     Flac,
     Wav,
+    Svg,
     Unknown,
 }
 
@@ -328,6 +329,7 @@ impl FileFormat {
             Self::Mp3 => Some("audio/mpeg"),
             Self::Flac => Some("audio/flac"),
             Self::Wav => Some("audio/wav"),
+            Self::Svg => Some("image/svg+xml"),
             Self::Unknown => None,
         }
     }
@@ -350,6 +352,7 @@ impl fmt::Display for FileFormat {
             Self::Mp3 => "MP3",
             Self::Flac => "FLAC",
             Self::Wav => "WAV",
+            Self::Svg => "SVG",
             Self::Unknown => "Unknown",
         })
     }

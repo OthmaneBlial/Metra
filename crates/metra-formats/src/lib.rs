@@ -19,6 +19,7 @@ mod isobmff;
 mod jpeg;
 mod pdf;
 mod png;
+mod svg;
 mod tiff;
 mod wav;
 mod webp;
@@ -31,6 +32,7 @@ pub use isobmff::read_isobmff;
 pub use jpeg::read_jpeg;
 pub use pdf::read_pdf;
 pub use png::read_png;
+pub use svg::read_svg;
 pub use tiff::read_tiff;
 pub use wav::read_wav;
 pub use webp::read_webp;
@@ -110,9 +112,64 @@ pub fn detect_format(bytes: &[u8]) -> Option<DetectedFormat> {
             format: FileFormat::Mp3,
             signature: "MPEG audio frame sync",
         })
+    } else if is_svg_signature(bytes) {
+        Some(DetectedFormat {
+            format: FileFormat::Svg,
+            signature: "SVG XML root",
+        })
     } else {
         None
     }
+}
+
+fn is_svg_signature(bytes: &[u8]) -> bool {
+    let mut cursor = 0_usize;
+    if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
+        cursor = 3;
+    }
+    loop {
+        while bytes
+            .get(cursor)
+            .is_some_and(|byte| byte.is_ascii_whitespace())
+        {
+            cursor += 1;
+        }
+        if bytes
+            .get(cursor..)
+            .is_some_and(|rest| rest.starts_with(b"<!--"))
+        {
+            let Some(end) = bytes[cursor + 4..]
+                .windows(3)
+                .position(|window| window == b"-->")
+            else {
+                return false;
+            };
+            cursor += 4 + end + 3;
+            continue;
+        }
+        if bytes
+            .get(cursor..)
+            .is_some_and(|rest| rest.starts_with(b"<?xml"))
+        {
+            let Some(end) = bytes[cursor + 5..]
+                .windows(2)
+                .position(|window| window == b"?>")
+            else {
+                return false;
+            };
+            cursor += 5 + end + 2;
+            continue;
+        }
+        break;
+    }
+    let Some(rest) = bytes.get(cursor..) else {
+        return false;
+    };
+    if !rest.starts_with(b"<svg") {
+        return false;
+    }
+    rest.get(4)
+        .is_none_or(|byte| byte.is_ascii_whitespace() || matches!(byte, b'>' | b'/'))
 }
 
 pub fn read_path(path: impl AsRef<Path>) -> Result<Metadata> {
@@ -133,7 +190,7 @@ pub fn read_path_with_limits(path: impl AsRef<Path>, limits: ParseLimits) -> Res
         })?
         .len();
 
-    let mut header = [0_u8; 16];
+    let mut header = [0_u8; 4096];
     let header_len = file.read(&mut header).map_err(|source| MetraError::Io {
         path: path.clone(),
         source,
@@ -165,6 +222,7 @@ pub fn read_path_with_limits(path: impl AsRef<Path>, limits: ParseLimits) -> Res
         FileFormat::Flac => flac::read_flac(&mut file, file_info, limits),
         FileFormat::Pdf => pdf::read_pdf(&mut file, file_info, limits),
         FileFormat::Wav => wav::read_wav(&mut file, file_info, limits),
+        FileFormat::Svg => svg::read_svg(&mut file, file_info, limits),
         format => Err(MetraError::UnsupportedFormat {
             description: format!("{format} is detected but its reader is not implemented yet"),
         }),
@@ -197,6 +255,12 @@ mod tests {
         assert_eq!(
             detect_format(b"\xFF\xFB\x90\x64").unwrap().format,
             FileFormat::Mp3
+        );
+        assert_eq!(
+            detect_format(b"<?xml version=\"1.0\"?><svg xmlns=\"http://www.w3.org/2000/svg\">")
+                .unwrap()
+                .format,
+            FileFormat::Svg
         );
     }
 }
