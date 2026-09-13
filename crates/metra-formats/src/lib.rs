@@ -108,6 +108,11 @@ pub fn detect_format(bytes: &[u8]) -> Option<DetectedFormat> {
             format: FileFormat::Png,
             signature: "PNG signature",
         })
+    } else if bytes.starts_with(b"IIU\0") || bytes.starts_with(b"MM\0U") {
+        Some(DetectedFormat {
+            format: FileFormat::Raw,
+            signature: "TIFF/RW2 header",
+        })
     } else if raw::is_tiff_header(bytes) {
         Some(DetectedFormat {
             format: FileFormat::Tiff,

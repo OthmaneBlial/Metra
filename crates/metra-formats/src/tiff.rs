@@ -582,7 +582,7 @@ impl<R: Read + Seek> TiffParser<'_, R> {
         };
         let magic = self.endian.u16(&header[2..4]);
         let (variant, first_ifd) = match magic {
-            42 => (
+            42 | 85 => (
                 TiffVariant::Classic,
                 u64::from(self.endian.u32(&header[4..8])),
             ),
@@ -603,7 +603,9 @@ impl<R: Read + Seek> TiffParser<'_, R> {
             _ => {
                 return Err(MetraError::InvalidHeader {
                     context: "TIFF".to_owned(),
-                    message: format!("expected magic 42 or BigTIFF magic 43, got {magic}"),
+                    message: format!(
+                        "expected classic TIFF/RW2 magic 42 or 85, or BigTIFF magic 43, got {magic}"
+                    ),
                 });
             }
         };

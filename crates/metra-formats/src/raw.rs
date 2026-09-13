@@ -7,6 +7,8 @@ use metra_core::{
 
 const TIFF_LITTLE_ENDIAN: &[u8; 4] = b"II*\0";
 const TIFF_BIG_ENDIAN: &[u8; 4] = b"MM\0*";
+const RW2_LITTLE_ENDIAN: &[u8; 4] = b"IIU\0";
+const RW2_BIG_ENDIAN: &[u8; 4] = b"MM\0U";
 const BIG_TIFF_LITTLE_ENDIAN: &[u8; 4] = b"II+\0";
 const BIG_TIFF_BIG_ENDIAN: &[u8; 4] = b"MM\0+";
 const RAF_SIGNATURE: &[u8; 16] = b"FUJIFILMCCD-RAW ";
@@ -70,6 +72,8 @@ pub fn read_raw<R: Read + Seek>(
 pub(crate) fn is_tiff_header(bytes: &[u8]) -> bool {
     bytes.starts_with(TIFF_LITTLE_ENDIAN)
         || bytes.starts_with(TIFF_BIG_ENDIAN)
+        || bytes.starts_with(RW2_LITTLE_ENDIAN)
+        || bytes.starts_with(RW2_BIG_ENDIAN)
         || bytes.starts_with(BIG_TIFF_LITTLE_ENDIAN)
         || bytes.starts_with(BIG_TIFF_BIG_ENDIAN)
 }
@@ -186,6 +190,13 @@ mod tests {
         vec![b'I', b'I', 42, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     }
 
+    fn minimal_rw2() -> Vec<u8> {
+        let mut bytes = vec![b'I', b'I', b'U', 0, 8, 0, 0, 0, 1, 0];
+        bytes.extend_from_slice(&[0x0F, 0x01, 2, 0, 5, 0, 0, 0, 26, 0, 0, 0, 0, 0, 0, 0]);
+        bytes.extend_from_slice(b"RW2\0\0");
+        bytes
+    }
+
     #[test]
     fn delegates_tiff_like_raw_to_exif_reader() {
         let bytes = minimal_tiff();
@@ -197,6 +208,19 @@ mod tests {
         .expect("DNG-like TIFF should parse");
         assert_eq!(metadata.file_info.format, metra_core::FileFormat::Raw);
         assert_eq!(metadata.find("RAW:Variant").unwrap().display_value(), "DNG");
+    }
+
+    #[test]
+    fn delegates_rw2_tiff_dialect_to_exif_reader() {
+        let bytes = minimal_rw2();
+        let metadata = read_raw(
+            &mut Cursor::new(bytes.clone()),
+            file_info("capture.rw2", &bytes),
+            ParseLimits::default(),
+        )
+        .expect("RW2 TIFF dialect should parse");
+        assert_eq!(metadata.find("RAW:Variant").unwrap().display_value(), "RW2");
+        assert_eq!(metadata.find("EXIF:Make").unwrap().display_value(), "RW2");
     }
 
     #[test]
