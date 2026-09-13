@@ -54,9 +54,11 @@ and ICC payloads delegate bounded profile-header, typed illuminant, and tag-tabl
 ICC APP2 fragments are collected and reassembled by sequence number before that inspection, while
 common ICC text and XYZ table tags retain their 4CC identifiers. PNG and WebP carry their bounded
 profile payloads directly. TIFF MakerNote payloads are handed to an isolated
-detector. Nikon Type 1/2, Canon, Fujifilm, Panasonic, Olympus, and legacy Sony payloads additionally pass through bounded
-embedded IFD readers that expose known fields with stable numeric
-identifiers and typed values; other vendors remain detection-only, and
+detector. Nikon Type 1/2, Canon, Fujifilm, Panasonic, Olympus, legacy Sony,
+and Apple payloads additionally pass through bounded embedded IFD readers that
+expose known fields with stable numeric identifiers and typed values. Samsung
+STMN, DJI, and GoPro families are detected using signatures or the parsed EXIF
+manufacturer context, while their proprietary payloads remain detection-only;
 proprietary MakerNote tag decoding remains separate. Known and unknown values
 from those bounded IFDs retain their raw bytes. TIFF also derives GPS
 decimal coordinates, signed altitude, image direction, speed
@@ -207,7 +209,7 @@ The following changes are deferred until their acceptance tests exist:
 - a typed write/create/edit operation IR on top of the existing public
   `FormatHandler` registry;
 - additional manufacturer-specific MakerNote modules beyond the bounded Nikon
-  Type 1/2, Canon, Fujifilm, Panasonic, Olympus, and legacy Sony readers;
+  Type 1/2, Canon, Fujifilm, Panasonic, Olympus, legacy Sony, and Apple readers;
 - vendor-specific RAW container structures and RAF/CR3 payload metadata beyond
   the current bounded delegation;
 - PSD/PSB resource writers and layer/pixel metadata modules;

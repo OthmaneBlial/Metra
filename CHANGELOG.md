@@ -106,7 +106,8 @@ Initial read-first foundation with narrow validated rewrites:
 - added typed WebP `ICCP` profile inspection under the configured value budget;
 - added bounded ICC text and XYZ table-tag inspection with stable 4CC IDs;
 - added isolated detection of common Nikon, Canon, Fujifilm, Sony, Panasonic,
-  and Olympus MakerNote containers without claiming proprietary tag decoding;
+  Olympus, Samsung, DJI, and GoPro MakerNote containers without claiming
+  proprietary tag decoding;
 - added bounded Nikon Type 2 MakerNote IFD parsing for known camera fields with
   typed values, stable numeric identifiers, source offsets, and ParseLimits;
 - added bounded Canon MakerNote IFD parsing for selected camera strings and
@@ -123,6 +124,11 @@ Initial read-first foundation with narrow validated rewrites:
   little-endian layouts, with vendor-specific tag resolution and raw-byte retention;
 - added bounded Nikon Type 1 MakerNote IFD decoding at its legacy offset, with
   version-specific names, typed values, and absolute source offsets;
+- added a bounded Apple MakerNote Big Endian IFD reader with stable field names,
+  typed values, raw-byte retention, and absolute source offsets;
+- added EXIF manufacturer-context detection for payloads whose signatures are
+  not self-describing, including GoPro and DJI, while keeping proprietary
+  Samsung STMN/DJI/GoPro fields detection-only;
 - catalogued the bounded Nikon MakerNote identifiers centrally and covered the
   EXIF integration path with absolute source-offset assertions;
 - added bounded PSD/PSB inspection for headers, dimensions, common Photoshop

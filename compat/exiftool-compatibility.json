@@ -143,6 +143,19 @@
     "MatroskaCues": "partial",
     "MatroskaAttachments": "partial"
   },
+  "maker_notes": {
+    "Canon": "partial",
+    "Nikon": "partial",
+    "Sony": "partial",
+    "Fujifilm": "partial",
+    "Panasonic": "partial",
+    "Olympus": "partial",
+    "Apple": "partial",
+    "Samsung": "partial",
+    "DJI": "partial",
+    "GoPro": "partial",
+    "Pentax": "planned"
+  },
   "cli": {
     "human_readable": "supported",
     "json": "supported",
