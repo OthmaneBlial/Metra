@@ -180,7 +180,7 @@ const FORMAT_CAPABILITIES: &[FormatCapabilities] = &[
         read: CapabilityStatus::Partial,
         write: CapabilityStatus::Partial,
         create: CapabilityStatus::Planned,
-        delete: CapabilityStatus::Planned,
+        delete: CapabilityStatus::Partial,
         lossless_rewrite: CapabilityStatus::Partial,
         streaming: CapabilityStatus::Partial,
     },
@@ -342,7 +342,7 @@ const FORMAT_CAPABILITIES: &[FormatCapabilities] = &[
         read: CapabilityStatus::Partial,
         write: CapabilityStatus::Partial,
         create: CapabilityStatus::Planned,
-        delete: CapabilityStatus::Planned,
+        delete: CapabilityStatus::Partial,
         lossless_rewrite: CapabilityStatus::Partial,
         streaming: CapabilityStatus::Partial,
     },
@@ -351,7 +351,7 @@ const FORMAT_CAPABILITIES: &[FormatCapabilities] = &[
         read: CapabilityStatus::Partial,
         write: CapabilityStatus::Partial,
         create: CapabilityStatus::Planned,
-        delete: CapabilityStatus::Planned,
+        delete: CapabilityStatus::Partial,
         lossless_rewrite: CapabilityStatus::Partial,
         streaming: CapabilityStatus::Partial,
     },
@@ -360,7 +360,7 @@ const FORMAT_CAPABILITIES: &[FormatCapabilities] = &[
         read: CapabilityStatus::Partial,
         write: CapabilityStatus::Partial,
         create: CapabilityStatus::Planned,
-        delete: CapabilityStatus::Planned,
+        delete: CapabilityStatus::Partial,
         lossless_rewrite: CapabilityStatus::Partial,
         streaming: CapabilityStatus::Partial,
     },
@@ -369,7 +369,7 @@ const FORMAT_CAPABILITIES: &[FormatCapabilities] = &[
         read: CapabilityStatus::Partial,
         write: CapabilityStatus::Partial,
         create: CapabilityStatus::Planned,
-        delete: CapabilityStatus::Planned,
+        delete: CapabilityStatus::Partial,
         lossless_rewrite: CapabilityStatus::Partial,
         streaming: CapabilityStatus::Partial,
     },
@@ -1028,7 +1028,24 @@ mod tests {
         );
         let raw = format_capabilities(FileFormat::Raw);
         assert_eq!(raw.write, CapabilityStatus::Partial);
+        assert_eq!(raw.delete, CapabilityStatus::Partial);
         assert_eq!(raw.lossless_rewrite, CapabilityStatus::Partial);
+        assert_eq!(
+            format_capabilities(FileFormat::Tiff).delete,
+            CapabilityStatus::Partial
+        );
+        assert_eq!(
+            format_capabilities(FileFormat::Avi).delete,
+            CapabilityStatus::Partial
+        );
+        assert_eq!(
+            format_capabilities(FileFormat::Mkv).delete,
+            CapabilityStatus::Partial
+        );
+        assert_eq!(
+            format_capabilities(FileFormat::Webm).delete,
+            CapabilityStatus::Partial
+        );
         assert_eq!(format_capabilities_all().len(), 23);
     }
 }
