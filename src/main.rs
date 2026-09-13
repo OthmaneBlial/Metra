@@ -1,3 +1,5 @@
+use std::env;
+use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -32,6 +34,15 @@ struct Arguments {
     /// Emit YAML metadata (a `files` list is used for multiple inputs).
     #[arg(long, conflicts_with_all = ["json", "jsonl", "csv", "toml"])]
     yaml: bool,
+
+    /// Select tags by canonical key or display name for read-only output.
+    #[arg(
+        long = "tag",
+        value_name = "NAME",
+        action = clap::ArgAction::Append,
+        conflicts_with_all = ["set", "delete", "copy", "create_tiff", "create_png", "compare"]
+    )]
+    tag: Vec<String>,
 
     /// Replace the value of a supported writable tag in place.
     #[arg(
@@ -145,7 +156,7 @@ struct Arguments {
 }
 
 fn main() -> ExitCode {
-    let arguments = Arguments::parse();
+    let arguments = Arguments::parse_from(normalize_legacy_args(env::args_os()));
     let limits = parse_limits(arguments.max_metadata_bytes, arguments.max_value_bytes);
     if !arguments.create_tiff.is_empty() {
         if arguments.files.len() != 1 {
@@ -227,7 +238,10 @@ fn main() -> ExitCode {
     }
 
     let failures = if arguments.json || arguments.toml || arguments.yaml {
-        let results = inspect_paths(&paths, arguments.jobs, limits, &cancellation);
+        let results = filter_results(
+            inspect_paths(&paths, arguments.jobs, limits, &cancellation),
+            &arguments.tag,
+        );
         let failures = results
             .iter()
             .filter(|(_, result)| result_is_failure(result, arguments.validate))
@@ -251,6 +265,7 @@ fn main() -> ExitCode {
             limits,
             &cancellation,
             |path, result| {
+                let result = filter_result(result, &arguments.tag);
                 if arguments.csv {
                     emit_csv_record(&path, &result);
                 } else if arguments.jsonl {
@@ -271,6 +286,78 @@ fn main() -> ExitCode {
     } else {
         ExitCode::from(1)
     }
+}
+
+fn normalize_legacy_args<I>(args: I) -> Vec<OsString>
+where
+    I: IntoIterator<Item = OsString>,
+{
+    let mut normalized = Vec::new();
+    let mut after_separator = false;
+    for arg in args {
+        if !after_separator && let Some(value) = arg.to_str() {
+            if value == "--" {
+                after_separator = true;
+                normalized.push(arg);
+                continue;
+            }
+            if value == "-json" {
+                normalized.push(OsString::from("--json"));
+                continue;
+            }
+            if value == "-jsonl" {
+                normalized.push(OsString::from("--jsonl"));
+                continue;
+            }
+            if let Some(tag) = legacy_tag_name(value) {
+                normalized.push(OsString::from("--tag"));
+                normalized.push(OsString::from(tag));
+                continue;
+            }
+        }
+        normalized.push(arg);
+    }
+    normalized
+}
+
+fn legacy_tag_name(value: &str) -> Option<&'static str> {
+    match value {
+        "-Make" => Some("Make"),
+        "-Model" => Some("Model"),
+        "-Artist" => Some("Artist"),
+        "-Copyright" => Some("Copyright"),
+        "-Software" => Some("Software"),
+        "-ImageDescription" => Some("ImageDescription"),
+        "-GPSLatitude" => Some("GPSLatitude"),
+        "-GPSLongitude" => Some("GPSLongitude"),
+        "-GPSAltitude" => Some("GPSAltitude"),
+        "-DateTimeOriginal" => Some("DateTimeOriginal"),
+        _ => None,
+    }
+}
+
+fn filter_results(
+    results: Vec<(PathBuf, metra::Result<Metadata>)>,
+    selectors: &[String],
+) -> Vec<(PathBuf, metra::Result<Metadata>)> {
+    results
+        .into_iter()
+        .map(|(path, result)| (path, filter_result(result, selectors)))
+        .collect()
+}
+
+fn filter_result(result: metra::Result<Metadata>, selectors: &[String]) -> metra::Result<Metadata> {
+    result.map(|mut metadata| {
+        if !selectors.is_empty() {
+            metadata.tags.retain(|tag| {
+                let key = tag.key();
+                selectors
+                    .iter()
+                    .any(|selector| selector == &key || selector == &tag.name)
+            });
+        }
+        metadata
+    })
 }
 
 fn parse_tiff_create(entries: &[String]) -> Result<metra::TiffCreateOptions, String> {

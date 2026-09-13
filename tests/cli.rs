@@ -622,6 +622,36 @@ fn json_output_exposes_typed_exif_tags() {
 }
 
 #[test]
+fn legacy_dash_tag_alias_selects_a_canonical_tag() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.file("camera.jpg", &minimal_exif_jpeg());
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args(["-Make", path.to_str().expect("UTF-8 test path")])
+        .output()
+        .expect("Metra CLI should start");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("EXIF:Make"));
+    assert!(stdout.contains("Sony"));
+}
+
+#[test]
+fn legacy_json_alias_keeps_the_metra_schema() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.file("camera.jpg", &minimal_exif_jpeg());
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args(["-json", path.to_str().expect("UTF-8 test path")])
+        .output()
+        .expect("Metra CLI should start");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let document: Value = serde_json::from_slice(&output.stdout).expect("JSON output should parse");
+    assert_eq!(document["schema_version"], 1);
+    assert_eq!(document["file_info"]["format"], "JPEG");
+}
+
+#[test]
 fn jsonl_and_human_modes_are_available() {
     let directory = TemporaryDirectory::new();
     let path = directory.file("camera.jpg", &minimal_exif_jpeg());
