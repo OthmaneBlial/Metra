@@ -24,6 +24,7 @@ mod iptc_writer;
 mod isobmff;
 mod jpeg;
 mod makers;
+mod matroska;
 mod pdf;
 mod png;
 mod png_writer;
@@ -47,6 +48,7 @@ pub use id3::read_mp3;
 pub use id3_writer::{Mp3Edit, rewrite_mp3, rewrite_mp3_path, rewrite_mp3_to_vec};
 pub use isobmff::read_isobmff;
 pub use jpeg::{JpegEdit, read_jpeg, rewrite_jpeg, rewrite_jpeg_path, rewrite_jpeg_to_vec};
+pub use matroska::read_matroska;
 pub use pdf::read_pdf;
 pub use png::read_png;
 pub use png_writer::{PngEdit, rewrite_png, rewrite_png_path, rewrite_png_to_vec};
@@ -87,6 +89,16 @@ pub fn detect_format(bytes: &[u8]) -> Option<DetectedFormat> {
         Some(DetectedFormat {
             format: FileFormat::Tiff,
             signature: "TIFF header",
+        })
+    } else if bytes.starts_with(b"\x1A\x45\xDF\xA3") {
+        let format = if matroska::document_type(bytes).as_deref() == Some("webm") {
+            FileFormat::Webm
+        } else {
+            FileFormat::Mkv
+        };
+        Some(DetectedFormat {
+            format,
+            signature: "EBML/Matroska header",
         })
     } else if bytes.len() >= 12 && &bytes[..4] == b"RIFF" {
         if &bytes[8..12] == b"WEBP" {
@@ -257,6 +269,7 @@ pub fn read_path_with_limits(path: impl AsRef<Path>, limits: ParseLimits) -> Res
         FileFormat::Svg => svg::read_svg(&mut file, file_info, limits),
         FileFormat::Psd => psd::read_psd(&mut file, file_info, limits),
         FileFormat::Avi => avi::read_avi(&mut file, file_info, limits),
+        FileFormat::Mkv | FileFormat::Webm => matroska::read_matroska(&mut file, file_info, limits),
         format => Err(MetraError::UnsupportedFormat {
             description: format!("{format} is detected but its reader is not implemented yet"),
         }),
@@ -288,6 +301,12 @@ mod tests {
         assert_eq!(
             detect_format(b"RIFF\0\0\0\0AVI ").unwrap().format,
             FileFormat::Avi
+        );
+        assert_eq!(
+            detect_format(b"\x1A\x45\xDF\xA3\x9F\x42\x82\x84webm")
+                .unwrap()
+                .format,
+            FileFormat::Webm
         );
         assert!(detect_format(b"photo.jpg").is_none());
         assert_eq!(
