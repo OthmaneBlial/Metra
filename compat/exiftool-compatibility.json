@@ -15,7 +15,7 @@
       "read": "partial",
       "write": "partial",
       "create": "planned",
-      "delete": "planned",
+      "delete": "partial",
       "lossless_rewrite": "partial",
       "streaming": "partial"
     },
@@ -101,7 +101,7 @@
       "read": "partial",
       "write": "partial",
       "create": "planned",
-      "delete": "planned",
+      "delete": "partial",
       "lossless_rewrite": "partial",
       "streaming": "partial"
     },
@@ -109,7 +109,7 @@
       "read": "partial",
       "write": "partial",
       "create": "planned",
-      "delete": "planned",
+      "delete": "partial",
       "lossless_rewrite": "partial",
       "streaming": "partial"
     },
@@ -117,7 +117,7 @@
       "read": "partial",
       "write": "partial",
       "create": "planned",
-      "delete": "planned",
+      "delete": "partial",
       "lossless_rewrite": "partial",
       "streaming": "partial"
     },
@@ -125,7 +125,7 @@
       "read": "partial",
       "write": "partial",
       "create": "planned",
-      "delete": "planned",
+      "delete": "partial",
       "lossless_rewrite": "partial",
       "streaming": "partial"
     }
