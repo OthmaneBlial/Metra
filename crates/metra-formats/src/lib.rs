@@ -29,6 +29,7 @@ mod pdf;
 mod png;
 mod png_writer;
 mod psd;
+mod raw;
 mod svg;
 mod svg_writer;
 mod tiff;
@@ -53,6 +54,7 @@ pub use pdf::read_pdf;
 pub use png::read_png;
 pub use png_writer::{PngEdit, rewrite_png, rewrite_png_path, rewrite_png_to_vec};
 pub use psd::read_psd;
+pub use raw::read_raw;
 pub use svg::read_svg;
 pub use svg_writer::{SvgEdit, rewrite_svg, rewrite_svg_path, rewrite_svg_to_vec};
 pub use tiff::read_tiff;
@@ -70,7 +72,22 @@ pub struct DetectedFormat {
 /// Detect a format from magic bytes. Extensions are deliberately not used as
 /// the primary signal.
 pub fn detect_format(bytes: &[u8]) -> Option<DetectedFormat> {
-    if bytes.starts_with(b"8BPS") {
+    if raw::is_raf_header(bytes) {
+        Some(DetectedFormat {
+            format: FileFormat::Raw,
+            signature: "RAF header",
+        })
+    } else if raw::is_cr2_header(bytes) {
+        Some(DetectedFormat {
+            format: FileFormat::Raw,
+            signature: "TIFF/CR2 header",
+        })
+    } else if raw::is_cr3_header(bytes) {
+        Some(DetectedFormat {
+            format: FileFormat::Raw,
+            signature: "ISO-BMFF ftyp/CR3",
+        })
+    } else if bytes.starts_with(b"8BPS") {
         Some(DetectedFormat {
             format: FileFormat::Psd,
             signature: "PSD/PSB header",
@@ -166,6 +183,18 @@ pub fn detect_format(bytes: &[u8]) -> Option<DetectedFormat> {
     }
 }
 
+fn detect_format_for_path(path: &Path, bytes: &[u8]) -> Option<DetectedFormat> {
+    let detected = detect_format(bytes)?;
+    if detected.format == FileFormat::Tiff && raw::raw_variant(path).is_some() {
+        Some(DetectedFormat {
+            format: FileFormat::Raw,
+            signature: "TIFF/RAW extension",
+        })
+    } else {
+        Some(detected)
+    }
+}
+
 fn is_svg_signature(bytes: &[u8]) -> bool {
     let mut cursor = 0_usize;
     if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
@@ -245,10 +274,11 @@ pub fn read_path_with_limits(path: impl AsRef<Path>, limits: ParseLimits) -> Res
             source,
         })?;
 
-    let detected =
-        detect_format(&header[..header_len]).ok_or_else(|| MetraError::UnsupportedFormat {
+    let detected = detect_format_for_path(&path, &header[..header_len]).ok_or_else(|| {
+        MetraError::UnsupportedFormat {
             description: format!("unrecognized file signature for {}", path.display()),
-        })?;
+        }
+    })?;
     let file_info = FileInfo::new(path.clone(), size, detected.format);
 
     match detected.format {
@@ -270,6 +300,7 @@ pub fn read_path_with_limits(path: impl AsRef<Path>, limits: ParseLimits) -> Res
         FileFormat::Psd => psd::read_psd(&mut file, file_info, limits),
         FileFormat::Avi => avi::read_avi(&mut file, file_info, limits),
         FileFormat::Mkv | FileFormat::Webm => matroska::read_matroska(&mut file, file_info, limits),
+        FileFormat::Raw => raw::read_raw(&mut file, file_info, limits),
         format => Err(MetraError::UnsupportedFormat {
             description: format!("{format} is detected but its reader is not implemented yet"),
         }),
@@ -301,6 +332,18 @@ mod tests {
         assert_eq!(
             detect_format(b"RIFF\0\0\0\0AVI ").unwrap().format,
             FileFormat::Avi
+        );
+        assert_eq!(
+            detect_format(b"II*\0\0\0\0\0CR\x02\0").unwrap().format,
+            FileFormat::Raw
+        );
+        assert_eq!(
+            detect_format(b"FUJIFILMCCD-RAW ").unwrap().format,
+            FileFormat::Raw
+        );
+        assert_eq!(
+            detect_format(b"\0\0\0\0ftypcrx \0\0\0\0").unwrap().format,
+            FileFormat::Raw
         );
         assert_eq!(
             detect_format(b"\x1A\x45\xDF\xA3\x9F\x42\x82\x84webm")

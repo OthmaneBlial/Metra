@@ -736,6 +736,7 @@ pub enum FileFormat {
     Avi,
     Mkv,
     Webm,
+    Raw,
     Unknown,
 }
 
@@ -761,6 +762,7 @@ impl FileFormat {
             Self::Avi => Some("video/x-msvideo"),
             Self::Mkv => Some("video/x-matroska"),
             Self::Webm => Some("video/webm"),
+            Self::Raw => Some("image/x-raw"),
             Self::Unknown => None,
         }
     }
@@ -788,6 +790,7 @@ impl fmt::Display for FileFormat {
             Self::Avi => "AVI",
             Self::Mkv => "MKV",
             Self::Webm => "WebM",
+            Self::Raw => "RAW",
             Self::Unknown => "Unknown",
         })
     }
@@ -978,6 +981,15 @@ const FORMAT_CAPABILITIES: &[FormatCapabilities] = &[
     },
     FormatCapabilities {
         format: FileFormat::Webm,
+        read: CapabilityStatus::Partial,
+        write: CapabilityStatus::Planned,
+        create: CapabilityStatus::Planned,
+        delete: CapabilityStatus::Planned,
+        lossless_rewrite: CapabilityStatus::Planned,
+        streaming: CapabilityStatus::Partial,
+    },
+    FormatCapabilities {
+        format: FileFormat::Raw,
         read: CapabilityStatus::Partial,
         write: CapabilityStatus::Planned,
         create: CapabilityStatus::Planned,
@@ -1500,6 +1512,6 @@ mod tests {
 
         let unknown = format_capabilities(FileFormat::Unknown);
         assert_eq!(unknown.read, CapabilityStatus::Unsupported);
-        assert_eq!(format_capabilities_all().len(), 19);
+        assert_eq!(format_capabilities_all().len(), 20);
     }
 }
