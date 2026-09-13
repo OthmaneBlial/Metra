@@ -325,18 +325,18 @@ fn find_comment_packet<R: Read + Seek>(
                     state.packets_seen += 1;
                     if state.packets_seen == 1 {
                         state.codec = codec_from_identification(&packet);
-                    } else if state.packets_seen == 2
-                        && let (Some(codec), Some(prefix)) = (state.codec, comment_prefix(&packet))
-                        && prefix.0 == codec
-                    {
-                        return Ok(Some(TargetPacket {
-                            codec,
-                            length: packet.len(),
-                            bytes: packet,
-                            ranges,
-                        }));
                     }
-                    if state.packets_seen >= 3 {
+                    if let Some(codec) = state.codec {
+                        let comment_packet = match codec {
+                            Codec::OggFlac => true,
+                            Codec::Vorbis | Codec::Opus => state.packets_seen == 2,
+                        };
+                        if comment_packet && let Some((start, end)) = comment_range(codec, &packet)
+                        {
+                            return Ok(Some(target_packet(codec, &packet, &ranges, start, end)));
+                        }
+                    }
+                    if state.packets_seen >= 8 {
                         state.exhausted = true;
                     }
                 }
@@ -371,6 +371,74 @@ fn comment_prefix(packet: &[u8]) -> Option<(Codec, usize)> {
         (block_length == packet.len().saturating_sub(4)).then_some((Codec::OggFlac, 4))
     } else {
         None
+    }
+}
+
+fn comment_range(codec: Codec, packet: &[u8]) -> Option<(usize, usize)> {
+    match codec {
+        Codec::Vorbis | Codec::Opus => comment_prefix(packet)
+            .filter(|(packet_codec, _)| *packet_codec == codec)
+            .map(|_| (0, packet.len())),
+        Codec::OggFlac => ogg_flac_comment_range(packet),
+    }
+}
+
+fn ogg_flac_comment_range(packet: &[u8]) -> Option<(usize, usize)> {
+    let mut cursor: usize = if packet.starts_with(&[0x7F]) && packet.get(1..5) == Some(b"FLAC") {
+        if packet.get(9..13) != Some(b"fLaC") {
+            return None;
+        }
+        13
+    } else {
+        0
+    };
+    while let Some(header) = packet.get(cursor..cursor.saturating_add(4)) {
+        let block_type = header[0] & 0x7F;
+        if block_type > 6 {
+            return None;
+        }
+        let block_length =
+            (usize::from(header[1]) << 16) | (usize::from(header[2]) << 8) | usize::from(header[3]);
+        let data_start = cursor.checked_add(4)?;
+        let data_end = data_start.checked_add(block_length)?;
+        packet.get(data_start..data_end)?;
+        if block_type == 4 {
+            return Some((cursor, data_end));
+        }
+        cursor = data_end;
+        if header[0] & 0x80 != 0 {
+            break;
+        }
+    }
+    None
+}
+
+fn target_packet(
+    codec: Codec,
+    packet: &[u8],
+    ranges: &[PacketRange],
+    start: usize,
+    end: usize,
+) -> TargetPacket {
+    let adjusted_ranges = ranges
+        .iter()
+        .filter_map(|range| {
+            let range_end = range.packet_offset.checked_add(range.length)?;
+            let overlap_start = range.packet_offset.max(start);
+            let overlap_end = range_end.min(end);
+            (overlap_start < overlap_end).then(|| PacketRange {
+                page_start: range.page_start,
+                body_offset: range.body_offset + (overlap_start - range.packet_offset),
+                packet_offset: overlap_start - start,
+                length: overlap_end - overlap_start,
+            })
+        })
+        .collect();
+    TargetPacket {
+        codec,
+        length: end - start,
+        bytes: packet[start..end].to_vec(),
+        ranges: adjusted_ranges,
     }
 }
 
@@ -829,6 +897,30 @@ mod tests {
         output
     }
 
+    fn ogg_flac_mapping_comment_fixture() -> Vec<u8> {
+        let mut mapping = vec![0x7F, b'F', b'L', b'A', b'C', 1, 0, 0, 2];
+        mapping.extend_from_slice(b"fLaC");
+        mapping.extend_from_slice(&[0, 0, 0, 34]);
+        mapping.extend_from_slice(&[0; 34]);
+
+        let vendor = b"Metra";
+        let comment = b"TITLE=before";
+        let mut comments = Vec::new();
+        comments.extend_from_slice(&(vendor.len() as u32).to_le_bytes());
+        comments.extend_from_slice(vendor);
+        comments.extend_from_slice(&1_u32.to_le_bytes());
+        comments.extend_from_slice(&(comment.len() as u32).to_le_bytes());
+        comments.extend_from_slice(comment);
+        mapping.push(0x84);
+        mapping.extend_from_slice(&[
+            ((comments.len() >> 16) & 0xFF) as u8,
+            ((comments.len() >> 8) & 0xFF) as u8,
+            (comments.len() & 0xFF) as u8,
+        ]);
+        mapping.extend_from_slice(&comments);
+        page(14, 0, 0x02, &mapping)
+    }
+
     fn info(bytes: &[u8]) -> FileInfo {
         FileInfo::new("audio.ogg".into(), bytes.len() as u64, FileFormat::Ogg)
     }
@@ -940,6 +1032,32 @@ mod tests {
             ParseLimits::default(),
         )
         .expect("rewritten Ogg-FLAC should parse");
+        assert_eq!(
+            metadata.find("Ogg:Title").unwrap().display_value(),
+            "edited"
+        );
+        assert_eq!(rewritten.len(), bytes.len());
+    }
+
+    #[test]
+    fn replaces_ogg_flac_comment_embedded_in_mapping_packet() {
+        let bytes = ogg_flac_mapping_comment_fixture();
+        let rewritten = rewrite_ogg_to_vec(
+            &bytes,
+            info(&bytes),
+            ParseLimits::default(),
+            &[OggEdit::SetComment {
+                key: "Title".to_owned(),
+                value: "edited".to_owned(),
+            }],
+        )
+        .expect("embedded Ogg-FLAC comment should rewrite losslessly");
+        let metadata = read_ogg(
+            &mut Cursor::new(rewritten.clone()),
+            info(&rewritten),
+            ParseLimits::default(),
+        )
+        .expect("rewritten mapping packet should parse");
         assert_eq!(
             metadata.find("Ogg:Title").unwrap().display_value(),
             "edited"
