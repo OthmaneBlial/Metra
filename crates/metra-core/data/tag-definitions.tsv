@@ -179,6 +179,22 @@ MakerNotes	0x0089	Nikon:ShootingMode	Nikon MakerNote shooting mode
 MakerNotes	0x008B	Nikon:LensStops	Nikon MakerNote lens stops
 MakerNotes	0x0093	Nikon:NEFCompression	Nikon MakerNote NEF compression
 MakerNotes	0x0094	Nikon:Saturation	Nikon MakerNote saturation
+MakerNotes	0x0000	FujiFilm:Version	Fujifilm MakerNote version
+MakerNotes	0x1000	FujiFilm:Quality	Fujifilm MakerNote image quality
+MakerNotes	0x1001	FujiFilm:Sharpness	Fujifilm MakerNote sharpness
+MakerNotes	0x1002	FujiFilm:WhiteBalance	Fujifilm MakerNote white balance
+MakerNotes	0x1003	FujiFilm:Saturation	Fujifilm MakerNote saturation
+MakerNotes	0x1004	FujiFilm:Contrast	Fujifilm MakerNote contrast
+MakerNotes	0x1005	FujiFilm:ColorTemperature	Fujifilm MakerNote color temperature
+MakerNotes	0x100A	FujiFilm:WhiteBalanceFineTune	Fujifilm MakerNote white-balance fine tune
+MakerNotes	0x100B	FujiFilm:NoiseReduction	Fujifilm MakerNote noise reduction
+MakerNotes	0x100E	FujiFilm:NoiseReduction2	Fujifilm MakerNote secondary noise reduction
+MakerNotes	0x100F	FujiFilm:Clarity	Fujifilm MakerNote clarity
+MakerNotes	0x1010	FujiFilm:FujiFlashMode	Fujifilm MakerNote flash mode
+MakerNotes	0x1011	FujiFilm:FlashExposureComp	Fujifilm MakerNote flash exposure compensation
+MakerNotes	0x1020	FujiFilm:Macro	Fujifilm MakerNote macro mode
+MakerNotes	0x1021	FujiFilm:FocusMode	Fujifilm MakerNote focus mode
+MakerNotes	0x1022	FujiFilm:AFMode	Fujifilm MakerNote autofocus mode
 MakerNotes	0x0102	Sony:Quality	Sony MakerNote image quality
 MakerNotes	0x0104	Sony:FlashExposureComp	Sony MakerNote flash exposure compensation
 MakerNotes	0x0105	Sony:Teleconverter	Sony MakerNote teleconverter
