@@ -35,7 +35,8 @@ through the CLI.
 The TIFF reader is the low-level building block for EXIF in JPEG, PNG, and
 WebP. It accepts a bounded random-access region, so embedded offsets remain
 relative to the correct TIFF payload while source offsets can still be
-reported against the containing file. JPEG, PNG, and WebP delegate structured
+reported against the containing file. EXIF `UserComment` ASCII/Unicode prefixes
+are decoded while the original bytes remain available. JPEG, PNG, and WebP delegate structured
 XMP to the bounded XML reader; PNG text and `iCCP` chunks use a zlib decoder
 capped by `ParseLimits`; Photoshop resources delegate IPTC IIM parsing,
 and ICC payloads delegate bounded profile-header, typed illuminant, and tag-table inspection; JPEG

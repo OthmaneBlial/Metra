@@ -62,6 +62,7 @@ Initial read-first foundation with narrow validated rewrites:
   checks before profile inspection;
 - added typed WebP `ICCP` profile inspection under the configured value budget;
 - preserved numeric IPTC-IIM dataset identifiers in parsed tags and stable lookup;
+- decoded EXIF `UserComment` ASCII and Unicode payloads while preserving raw bytes;
 - expanded GPS derived values with validated decimal coordinates, signed
   altitude, image direction, seconds-since-midnight time, and SI speed;
 - expanded ISO-BMFF inspection with `ispe` dimensions, item/handler fields,
