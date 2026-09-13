@@ -122,4 +122,6 @@ Initial read-first foundation with narrow validated rewrites:
   Sigma X3F RAW containers with explicit partial-decoding warnings;
 - centralized validated path-writer replacement behind a platform-aware atomic
   helper, including native Windows replace-and-write-through behavior;
+- added a Rust Criterion throughput benchmark for bounded stream reads and
+  optional reviewed-corpus collection throughput;
 - documented the verified surface and remaining compatibility boundaries.

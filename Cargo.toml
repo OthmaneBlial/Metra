@@ -28,6 +28,13 @@ serde_json.workspace = true
 serde_yaml.workspace = true
 toml.workspace = true
 
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "throughput"
+harness = false
+
 [workspace.package]
 version = "0.1.0"
 edition = "2024"

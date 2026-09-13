@@ -205,6 +205,7 @@ format-specific writers remain intentionally narrow and independently tested.
 cargo fmt --all -- --check
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
+cargo bench --bench throughput --no-run
 ```
 
 The tests generate small synthetic files at runtime, covering signatures,
@@ -217,7 +218,7 @@ not claim complete ExifTool compatibility.
 
 The opt-in corpus checks live in [`tests/corpus.rs`](tests/corpus.rs) and require
 an explicit local corpus and oracle; no corpus is bundled in the repository. A
-local 194-file run completed without panics: 70 files were recognized, with
+local 194-file run completed without panics: 74 files were recognized, with
 2,544 Metra tags compared to the oracle, 1,280 stable-key matches, and 1,057
 typed-value matches. The corpus axis remains conservative because 120 files
 were outside the current format surface and the differential test is opt-in.
@@ -242,6 +243,11 @@ budgets; the same limits are applied to source and output validation during edit
 GitHub Actions automatic push and pull-request triggers are currently disabled;
 the workflow remains available for a deliberate manual run. The commands above
 are the local validation gate.
+
+The Rust benchmark target `throughput` covers a bounded stream read and an
+optional real-corpus pass. Set `METRA_BENCH_CORPUS` to a reviewed local corpus
+to measure collection throughput; the corpus is never required to build or
+test Metra and benchmark numbers remain machine-specific.
 
 ## Roadmap
 
