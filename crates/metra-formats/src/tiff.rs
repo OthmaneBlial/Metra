@@ -187,6 +187,11 @@ fn tag_definition(namespace: &str, id: u16) -> TagDefinition {
             name: "MakerNote",
             description: "Manufacturer-specific metadata block",
         },
+        ("EXIF", 0x9286) => TagDefinition {
+            namespace: "EXIF",
+            name: "UserComment",
+            description: "User comment with an EXIF character-code prefix",
+        },
         ("EXIF", 0x9291) => TagDefinition {
             namespace: "EXIF",
             name: "SubSecTimeOriginal",
@@ -559,6 +564,7 @@ impl<R: Read + Seek> TiffParser<'_, R> {
                     self.read_at(value_offset, total_size_usize, "tag value")?
                 };
                 let value = decode_value(type_id, count, &value_bytes, self.endian)?;
+                let value = decode_special_value(namespace, id, type_id, &value_bytes, value);
                 let value_type = value_type(&value);
                 (value, Some(value_bytes), value_type)
             };
@@ -760,6 +766,53 @@ fn decode_value(type_id: u16, count: u64, bytes: &[u8], endian: Endian) -> Resul
     } else {
         Ok(TagValue::Array(values))
     }
+}
+
+fn decode_special_value(
+    namespace: &str,
+    id: u16,
+    type_id: u16,
+    bytes: &[u8],
+    value: TagValue,
+) -> TagValue {
+    if namespace == "EXIF" && id == 0x9286 && type_id == 7 {
+        return decode_user_comment(bytes).map_or(value, TagValue::String);
+    }
+    value
+}
+
+fn decode_user_comment(bytes: &[u8]) -> Option<String> {
+    if bytes.len() < 8 {
+        return None;
+    }
+    let (encoding, payload) = bytes.split_at(8);
+    let mut value = match encoding {
+        b"ASCII\0\0\0" => String::from_utf8(payload.to_vec()).ok()?,
+        b"UNICODE\0" => decode_utf16(payload, true)?,
+        b"JIS\0\0\0\0\0" => return None,
+        _ => return None,
+    };
+    while value.ends_with('\0') {
+        value.pop();
+    }
+    Some(value)
+}
+
+fn decode_utf16(bytes: &[u8], big_endian: bool) -> Option<String> {
+    let chunks = bytes.chunks_exact(2);
+    if !chunks.remainder().is_empty() {
+        return None;
+    }
+    let units = chunks
+        .map(|chunk| {
+            if big_endian {
+                u16::from_be_bytes([chunk[0], chunk[1]])
+            } else {
+                u16::from_le_bytes([chunk[0], chunk[1]])
+            }
+        })
+        .collect::<Vec<_>>();
+    String::from_utf16(&units).ok()
 }
 
 fn value_type(value: &TagValue) -> ValueType {
@@ -1124,6 +1177,49 @@ mod tests {
             metadata.find("EXIF:DateTimeOriginal").unwrap().value,
             TagValue::String("2026:09:13 12:34:56".into())
         );
+    }
+
+    #[test]
+    fn decodes_ascii_and_unicode_user_comments() {
+        let ascii = [b"ASCII\0\0\0".as_slice(), b"reviewed\0".as_slice()].concat();
+        assert_eq!(decode_user_comment(&ascii).as_deref(), Some("reviewed"));
+
+        let mut unicode = b"UNICODE\0".to_vec();
+        unicode.extend("Métra".encode_utf16().flat_map(u16::to_be_bytes));
+        assert_eq!(decode_user_comment(&unicode).as_deref(), Some("Métra"));
+
+        assert_eq!(decode_user_comment(b"JIS\0\0\0\0\0text"), None);
+    }
+
+    #[test]
+    fn parses_user_comment_as_text_and_keeps_raw_value() {
+        let comment = [b"ASCII\0\0\0".as_slice(), b"from camera\0".as_slice()].concat();
+        let value_offset = 26_u32;
+        let mut bytes = vec![b'I', b'I', 42, 0, 8, 0, 0, 0, 1, 0];
+        bytes.extend_from_slice(&0x9286_u16.to_le_bytes());
+        bytes.extend_from_slice(&7_u16.to_le_bytes());
+        bytes.extend_from_slice(&(comment.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&value_offset.to_le_bytes());
+        bytes.extend_from_slice(&[0, 0, 0, 0]);
+        bytes.extend_from_slice(&comment);
+
+        let mut metadata = Metadata::new(FileInfo::new(
+            "user-comment.tif".into(),
+            bytes.len() as u64,
+            FileFormat::Tiff,
+        ));
+        parse_tiff_from_reader(
+            &mut Cursor::new(bytes),
+            0,
+            metadata.file_info.size,
+            0,
+            &mut metadata,
+            ParseLimits::default(),
+        )
+        .expect("UserComment fixture should parse");
+        let tag = metadata.find("EXIF:UserComment").expect("UserComment tag");
+        assert_eq!(tag.value, TagValue::String("from camera".to_owned()));
+        assert_eq!(tag.raw_value, Some(comment));
     }
 
     #[test]

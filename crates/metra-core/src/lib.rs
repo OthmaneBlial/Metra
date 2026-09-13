@@ -176,6 +176,12 @@ const TAG_DEFINITIONS: &[TagDefinition] = &[
     },
     TagDefinition {
         namespace: "EXIF",
+        id: 0x9286,
+        name: "UserComment",
+        description: "User comment with an EXIF character-code prefix",
+    },
+    TagDefinition {
+        namespace: "EXIF",
         id: 0x9291,
         name: "SubSecTimeOriginal",
         description: "Sub-second capture time",
@@ -839,6 +845,7 @@ mod tests {
         assert!(tag_definitions().iter().any(|item| item.name == "Make"));
         assert_eq!(tag_definition("GPS", 0x000D).name, "GPSSpeed");
         assert_eq!(tag_definition("IPTC", 25).name, "Keywords");
+        assert_eq!(tag_definition("EXIF", 0x9286).name, "UserComment");
 
         let tag = Tag {
             namespace: "EXIF".to_owned(),
