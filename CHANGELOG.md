@@ -55,6 +55,7 @@ Initial read-first foundation with narrow validated rewrites:
 - added bounded `--jobs` batch inspection with deterministic result ordering;
 - added bounded zlib decoding for PNG `zTXt` and compressed `iTXt` text/XMP,
   including expansion-limit warnings instead of unbounded allocation;
+- added bounded PNG `iCCP` decompression and typed ICC profile inspection;
 - expanded ISO-BMFF inspection with `ispe` dimensions, item/handler fields,
   and direct XMP/EXIF decoding when the metadata boxes are available;
 - added deterministic CSV output with typed JSON values in the value column;

@@ -13,6 +13,8 @@ before allocating or traversing metadata.
 - large values are reported and omitted rather than allocated;
 - compressed PNG text is decompressed incrementally and rejected when its
   output exceeds `max_value_bytes`;
+- compressed PNG `iCCP` profiles use the same bounded zlib path before ICC
+  header and tag-table inspection;
 - malformed embedded EXIF can be downgraded to a warning at the container
   boundary;
 - recursive CLI traversal uses directory entry file types and does not follow
