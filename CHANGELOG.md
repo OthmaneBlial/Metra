@@ -154,3 +154,13 @@ Initial read-first foundation with narrow validated rewrites:
 - tolerated truncated trailing Ogg segment tables after preserving complete
   preceding pages as structured metadata with a warning;
 - documented the verified surface and remaining compatibility boundaries.
+- added typed PNG `IHDR` dimensions and encoding parameters with bounded
+  validation and raw-byte source ranges;
+- added bounded WAV iXML leaf parsing with raw packet retention and safe XML
+  handling, plus embedded ID3v2 delegation with translated source offsets;
+- expanded the canonical EXIF/TIFF catalog for image, sensitivity, capture,
+  focal-plane, and camera identity tags;
+- moved the shared tag catalog to versioned tab-separated source data with
+  build-time validation for malformed rows, invalid IDs, and duplicate keys;
+- disabled automatic push and pull-request CI triggers while retaining manual
+  `workflow_dispatch` runs for the repository's explicit release workflow.
