@@ -241,6 +241,7 @@ fn display_values(values: &[metra::TagValue]) -> String {
 
 enum EditRequest {
     DirectJpeg(Vec<metra::JpegEdit>),
+    DirectTiff(Vec<metra::TiffEdit>),
     DirectPng(Vec<metra::PngEdit>),
     DirectWav(Vec<metra::WavEdit>),
     DirectFlac(Vec<metra::FlacEdit>),
@@ -284,6 +285,14 @@ fn parse_edits(
             .split_once('=')
             .ok_or_else(|| "--set expects KEY=VALUE".to_owned())?;
         if key != "JPEG:Comment" {
+            if let Some(tiff_key) = tiff_ascii_key(key) {
+                return Ok(Some(EditRequest::DirectTiff(vec![
+                    metra::TiffEdit::SetAscii {
+                        key: tiff_key.to_owned(),
+                        value: value.to_owned(),
+                    },
+                ])));
+            }
             if jpeg_xmp_key(key) {
                 return Ok(Some(EditRequest::DirectJpeg(vec![
                     metra::JpegEdit::SetXmp(value.to_owned()),
@@ -476,6 +485,14 @@ fn png_text_keyword(key: &str) -> Option<&str> {
     (!keyword.is_empty()).then_some(keyword)
 }
 
+fn tiff_ascii_key(key: &str) -> Option<&str> {
+    let key = key.strip_prefix("TIFF:")?;
+    ["EXIF:", "GPS:", "Interop:", "DNG:"]
+        .iter()
+        .any(|prefix| key.starts_with(prefix))
+        .then_some(key)
+}
+
 fn png_xmp_key(key: &str) -> bool {
     matches!(key, "PNG:XMP" | "PNG:iTXt:XMP")
 }
@@ -542,7 +559,7 @@ fn svg_text_key(key: &str) -> Option<SvgTextKey> {
 
 fn unsupported_edit_message(key: &str) -> String {
     format!(
-        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:XMP, IPTC:<dataset>, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
+        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:XMP, IPTC:<dataset>, TIFF:EXIF:<ASCII tag>, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
     )
 }
 
@@ -631,6 +648,7 @@ fn wav_info_name(key: &str) -> Option<&str> {
 fn apply_request(paths: &[PathBuf], request: EditRequest, limits: ParseLimits) -> ExitCode {
     match request {
         EditRequest::DirectJpeg(edits) => apply_jpeg_edits(paths, &edits, limits),
+        EditRequest::DirectTiff(edits) => apply_tiff_edits(paths, &edits, limits),
         EditRequest::DirectPng(edits) => apply_png_edits(paths, &edits, limits),
         EditRequest::DirectWav(edits) => apply_wav_edits(paths, &edits, limits),
         EditRequest::DirectFlac(edits) => apply_flac_edits(paths, &edits, limits),
@@ -657,6 +675,39 @@ fn apply_jpeg_edits(paths: &[PathBuf], edits: &[metra::JpegEdit], limits: ParseL
             Ok(metadata) => {
                 eprintln!(
                     "metra: {}: {} edits are supported only for JPEG files",
+                    path.display(),
+                    metadata.file_info.format
+                );
+                failures += 1;
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", path.display());
+                failures += 1;
+            }
+        }
+    }
+    if failures == 0 {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
+fn apply_tiff_edits(paths: &[PathBuf], edits: &[metra::TiffEdit], limits: ParseLimits) -> ExitCode {
+    let mut failures = 0_usize;
+    for path in paths {
+        match metra::read_with_limits(path, limits) {
+            Ok(metadata) if metadata.file_info.format == metra::FileFormat::Tiff => {
+                if let Err(error) = metra::rewrite_tiff_path(path, limits, edits) {
+                    eprintln!("metra: {}: {error}", path.display());
+                    failures += 1;
+                } else {
+                    println!("updated: {}", path.display());
+                }
+            }
+            Ok(metadata) => {
+                eprintln!(
+                    "metra: {}: {} edits are supported only for TIFF files",
                     path.display(),
                     metadata.file_info.format
                 );

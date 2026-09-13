@@ -347,11 +347,11 @@ fn minimal_raw_tiff() -> Vec<u8> {
     let mut tiff = vec![
         b'I', b'I', 42, 0, 8, 0, 0, 0, // little-endian TIFF header
         1, 0, // one IFD0 entry
-        0x0F, 0x01, 2, 0, 5, 0, 0, 0, 26, 0, 0, 0, // Make -> offset 26
+        0x0F, 0x01, 2, 0, 6, 0, 0, 0, 26, 0, 0, 0, // Make -> offset 26
         0, 0, 0, 0, // no next IFD
     ];
     assert_eq!(tiff.len(), 26);
-    tiff.extend_from_slice(b"Sony\0");
+    tiff.extend_from_slice(b"Canon\0");
     tiff
 }
 
@@ -648,6 +648,24 @@ fn dng_path_uses_raw_identity_and_tiff_metadata() {
         tags.iter()
             .any(|tag| tag["name"] == "Make" && tag["namespace"] == "EXIF")
     );
+}
+
+#[test]
+fn cli_can_edit_existing_tiff_ascii_in_place() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.file("editable.tif", &minimal_raw_tiff());
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "TIFF:EXIF:Make=Sony",
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let metadata = metra::read(&path).expect("edited TIFF should remain readable");
+    assert_eq!(metadata.file_info.format, metra::FileFormat::Tiff);
+    assert_eq!(metadata.find("EXIF:Make").unwrap().display_value(), "Sony");
 }
 
 #[test]
