@@ -209,6 +209,10 @@ variants; the CLI uses these same batch APIs before rendering. The CLI exposes
 tag mutation and other format writers remain deferred until their round-trip
 acceptance tests exist.
 
+The CLI also exposes `--create-tiff KEY=VALUE` for the bounded TIFF creation
+seam. It accepts repeated EXIF ASCII assignments and exactly one destination;
+the destination must not already exist.
+
 The public `MetadataEdit` API is the common string-edit boundary for the
 currently supported narrow operations. `FormatHandler::write_metadata` gives
 the same dispatch a stream-oriented contract, while `rewrite_metadata_path` keeps the
