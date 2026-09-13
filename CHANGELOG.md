@@ -60,6 +60,7 @@ Initial read-first foundation with narrow validated rewrites:
 - added bounded PNG `iCCP` decompression and typed ICC profile inspection;
 - added bounded JPEG ICC APP2 fragment reassembly with sequence and duplicate
   checks before profile inspection;
+- added typed WebP `ICCP` profile inspection under the configured value budget;
 - expanded GPS derived values with validated decimal coordinates, signed
   altitude, image direction, seconds-since-midnight time, and SI speed;
 - expanded ISO-BMFF inspection with `ispe` dimensions, item/handler fields,

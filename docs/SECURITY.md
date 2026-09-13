@@ -17,6 +17,8 @@ before allocating or traversing metadata.
   header and tag-table inspection;
 - JPEG ICC fragments are sequence-checked, deduplicated, and reassembled only
   within the configured profile budget;
+- direct WebP ICC payloads are parsed only after the same profile-size limit is
+  checked;
 - derived GPS coordinates, altitude, direction, speed, and time values reject
   non-finite rationals and out-of-range references or units before conversion;
 - malformed embedded EXIF can be downgraded to a warning at the container
