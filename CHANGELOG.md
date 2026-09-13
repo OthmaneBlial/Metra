@@ -66,6 +66,8 @@ Initial read-first foundation with narrow validated rewrites:
   and Olympus MakerNote containers without claiming proprietary tag decoding;
 - added bounded Nikon Type 2 MakerNote IFD parsing for known camera fields with
   typed values, stable numeric identifiers, source offsets, and ParseLimits;
+- added bounded Canon MakerNote IFD parsing for selected camera strings and
+  arrays with typed values, source offsets, and ParseLimits;
   other detected vendors remain header-only;
 - catalogued the bounded Nikon MakerNote identifiers centrally and covered the
   EXIF integration path with absolute source-offset assertions;

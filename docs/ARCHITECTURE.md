@@ -49,8 +49,8 @@ and ICC payloads delegate bounded profile-header, typed illuminant, and tag-tabl
 ICC APP2 fragments are collected and reassembled by sequence number before that inspection, while
 common ICC text and XYZ table tags retain their 4CC identifiers. PNG and WebP carry their bounded
 profile payloads directly. TIFF MakerNote payloads are handed to an isolated
-detector. Nikon Type 2 payloads additionally pass through a bounded
-embedded-TIFF IFD reader that exposes known fields with stable numeric
+detector. Nikon Type 2 and Canon payloads additionally pass through bounded
+embedded IFD readers that expose known fields with stable numeric
 identifiers and typed values; other vendors remain detection-only, and
 proprietary MakerNote tag decoding remains separate. TIFF also derives GPS
 decimal coordinates, signed altitude, image direction, speed

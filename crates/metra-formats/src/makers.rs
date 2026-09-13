@@ -33,6 +33,8 @@ pub(crate) fn inspect_maker_note(
     );
     if identity.format == "Nikon Type 2" {
         parse_nikon_type2(bytes, data_offset, metadata, limits);
+    } else if identity.format == "Canon MakerNote" {
+        parse_canon_makernote(bytes, data_offset, metadata, limits);
     }
 }
 
@@ -245,6 +247,186 @@ fn parse_nikon_entry(
         ),
         writable: false,
     });
+}
+
+fn parse_canon_makernote(
+    bytes: &[u8],
+    data_offset: u64,
+    metadata: &mut Metadata,
+    limits: ParseLimits,
+) {
+    if bytes.len() < 10 {
+        metadata.add_warning(
+            Warning::new(
+                "truncated-canon-makernote",
+                "Canon MakerNote does not contain a complete IFD count",
+            )
+            .at(data_offset),
+        );
+        return;
+    }
+    parse_canon_ifd(bytes, 8, data_offset, metadata, limits);
+}
+
+fn parse_canon_ifd(
+    bytes: &[u8],
+    offset: usize,
+    data_offset: u64,
+    metadata: &mut Metadata,
+    limits: ParseLimits,
+) {
+    let Some(count) = read_u16(bytes, offset, Endian::Little).map(usize::from) else {
+        metadata.add_warning(
+            Warning::new(
+                "truncated-canon-makernote",
+                "Canon MakerNote IFD count is missing",
+            )
+            .at(data_offset.saturating_add(offset as u64)),
+        );
+        return;
+    };
+    let count_to_read = count.min(limits.max_ifd_entries);
+    if count > count_to_read {
+        metadata.add_warning(
+            Warning::new(
+                "canon-makernote-entry-limit",
+                format!("Canon MakerNote declares {count} entries; reading only {count_to_read}"),
+            )
+            .at(data_offset.saturating_add(offset as u64)),
+        );
+    }
+    let Some(entries_start) = offset.checked_add(2) else {
+        return;
+    };
+    for index in 0..count_to_read {
+        let Some(entry_offset) = entries_start.checked_add(index.saturating_mul(12)) else {
+            metadata.add_warning(
+                Warning::new(
+                    "invalid-canon-makernote-size",
+                    "Canon MakerNote IFD entry offset overflows",
+                )
+                .at(data_offset.saturating_add(entries_start as u64)),
+            );
+            return;
+        };
+        let Some(entry_end) = entry_offset.checked_add(12) else {
+            return;
+        };
+        let Some(entry) = bytes.get(entry_offset..entry_end) else {
+            metadata.add_warning(
+                Warning::new(
+                    "truncated-canon-makernote",
+                    "Canon MakerNote entry extends beyond its payload",
+                )
+                .at(data_offset.saturating_add(entry_offset as u64)),
+            );
+            return;
+        };
+        parse_canon_entry(entry, entry_offset, data_offset, bytes, metadata, limits);
+    }
+}
+
+fn parse_canon_entry(
+    entry: &[u8],
+    entry_offset: usize,
+    data_offset: u64,
+    bytes: &[u8],
+    metadata: &mut Metadata,
+    limits: ParseLimits,
+) {
+    let Some(id) = read_u16(entry, 0, Endian::Little) else {
+        return;
+    };
+    let Some(type_id) = read_u16(entry, 2, Endian::Little) else {
+        return;
+    };
+    let Some(count) = read_u32(entry, 4, Endian::Little) else {
+        return;
+    };
+    let Some(item_size) = type_size(type_id) else {
+        return;
+    };
+    let Some(total_size) = usize::try_from(count)
+        .ok()
+        .and_then(|count| count.checked_mul(item_size))
+    else {
+        metadata.add_warning(
+            Warning::new(
+                "invalid-canon-makernote-size",
+                format!("Canon MakerNote tag 0x{id:04X} value size overflows"),
+            )
+            .at(data_offset.saturating_add(entry_offset as u64)),
+        );
+        return;
+    };
+    if total_size > limits.max_value_bytes {
+        metadata.add_warning(
+            Warning::new(
+                "canon-makernote-value-limit",
+                format!("Canon MakerNote tag 0x{id:04X} exceeds the value budget"),
+            )
+            .at(data_offset.saturating_add(entry_offset as u64)),
+        );
+        return;
+    }
+    let value_offset = if total_size <= 4 {
+        entry_offset.saturating_add(8)
+    } else {
+        let Some(value_offset) =
+            read_u32(entry, 8, Endian::Little).and_then(|value| usize::try_from(value).ok())
+        else {
+            return;
+        };
+        value_offset
+    };
+    let Some(value_end) = value_offset.checked_add(total_size) else {
+        return;
+    };
+    let Some(value_bytes) = bytes.get(value_offset..value_end) else {
+        metadata.add_warning(
+            Warning::new(
+                "invalid-canon-makernote-offset",
+                format!("Canon MakerNote tag 0x{id:04X} is outside its payload"),
+            )
+            .at(data_offset.saturating_add(value_offset as u64)),
+        );
+        return;
+    };
+    let Some((name, description)) = canon_tag_definition(id) else {
+        return;
+    };
+    let Some(value) = decode_value(type_id, count, value_bytes, Endian::Little) else {
+        return;
+    };
+    metadata.add_tag(Tag {
+        namespace: "MakerNotes".to_owned(),
+        group: "Canon".to_owned(),
+        id: Some(u32::from(id)),
+        name: name.to_owned(),
+        description: Some(description.to_owned()),
+        raw_value: Some(value_bytes.to_vec()),
+        value_type: value_type(&value),
+        value,
+        source: Source::new(
+            "EXIF/MakerNote/Canon",
+            Some(data_offset.saturating_add(value_offset as u64)),
+            Some(total_size as u64),
+        ),
+        writable: false,
+    });
+}
+
+fn canon_tag_definition(id: u16) -> Option<(&'static str, &'static str)> {
+    Some(match id {
+        0x0001 => ("Canon:CameraSettings", "Canon camera settings"),
+        0x0002 => ("Canon:FocalLength", "Canon focal-length data"),
+        0x0004 => ("Canon:FlashInfo", "Canon flash information"),
+        0x0006 => ("Canon:ImageType", "Canon image type"),
+        0x0007 => ("Canon:FirmwareVersion", "Canon firmware version"),
+        0x0009 => ("Canon:OwnerName", "Canon owner name"),
+        0x000C => ("Canon:SerialNumber", "Canon camera serial number"),
+        _ => return None,
+    })
 }
 
 fn read_u16(bytes: &[u8], offset: usize, endian: Endian) -> Option<u16> {
@@ -529,6 +711,45 @@ mod tests {
                 .unwrap()
                 .value,
             TagValue::Signed(-2)
+        );
+    }
+
+    #[test]
+    fn reads_bounded_canon_ifd_string_values() {
+        let mut maker_note = b"Canon\0\0\0".to_vec();
+        maker_note.extend_from_slice(&2_u16.to_le_bytes());
+        maker_note.extend_from_slice(&[6, 0, 2, 0]);
+        maker_note.extend_from_slice(&9_u32.to_le_bytes());
+        maker_note.extend_from_slice(&38_u32.to_le_bytes());
+        maker_note.extend_from_slice(&[9, 0, 2, 0]);
+        maker_note.extend_from_slice(&6_u32.to_le_bytes());
+        maker_note.extend_from_slice(&47_u32.to_le_bytes());
+        maker_note.extend_from_slice(&[0, 0, 0, 0]);
+        maker_note.extend_from_slice(b"IMG_0001\0");
+        maker_note.extend_from_slice(b"Alice\0");
+
+        let mut metadata = Metadata::new(FileInfo::new(
+            "canon.jpg".into(),
+            maker_note.len() as u64,
+            FileFormat::Jpeg,
+        ));
+        inspect_maker_note(&maker_note, 400, &mut metadata, ParseLimits::default());
+
+        assert_eq!(
+            metadata.find("MakerNotes:Canon:ImageType").unwrap().value,
+            TagValue::String("IMG_0001".to_owned())
+        );
+        assert_eq!(
+            metadata.find("MakerNotes:Canon:OwnerName").unwrap().value,
+            TagValue::String("Alice".to_owned())
+        );
+        assert_eq!(
+            metadata
+                .find("MakerNotes:Canon:OwnerName")
+                .unwrap()
+                .source
+                .offset,
+            Some(447)
         );
     }
 }
