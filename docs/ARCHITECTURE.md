@@ -4,8 +4,8 @@
 
 Metra is designed as a Rust library first. The binary in `src/main.rs` reads
 files through the public root facade and only owns argument parsing, traversal,
-rendering, and exit status. Format code must not shell out to an external
-metadata executable.
+bounded worker scheduling, rendering, and exit status. Format code must not
+shell out to an external metadata executable.
 
 ## Current boundaries
 
@@ -44,7 +44,8 @@ The FLAC reader validates the metadata-block chain and decodes STREAMINFO,
 Vorbis comments, and bounded PICTURE blocks without touching audio frames.
 The PDF reader scans bounded head/tail windows for Info dictionaries and direct
 XMP packets; the WAV reader walks RIFF chunks and decodes `fmt `, `LIST/INFO`,
-and Broadcast Wave `bext` fields without loading audio data.
+and Broadcast Wave `bext` fields without loading audio data. Batch workers use a
+bounded atomic work index and restore path order before rendering.
 
 ## Parser invariants
 
@@ -80,7 +81,7 @@ The following changes are deferred until their acceptance tests exist:
 - manufacturer-specific MakerNote modules;
 - deeper HEIF/AVIF and media metadata modules;
 - a lossless block-preservation layer for safe rewrites;
-- controlled worker parallelism with deterministic output ordering.
+- streaming batch output that avoids retaining every successful document.
 
 Deferring a seam is not a compatibility claim. The compatibility matrix records
 the actual state for each capability.

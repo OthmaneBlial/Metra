@@ -17,6 +17,7 @@ Initial read-only foundation:
   bounded metadata-block validation;
 - added bounded PDF Info/XMP inspection and RIFF/WAVE format, INFO, and BWF
   metadata readers;
+- added bounded `--jobs` batch inspection with deterministic result ordering;
 - added human-readable, JSON, and JSON Lines CLI output;
 - added malformed-input, resource-limit, and end-to-end CLI tests;
 - documented the verified surface and remaining compatibility boundaries.

@@ -64,6 +64,7 @@
     "human_readable": "supported",
     "json": "supported",
     "jsonl": "supported",
+    "parallel_batch": "partial",
     "set": "planned",
     "delete": "planned",
     "copy": "planned",
