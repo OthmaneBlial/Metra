@@ -89,7 +89,8 @@ The MP3 reader handles bounded ID3v2 frame tables, ID3v1 fixed fields, and a
 single MPEG frame header without decoding audio payloads.
 The FLAC reader validates the metadata-block chain and decodes STREAMINFO,
 Vorbis comments, and bounded PICTURE blocks without touching audio frames.
-The Ogg reader walks bounded pages and logical streams, reconstructs only the
+The Ogg reader walks bounded pages and logical streams, validates CRCs for pages
+whose metadata bodies are inspected, and reconstructs only the
 first bounded metadata packets, and decodes Vorbis identification/comments,
 OpusHead, OpusTags, Ogg-FLAC mapping headers, and Ogg-FLAC Vorbis Comments
 without touching coded audio frames.

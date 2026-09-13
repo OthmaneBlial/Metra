@@ -23,6 +23,8 @@ before allocating or traversing metadata.
   checked;
 - Ogg page tables, logical streams, packets, and Vorbis/Opus comment counts are
   bounded before payload materialization;
+- CRCs on inspected Ogg metadata pages are checked and reported as recoverable
+  warnings, while pages outside the metadata budget are skipped;
 - derived GPS coordinates, altitude, direction, speed, and time values reject
   non-finite rationals and out-of-range references or units before conversion;
 - malformed embedded EXIF can be downgraded to a warning at the container

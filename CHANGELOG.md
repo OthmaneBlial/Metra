@@ -28,6 +28,8 @@ Initial read-first foundation with narrow validated rewrites:
   metadata while keeping thumbnail pixel payloads out of memory;
 - added bounded Ogg-FLAC Vorbis Comment decoding from mapping and subsequent
   metadata packets, with explicit metadata-block limits;
+- added recoverable CRC diagnostics for inspected Ogg metadata pages without
+  forcing the reader to materialize skipped audio pages;
 - added bounded PDF Info/XMP inspection and RIFF/WAVE format, INFO, and BWF
   metadata readers;
 - added bounded SVG XML inspection for root geometry, document text, and safe
