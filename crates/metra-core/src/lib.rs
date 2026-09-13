@@ -29,6 +29,7 @@ pub enum FileFormat {
     Gif,
     Mp3,
     Flac,
+    Wav,
     Unknown,
 }
 
@@ -48,6 +49,7 @@ impl FileFormat {
             Self::Gif => Some("image/gif"),
             Self::Mp3 => Some("audio/mpeg"),
             Self::Flac => Some("audio/flac"),
+            Self::Wav => Some("audio/wav"),
             Self::Unknown => None,
         }
     }
@@ -69,6 +71,7 @@ impl fmt::Display for FileFormat {
             Self::Gif => "GIF",
             Self::Mp3 => "MP3",
             Self::Flac => "FLAC",
+            Self::Wav => "WAV",
             Self::Unknown => "Unknown",
         })
     }

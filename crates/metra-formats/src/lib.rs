@@ -20,6 +20,7 @@ mod jpeg;
 mod pdf;
 mod png;
 mod tiff;
+mod wav;
 mod webp;
 mod xmp;
 
@@ -31,6 +32,7 @@ pub use jpeg::read_jpeg;
 pub use pdf::read_pdf;
 pub use png::read_png;
 pub use tiff::read_tiff;
+pub use wav::read_wav;
 pub use webp::read_webp;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,11 +59,20 @@ pub fn detect_format(bytes: &[u8]) -> Option<DetectedFormat> {
             format: FileFormat::Tiff,
             signature: "TIFF header",
         })
-    } else if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
-        Some(DetectedFormat {
-            format: FileFormat::Webp,
-            signature: "RIFF/WEBP",
-        })
+    } else if bytes.len() >= 12 && &bytes[..4] == b"RIFF" {
+        if &bytes[8..12] == b"WEBP" {
+            Some(DetectedFormat {
+                format: FileFormat::Webp,
+                signature: "RIFF/WEBP",
+            })
+        } else if &bytes[8..12] == b"WAVE" {
+            Some(DetectedFormat {
+                format: FileFormat::Wav,
+                signature: "RIFF/WAVE",
+            })
+        } else {
+            None
+        }
     } else if bytes.len() >= 12 && &bytes[4..8] == b"ftyp" {
         let brand = &bytes[8..12];
         let (format, signature) = match brand {
@@ -153,6 +164,7 @@ pub fn read_path_with_limits(path: impl AsRef<Path>, limits: ParseLimits) -> Res
         FileFormat::Mp3 => id3::read_mp3(&mut file, file_info, limits),
         FileFormat::Flac => flac::read_flac(&mut file, file_info, limits),
         FileFormat::Pdf => pdf::read_pdf(&mut file, file_info, limits),
+        FileFormat::Wav => wav::read_wav(&mut file, file_info, limits),
         format => Err(MetraError::UnsupportedFormat {
             description: format!("{format} is detected but its reader is not implemented yet"),
         }),
