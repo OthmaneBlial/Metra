@@ -130,6 +130,8 @@ Initial read-first foundation with narrow validated rewrites:
   Ogg-FLAC metadata packets, including typed stream headers and comments;
 - expanded Matroska/WebM inspection with bounded chapter, cue-point, and
   attachment descriptors while skipping cluster and attachment payload data;
+- expanded corpus differential aliases for Vorbis and Opus namespaces, with
+  typed key/value evidence recorded for the reviewed Ogg samples;
 - tolerated truncated trailing Ogg segment tables after preserving complete
   preceding pages as structured metadata with a warning;
 - documented the verified surface and remaining compatibility boundaries.
