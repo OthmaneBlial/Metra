@@ -221,4 +221,53 @@ mod tests {
         .expect_err("RAF must not enter the CR3 writer");
         assert!(error.to_string().contains("CR3"));
     }
+
+    #[test]
+    fn path_rewrite_is_atomic_and_leaves_source_on_rejected_growth() {
+        let bytes = minimal_cr3("old");
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock should be after the Unix epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("metra-cr3-path-{nonce}.cr3"));
+        fs::write(&path, &bytes).expect("CR3 fixture should be writable");
+
+        rewrite_raw_cr3_path(
+            &path,
+            ParseLimits::default(),
+            &[IsobmffEdit::SetText {
+                key: "ISOBMFF:Title".to_owned(),
+                value: "new".to_owned(),
+            }],
+        )
+        .expect("CR3 path rewrite should succeed");
+        let rewritten = fs::read(&path).expect("rewritten CR3 should be readable");
+        assert_eq!(rewritten.len(), bytes.len());
+        let metadata = read_raw(
+            &mut Cursor::new(rewritten.clone()),
+            FileInfo::new("path.cr3".into(), rewritten.len() as u64, FileFormat::Raw),
+            ParseLimits::default(),
+        )
+        .expect("rewritten CR3 should validate");
+        assert_eq!(
+            metadata.find("ISOBMFF:Title").unwrap().display_value(),
+            "new"
+        );
+
+        let error = rewrite_raw_cr3_path(
+            &path,
+            ParseLimits::default(),
+            &[IsobmffEdit::SetText {
+                key: "ISOBMFF:Title".to_owned(),
+                value: "value is too long".to_owned(),
+            }],
+        )
+        .expect_err("growth beyond the existing CR3 slot should be rejected");
+        assert!(error.to_string().contains("needs"));
+        assert_eq!(
+            fs::read(&path).expect("source should remain present"),
+            rewritten
+        );
+        fs::remove_file(&path).expect("test CR3 should be removable");
+    }
 }
