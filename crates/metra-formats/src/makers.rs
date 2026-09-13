@@ -1387,7 +1387,9 @@ fn parse_vendor_little_entry(
     let Some(decoded_value) = decode_value(type_id, count, value_bytes, endian) else {
         return;
     };
-    let value = if config.group == "Apple" && id == 0x0003 {
+    let value = if config.group == "Pentax" {
+        decode_pentax_structure(id, value_bytes).unwrap_or(decoded_value)
+    } else if config.group == "Apple" && id == 0x0003 {
         match &decoded_value {
             TagValue::Bytes(bytes) => parse_apple_runtime_plist(bytes, limits)
                 .map(TagValue::Structure)
@@ -1421,6 +1423,107 @@ fn parse_vendor_little_entry(
         ),
         writable: false,
     });
+}
+
+fn decode_pentax_structure(id: u16, bytes: &[u8]) -> Option<TagValue> {
+    let mut fields = BTreeMap::new();
+    match id {
+        0x005C if bytes.len() >= 4 => {
+            fields.insert(
+                "SRResult".to_owned(),
+                TagValue::Unsigned(u64::from(bytes[0])),
+            );
+            fields.insert(
+                "ShakeReduction".to_owned(),
+                TagValue::Unsigned(u64::from(bytes[1])),
+            );
+            fields.insert(
+                "SRHalfPressTime".to_owned(),
+                TagValue::Unsigned(u64::from(bytes[2])),
+            );
+            fields.insert(
+                "SRFocalLength".to_owned(),
+                TagValue::Unsigned(u64::from(bytes[3])),
+            );
+        }
+        0x0206 if bytes.len() >= 13 => {
+            for (name, byte) in [
+                ("AEExposureTime", bytes[0]),
+                ("AEAperture", bytes[1]),
+                ("AE_ISO", bytes[2]),
+                ("AEXv", bytes[3]),
+                ("AEBXv", bytes[4]),
+                ("AEMinExposureTime", bytes[5]),
+                ("AEProgramMode", bytes[6]),
+                ("AEFlags", bytes[7]),
+                ("AEApertureSteps", bytes[8]),
+                ("AEMaxAperture", bytes[9]),
+                ("AEMaxAperture2", bytes[10]),
+                ("AEMinAperture", bytes[11]),
+                ("AEMeteringMode", bytes[12]),
+            ] {
+                fields.insert(name.to_owned(), TagValue::Unsigned(u64::from(byte)));
+            }
+            if let Some(byte) = bytes.get(14) {
+                fields.insert(
+                    "FlashExposureCompSet".to_owned(),
+                    TagValue::Unsigned(u64::from(*byte)),
+                );
+            }
+        }
+        0x0216 if bytes.len() >= 6 => {
+            fields.insert(
+                "PowerSource".to_owned(),
+                TagValue::Unsigned(u64::from(bytes[0] & 0x0F)),
+            );
+            fields.insert(
+                "BodyBatteryState".to_owned(),
+                TagValue::Unsigned(u64::from(bytes[1] >> 4)),
+            );
+            fields.insert(
+                "GripBatteryState".to_owned(),
+                TagValue::Unsigned(u64::from(bytes[1] & 0x0F)),
+            );
+            for (index, name) in [
+                (2, "BodyBatteryADNoLoad"),
+                (3, "BodyBatteryADLoad"),
+                (4, "GripBatteryADNoLoad"),
+                (5, "GripBatteryADLoad"),
+            ] {
+                fields.insert(name.to_owned(), TagValue::Unsigned(u64::from(bytes[index])));
+            }
+        }
+        0x021F if bytes.len() >= 12 => {
+            fields.insert(
+                "AFPredictor".to_owned(),
+                TagValue::Unsigned(u64::from(bytes[3])),
+            );
+            fields.insert(
+                "AFDefocus".to_owned(),
+                TagValue::Unsigned(u64::from(bytes[4])),
+            );
+            fields.insert(
+                "AFIntegrationTime".to_owned(),
+                TagValue::Unsigned(u64::from(bytes[5])),
+            );
+            fields.insert(
+                "AFPointsInFocus".to_owned(),
+                TagValue::Unsigned(u64::from(bytes[11])),
+            );
+        }
+        0x0222 if bytes.len() >= 18 => {
+            fields.insert(
+                "WBShiftAB".to_owned(),
+                TagValue::Signed(i64::from(i8::from_ne_bytes([bytes[16]]))),
+            );
+            fields.insert(
+                "WBShiftGM".to_owned(),
+                TagValue::Signed(i64::from(i8::from_ne_bytes([bytes[17]]))),
+            );
+        }
+        _ => return None,
+    }
+    Some(TagValue::Structure(fields))
 }
 
 fn panasonic_tag_definition(id: u16) -> Option<(&'static str, &'static str)> {
@@ -1624,29 +1727,79 @@ fn pentax_tag_definition(id: u16) -> Option<(&'static str, &'static str)> {
         0x003F => ("Pentax:LensType", "Pentax lens type"),
         0x0040 => ("Pentax:SensitivityAdjust", "Pentax sensitivity adjustment"),
         0x0041 => ("Pentax:ImageEditCount", "Pentax image-edit count"),
-        0x0042 => ("Pentax:CameraTemperature", "Pentax camera temperature"),
-        0x0043 => ("Pentax:AELock", "Pentax auto-exposure lock"),
-        0x0044 => ("Pentax:NoiseReduction", "Pentax noise reduction"),
-        0x0045 => (
+        0x0047 => ("Pentax:CameraTemperature", "Pentax camera temperature"),
+        0x0048 => ("Pentax:AELock", "Pentax auto-exposure lock"),
+        0x0049 => ("Pentax:NoiseReduction", "Pentax noise reduction"),
+        0x004D => (
             "Pentax:FlashExposureComp",
             "Pentax flash exposure compensation",
         ),
-        0x0046 => ("Pentax:ImageTone", "Pentax image tone"),
-        0x0047 => ("Pentax:SRResult", "Pentax shake-reduction result"),
-        0x0048 => ("Pentax:ShakeReduction", "Pentax shake-reduction mode"),
-        0x0049 => (
-            "Pentax:SRHalfPressTime",
-            "Pentax shake-reduction half-press time",
+        0x004F => ("Pentax:ImageTone", "Pentax image tone"),
+        0x0050 => ("Pentax:ColorTemperature", "Pentax color temperature"),
+        0x005C => (
+            "Pentax:ShakeReductionInfo",
+            "Pentax shake-reduction information",
         ),
-        0x004A => (
-            "Pentax:SRFocalLength",
-            "Pentax shake-reduction focal length",
-        ),
-        0x004B => ("Pentax:ShutterCount", "Pentax shutter count"),
-        0x004C => (
+        0x005D => ("Pentax:ShutterCount", "Pentax shutter count bytes"),
+        0x0062 => (
             "Pentax:RawDevelopmentProcess",
             "Pentax raw-development process",
         ),
+        0x0200 => ("Pentax:BlackPoint", "Pentax black-point levels"),
+        0x0201 => ("Pentax:WhitePoint", "Pentax white-point levels"),
+        0x0205 => ("Pentax:CameraSettings", "Pentax camera settings"),
+        0x0206 => ("Pentax:AEInfo", "Pentax auto-exposure information"),
+        0x0207 => ("Pentax:LensInfo", "Pentax lens information"),
+        0x0208 => ("Pentax:FlashInfo", "Pentax flash information"),
+        0x0209 => (
+            "Pentax:AEMeteringSegments",
+            "Pentax auto-exposure metering segments",
+        ),
+        0x020A => (
+            "Pentax:FlashMeteringSegments",
+            "Pentax flash metering segments",
+        ),
+        0x020B => (
+            "Pentax:SlaveFlashMeteringSegments",
+            "Pentax slave-flash metering segments",
+        ),
+        0x020D => (
+            "Pentax:WB_RGGBLevelsDaylight",
+            "Pentax daylight white-balance levels",
+        ),
+        0x020E => (
+            "Pentax:WB_RGGBLevelsShade",
+            "Pentax shade white-balance levels",
+        ),
+        0x020F => (
+            "Pentax:WB_RGGBLevelsCloudy",
+            "Pentax cloudy white-balance levels",
+        ),
+        0x0210 => (
+            "Pentax:WB_RGGBLevelsTungsten",
+            "Pentax tungsten white-balance levels",
+        ),
+        0x0211 => (
+            "Pentax:WB_RGGBLevelsFluorescentD",
+            "Pentax fluorescent-D white-balance levels",
+        ),
+        0x0212 => (
+            "Pentax:WB_RGGBLevelsFluorescentN",
+            "Pentax fluorescent-N white-balance levels",
+        ),
+        0x0213 => (
+            "Pentax:WB_RGGBLevelsFluorescentW",
+            "Pentax fluorescent-W white-balance levels",
+        ),
+        0x0214 => (
+            "Pentax:WB_RGGBLevelsFlash",
+            "Pentax flash white-balance levels",
+        ),
+        0x0215 => ("Pentax:CameraInfo", "Pentax camera information"),
+        0x0216 => ("Pentax:BatteryInfo", "Pentax battery information"),
+        0x021F => ("Pentax:AFInfo", "Pentax autofocus information"),
+        0x0222 => ("Pentax:ColorInfo", "Pentax color information"),
+        0x03FF => ("Pentax:UnknownInfo", "Pentax unknown information block"),
         _ => return None,
     })
 }
@@ -2178,6 +2331,31 @@ mod tests {
                 .offset,
             Some(5_052)
         );
+    }
+
+    #[test]
+    fn decodes_pentax_packed_information_as_bounded_structure() {
+        let mut maker_note = b"AOC\0MM".to_vec();
+        maker_note.extend_from_slice(&1_u16.to_be_bytes());
+        maker_note.extend_from_slice(&[0x00, 0x5C, 0x00, 0x01, 0x00, 0x00, 0x00, 0x04, 1, 2, 3, 4]);
+        maker_note.extend_from_slice(&[0, 0, 0, 0]);
+
+        let mut metadata = Metadata::new(FileInfo::new(
+            "pentax-packed.jpg".into(),
+            maker_note.len() as u64,
+            FileFormat::Jpeg,
+        ));
+        inspect_maker_note(&maker_note, 6_000, &mut metadata, ParseLimits::default());
+
+        let TagValue::Structure(fields) = &metadata
+            .find("MakerNotes:Pentax:ShakeReductionInfo")
+            .unwrap()
+            .value
+        else {
+            panic!("Pentax packed information should be structured");
+        };
+        assert_eq!(fields.get("SRResult"), Some(&TagValue::Unsigned(1)));
+        assert_eq!(fields.get("SRFocalLength"), Some(&TagValue::Unsigned(4)));
     }
 
     #[test]
