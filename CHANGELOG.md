@@ -20,6 +20,7 @@ Initial read-only foundation:
 - added bounded `--jobs` batch inspection with deterministic result ordering;
 - expanded ISO-BMFF inspection with `ispe` dimensions, item/handler fields,
   and direct XMP/EXIF decoding when the metadata boxes are available;
+- added deterministic CSV output with typed JSON values in the value column;
 - added human-readable, JSON, and JSON Lines CLI output;
 - added malformed-input, resource-limit, and end-to-end CLI tests;
 - documented the verified surface and remaining compatibility boundaries.
