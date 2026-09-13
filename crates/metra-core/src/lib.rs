@@ -403,6 +403,66 @@ const TAG_DEFINITIONS: &[TagDefinition] = &[
         description: "IPTC writer or editor",
     },
     TagDefinition {
+        namespace: "ICC",
+        id: 0x6465_7363,
+        name: "Description",
+        description: "ICC profile description",
+    },
+    TagDefinition {
+        namespace: "ICC",
+        id: 0x6370_7274,
+        name: "Copyright",
+        description: "ICC profile copyright",
+    },
+    TagDefinition {
+        namespace: "ICC",
+        id: 0x646D_6E64,
+        name: "ManufacturerDescription",
+        description: "ICC device manufacturer description",
+    },
+    TagDefinition {
+        namespace: "ICC",
+        id: 0x646D_6464,
+        name: "ModelDescription",
+        description: "ICC device model description",
+    },
+    TagDefinition {
+        namespace: "ICC",
+        id: 0x7774_7074,
+        name: "MediaWhitePoint",
+        description: "ICC media white point",
+    },
+    TagDefinition {
+        namespace: "ICC",
+        id: 0x626B_7074,
+        name: "MediaBlackPoint",
+        description: "ICC media black point",
+    },
+    TagDefinition {
+        namespace: "ICC",
+        id: 0x6C75_6D69,
+        name: "Luminance",
+        description: "ICC luminance",
+    },
+    TagDefinition {
+        namespace: "ICC",
+        id: 0x7258_595A,
+        name: "RedMatrixColumn",
+        description: "ICC red matrix column",
+    },
+    TagDefinition {
+        namespace: "ICC",
+        id: 0x6758_595A,
+        name: "GreenMatrixColumn",
+        description: "ICC green matrix column",
+    },
+    TagDefinition {
+        namespace: "ICC",
+        id: 0x6258_595A,
+        name: "BlueMatrixColumn",
+        description: "ICC blue matrix column",
+    },
+    TagDefinition {
         namespace: "Interop",
         id: 0x0001,
         name: "InteroperabilityIndex",
@@ -916,6 +976,10 @@ mod tests {
         assert_eq!(tag_definition("GPS", 0x000D).name, "GPSSpeed");
         assert_eq!(tag_definition("IPTC", 25).name, "Keywords");
         assert_eq!(tag_definition("EXIF", 0x9286).name, "UserComment");
+        assert_eq!(
+            tag_definition("ICC", u32::from_be_bytes(*b"wtpt")).name,
+            "MediaWhitePoint"
+        );
 
         let tag = Tag {
             namespace: "EXIF".to_owned(),

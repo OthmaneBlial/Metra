@@ -179,6 +179,11 @@ pub(crate) fn parse_icc_profile(
     for index in 0..tag_count {
         let start = 132 + index * 12;
         let tag_signature = signature(&bytes[start..start + 4]);
+        let tag_id = Some(u32::from_be_bytes(
+            bytes[start..start + 4]
+                .try_into()
+                .expect("ICC tag signature"),
+        ));
         let value_offset =
             u32::from_be_bytes(bytes[start + 4..start + 8].try_into().expect("offset"));
         let value_size = u32::from_be_bytes(bytes[start + 8..start + 12].try_into().expect("size"));
@@ -198,25 +203,15 @@ pub(crate) fn parse_icc_profile(
             ));
             continue;
         }
-        if tag_signature == "desc" {
-            if let Some(description) = parse_desc(&bytes[value_start..value_end]) {
-                add_tag(
-                    metadata,
-                    "Description",
-                    TagValue::String(description),
-                    ValueType::String,
-                    data_offset + value_offset as u64,
-                    value_size as u64,
-                );
-            }
-        } else if tag_signature == "mluc"
-            && let Some(description) = parse_mluc(&bytes[value_start..value_end])
+        if let Some((name, value, value_type)) =
+            parse_table_tag(&tag_signature, &bytes[value_start..value_end])
         {
-            add_tag(
+            add_tag_with_id(
                 metadata,
-                "Description",
-                TagValue::String(description),
-                ValueType::String,
+                tag_id,
+                name,
+                value,
+                value_type,
                 data_offset + value_offset as u64,
                 value_size as u64,
             );
@@ -233,10 +228,22 @@ fn add_tag(
     offset: u64,
     length: u64,
 ) {
+    add_tag_with_id(metadata, None, name, value, value_type, offset, length);
+}
+
+fn add_tag_with_id(
+    metadata: &mut Metadata,
+    id: Option<u32>,
+    name: &str,
+    value: TagValue,
+    value_type: ValueType,
+    offset: u64,
+    length: u64,
+) {
     metadata.add_tag(Tag {
         namespace: "ICC".to_owned(),
         group: "Profile".to_owned(),
-        id: None,
+        id,
         name: name.to_owned(),
         description: Some("ICC profile property".to_owned()),
         raw_value: None,
@@ -271,6 +278,56 @@ fn parse_datetime(bytes: &[u8]) -> String {
 fn parse_fixed(bytes: &[u8]) -> f64 {
     let value = i32::from_be_bytes(bytes.try_into().expect("ICC fixed-point value"));
     f64::from(value) / 65_536.0
+}
+
+fn parse_table_tag(signature: &str, bytes: &[u8]) -> Option<(&'static str, TagValue, ValueType)> {
+    let name = match signature {
+        "desc" => "Description",
+        "cprt" => "Copyright",
+        "dmnd" => "ManufacturerDescription",
+        "dmdd" => "ModelDescription",
+        "wtpt" => "MediaWhitePoint",
+        "bkpt" => "MediaBlackPoint",
+        "lumi" => "Luminance",
+        "rXYZ" => "RedMatrixColumn",
+        "gXYZ" => "GreenMatrixColumn",
+        "bXYZ" => "BlueMatrixColumn",
+        _ => return None,
+    };
+    if matches!(
+        signature,
+        "wtpt" | "bkpt" | "lumi" | "rXYZ" | "gXYZ" | "bXYZ"
+    ) {
+        let value = parse_xyz(bytes)?;
+        return Some((name, value, ValueType::Array));
+    }
+    let text = parse_desc(bytes)
+        .or_else(|| parse_mluc(bytes))
+        .or_else(|| parse_text(bytes))?;
+    Some((name, TagValue::String(text), ValueType::String))
+}
+
+fn parse_xyz(bytes: &[u8]) -> Option<TagValue> {
+    if bytes.len() < 20 || &bytes[..4] != b"XYZ " {
+        return None;
+    }
+    Some(TagValue::Array(
+        bytes[8..20]
+            .chunks_exact(4)
+            .map(|chunk| TagValue::Float(parse_fixed(chunk)))
+            .collect(),
+    ))
+}
+
+fn parse_text(bytes: &[u8]) -> Option<String> {
+    if bytes.len() < 8 || &bytes[..4] != b"text" {
+        return None;
+    }
+    Some(
+        String::from_utf8_lossy(&bytes[8..])
+            .trim_end_matches('\0')
+            .to_owned(),
+    )
 }
 
 fn parse_desc(bytes: &[u8]) -> Option<String> {
@@ -360,6 +417,10 @@ mod tests {
             "Metra"
         );
         assert_eq!(
+            metadata.find("ICC:Description").unwrap().id,
+            Some(u32::from_be_bytes(*b"desc"))
+        );
+        assert_eq!(
             metadata.find("ICC:DeviceClass").unwrap().display_value(),
             "mntr"
         );
@@ -382,5 +443,25 @@ mod tests {
             metadata.find("ICC:ProfileID").unwrap().value,
             TagValue::Bytes(_)
         ));
+    }
+
+    #[test]
+    fn reads_common_icc_text_and_xyz_table_values() {
+        let mut text = b"text".to_vec();
+        text.extend_from_slice(&[0; 4]);
+        text.extend_from_slice(b"Copyright Metra\0");
+        let (name, value, value_type) = parse_table_tag("cprt", &text).expect("text tag");
+        assert_eq!(name, "Copyright");
+        assert_eq!(value, TagValue::String("Copyright Metra".to_owned()));
+        assert_eq!(value_type, ValueType::String);
+
+        let mut xyz = b"XYZ ".to_vec();
+        xyz.extend_from_slice(&[0; 4]);
+        xyz.extend_from_slice(&(65_536_i32).to_be_bytes());
+        xyz.extend_from_slice(&(32_768_i32).to_be_bytes());
+        xyz.extend_from_slice(&(-65_536_i32).to_be_bytes());
+        let (_, value, value_type) = parse_table_tag("wtpt", &xyz).expect("XYZ tag");
+        assert_eq!(value_type, ValueType::Array);
+        assert_eq!(value.to_display_string(), "1, 0.5, -1");
     }
 }
