@@ -122,5 +122,11 @@ unsupported, NUL-containing, and oversized fields are rejected; path creation
 uses a same-directory temporary file, refuses an existing destination, and
 removes the temporary output on failure.
 
+ICC creation emits only a minimal RGB monitor profile and validates every
+bounded text tag through the existing ICC reader. Names are allowlisted,
+values are non-empty printable ASCII without NUL bytes, duplicate tags and
+resource-limit violations are rejected, and path creation uses a
+same-directory temporary file with no-overwrite and cleanup guarantees.
+
 Security reports should include the smallest reproducible input and the exact
 Metra version. Do not include private media or secrets in an issue.

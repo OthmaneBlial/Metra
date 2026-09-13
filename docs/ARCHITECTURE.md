@@ -226,6 +226,11 @@ The WAV creation seam exposes `WavCreateOptions`, `create_wav_to_vec`,
 RIFF/WAVE seed with optional bounded `LIST/INFO` fields, validates the output
 through the WAV reader, and refuses to overwrite an existing destination.
 
+Standalone ICC creation exposes `IccCreateOptions`, `create_icc_to_vec`,
+`create_icc_path`, and the CLI `--create-icc KEY=VALUE`. It emits a minimal
+RGB monitor profile with bounded ASCII text tags, validates it through the ICC
+reader, and refuses to overwrite an existing destination.
+
 Legacy read queries are handled by a thin argument normalizer: selected
 single-dash aliases such as `-Make` and `-GPSLatitude` become `--tag` selectors,
 while `-json` and `-jsonl` become the corresponding Metra output flags. The
