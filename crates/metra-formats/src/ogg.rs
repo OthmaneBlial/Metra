@@ -89,6 +89,20 @@ pub fn read_ogg<R: Read + Seek>(
         let sequence = u32::from_le_bytes(header[18..22].try_into().expect("Ogg sequence number"));
         let segment_count = usize::from(header[26]);
         let lacing_offset = cursor + OGG_PAGE_HEADER_LENGTH as u64;
+        let lacing_end =
+            lacing_offset
+                .checked_add(segment_count as u64)
+                .ok_or(MetraError::InvalidOffset {
+                    context: "Ogg segment table".to_owned(),
+                    offset: lacing_offset,
+                })?;
+        if lacing_end > file_length {
+            metadata.add_warning(
+                Warning::new("truncated-ogg-page", "Ogg segment table is truncated")
+                    .at(lacing_offset),
+            );
+            break;
+        }
         let lacing = read_at(
             reader,
             lacing_offset,
@@ -731,5 +745,39 @@ mod tests {
         )
         .expect_err("non-Ogg input should be rejected");
         assert!(matches!(error, MetraError::InvalidHeader { .. }));
+    }
+
+    #[test]
+    fn preserves_complete_pages_before_a_truncated_segment_table() {
+        let mut packet = b"OpusHead".to_vec();
+        packet.extend_from_slice(&[1, 1]);
+        packet.extend_from_slice(&0_u16.to_le_bytes());
+        packet.extend_from_slice(&48_000_u32.to_le_bytes());
+        packet.extend_from_slice(&0_i16.to_le_bytes());
+        packet.push(0);
+
+        let mut bytes = page(8, 0, 0x02, &packet);
+        let mut truncated = Vec::from(&b"OggS"[..]);
+        truncated.extend_from_slice(&[0, 4]);
+        truncated.extend_from_slice(&0_u64.to_le_bytes());
+        truncated.extend_from_slice(&8_u32.to_le_bytes());
+        truncated.extend_from_slice(&1_u32.to_le_bytes());
+        truncated.extend_from_slice(&0_u32.to_le_bytes());
+        truncated.push(2);
+        bytes.extend_from_slice(&truncated);
+
+        let metadata = read_ogg(
+            &mut Cursor::new(bytes.clone()),
+            info(&bytes),
+            ParseLimits::default(),
+        )
+        .expect("complete Ogg pages should remain readable");
+        assert!(
+            metadata
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "truncated-ogg-page")
+        );
+        assert_eq!(metadata.find("Ogg:Codec").unwrap().display_value(), "Opus");
     }
 }
