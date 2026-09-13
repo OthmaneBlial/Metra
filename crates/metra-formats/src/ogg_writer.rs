@@ -9,7 +9,8 @@ use metra_core::{FileFormat, FileInfo, MetraError, ParseLimits, Result};
 use crate::atomic::atomic_replace;
 use crate::ogg::read_ogg;
 
-/// Narrow, lossless Ogg comment edits for Vorbis Comments and OpusTags.
+/// Narrow, lossless Ogg comment edits for Vorbis Comments, OpusTags, and
+/// Ogg-FLAC Vorbis Comment blocks.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OggEdit {
     SetComment { key: String, value: String },
@@ -132,6 +133,7 @@ enum CommentAction {
 enum Codec {
     Vorbis,
     Opus,
+    OggFlac,
 }
 
 #[derive(Debug)]
@@ -351,6 +353,8 @@ fn codec_from_identification(packet: &[u8]) -> Option<Codec> {
         Some(Codec::Vorbis)
     } else if packet.starts_with(b"OpusHead") {
         Some(Codec::Opus)
+    } else if packet.starts_with(&[0x7F]) && packet.get(1..5) == Some(b"FLAC") {
+        Some(Codec::OggFlac)
     } else {
         None
     }
@@ -361,6 +365,10 @@ fn comment_prefix(packet: &[u8]) -> Option<(Codec, usize)> {
         Some((Codec::Vorbis, 7))
     } else if packet.starts_with(b"OpusTags") {
         Some((Codec::Opus, 8))
+    } else if packet.len() >= 4 && packet[0] & 0x7F == 4 {
+        let block_length =
+            (usize::from(packet[1]) << 16) | (usize::from(packet[2]) << 8) | usize::from(packet[3]);
+        (block_length == packet.len().saturating_sub(4)).then_some((Codec::OggFlac, 4))
     } else {
         None
     }
@@ -421,6 +429,7 @@ fn rewrite_comment_packet(
     let prefix_length = match codec {
         Codec::Vorbis => 7,
         Codec::Opus => 8,
+        Codec::OggFlac => 4,
     };
     if packet.get(..prefix_length).is_none() || comment_prefix(packet).is_none() {
         return Err(MetraError::InvalidTag {
@@ -793,6 +802,33 @@ mod tests {
         output
     }
 
+    fn ogg_flac_fixture() -> Vec<u8> {
+        let mut mapping = vec![0x7F, b'F', b'L', b'A', b'C', 1, 0, 0, 2];
+        mapping.extend_from_slice(b"fLaC");
+        mapping.extend_from_slice(&[0, 0, 0, 34]);
+        mapping.extend_from_slice(&[0; 34]);
+
+        let vendor = b"Metra";
+        let comment = b"TITLE=before";
+        let mut comments = Vec::new();
+        comments.extend_from_slice(&(vendor.len() as u32).to_le_bytes());
+        comments.extend_from_slice(vendor);
+        comments.extend_from_slice(&1_u32.to_le_bytes());
+        comments.extend_from_slice(&(comment.len() as u32).to_le_bytes());
+        comments.extend_from_slice(comment);
+        let mut comment_packet = vec![0x84];
+        comment_packet.extend_from_slice(&[
+            ((comments.len() >> 16) & 0xFF) as u8,
+            ((comments.len() >> 8) & 0xFF) as u8,
+            (comments.len() & 0xFF) as u8,
+        ]);
+        comment_packet.extend_from_slice(&comments);
+
+        let mut output = page(13, 0, 0x02, &mapping);
+        output.extend_from_slice(&page(13, 1, 0, &comment_packet));
+        output
+    }
+
     fn info(bytes: &[u8]) -> FileInfo {
         FileInfo::new("audio.ogg".into(), bytes.len() as u64, FileFormat::Ogg)
     }
@@ -883,5 +919,31 @@ mod tests {
         )
         .expect_err("a larger packet cannot be rewritten losslessly");
         assert!(error.to_string().contains("larger packet"));
+    }
+
+    #[test]
+    fn replaces_ogg_flac_comment_block_without_changing_packet_size() {
+        let bytes = ogg_flac_fixture();
+        let rewritten = rewrite_ogg_to_vec(
+            &bytes,
+            info(&bytes),
+            ParseLimits::default(),
+            &[OggEdit::SetComment {
+                key: "Title".to_owned(),
+                value: "edited".to_owned(),
+            }],
+        )
+        .expect("Ogg-FLAC comment should rewrite losslessly");
+        let metadata = read_ogg(
+            &mut Cursor::new(rewritten.clone()),
+            info(&rewritten),
+            ParseLimits::default(),
+        )
+        .expect("rewritten Ogg-FLAC should parse");
+        assert_eq!(
+            metadata.find("Ogg:Title").unwrap().display_value(),
+            "edited"
+        );
+        assert_eq!(rewritten.len(), bytes.len());
     }
 }
