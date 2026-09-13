@@ -63,8 +63,9 @@ and the CLI exposes the same narrow operations through `--set`,
 `--delete`, and `--copy`.
 TIFF ASCII values can also be copied from a TIFF-like source into an existing
 TIFF ASCII field when the target field has enough storage.
-Existing ISO-BMFF text values can be copied between supported ISO-BMFF files
-when the target value slot has enough storage.
+Existing ISO-BMFF text values can be cleared or copied between supported
+ISO-BMFF files when the target value slot has enough storage; clearing zero-fills
+the existing slot without changing box sizes.
 Existing JPEG EXIF ASCII fields can be rewritten or copied when the target field
 has enough storage; the JPEG segment size and image bytes remain unchanged.
 Repeated IPTC datasets remain typed arrays when read; `--copy` accepts only a
