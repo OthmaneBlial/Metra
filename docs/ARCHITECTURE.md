@@ -168,6 +168,14 @@ existing `TIFF:EXIF:<ASCII tag>` values; generic
 tag mutation and other format writers remain deferred until their round-trip
 acceptance tests exist.
 
+The public `MetadataEdit` API is the common string-edit boundary for the
+currently supported narrow operations. `rewrite_metadata_path` keeps the
+safe writer contract by detecting the input first and delegating to the
+format-specific atomic implementation; `rewrite_metadata_to_vec` provides the
+same dispatch for callers that own the byte buffer. Numeric/binary mutation,
+new metadata block creation, and deletion semantics that require layout
+changes remain intentionally outside this API.
+
 ## Output contract
 
 JSON documents include `schema_version`. The schema is intentionally small and
