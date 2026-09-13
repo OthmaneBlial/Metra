@@ -151,6 +151,7 @@ enum EditRequest {
 enum CopyKey {
     JpegComment,
     PngText(String),
+    PngXmp,
     WavInfo(String),
     FlacComment(String),
     Mp3Text(String),
@@ -169,6 +170,11 @@ fn parse_edits(
             .split_once('=')
             .ok_or_else(|| "--set expects KEY=VALUE".to_owned())?;
         if key != "JPEG:Comment" {
+            if png_xmp_key(key) {
+                return Ok(Some(EditRequest::DirectPng(vec![metra::PngEdit::SetXmp(
+                    value.to_owned(),
+                )])));
+            }
             if let Some(keyword) = png_text_keyword(key) {
                 return Ok(Some(EditRequest::DirectPng(vec![
                     metra::PngEdit::SetText {
@@ -224,6 +230,11 @@ fn parse_edits(
     }
     if let Some(key) = delete {
         if key != "JPEG:Comment" {
+            if png_xmp_key(key) {
+                return Ok(Some(EditRequest::DirectPng(vec![
+                    metra::PngEdit::DeleteXmp,
+                ])));
+            }
             if let Some(keyword) = png_text_keyword(key) {
                 return Ok(Some(EditRequest::DirectPng(vec![
                     metra::PngEdit::DeleteText {
@@ -282,6 +293,8 @@ fn parse_edits(
         }
         let key = if key == "JPEG:Comment" {
             CopyKey::JpegComment
+        } else if png_xmp_key(key) {
+            CopyKey::PngXmp
         } else if let Some(keyword) = png_text_keyword(key) {
             CopyKey::PngText(keyword.to_owned())
         } else if let Some(name) = wav_info_name(key) {
@@ -312,9 +325,13 @@ fn png_text_keyword(key: &str) -> Option<&str> {
     (!keyword.is_empty()).then_some(keyword)
 }
 
+fn png_xmp_key(key: &str) -> bool {
+    matches!(key, "PNG:XMP" | "PNG:iTXt:XMP")
+}
+
 fn unsupported_edit_message(key: &str) -> String {
     format!(
-        "unsupported metadata key {key}; writable keys are JPEG:Comment, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, ID3:<text field>, GIF:Comment, or WebP:XMP"
+        "unsupported metadata key {key}; writable keys are JPEG:Comment, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, ID3:<text field>, GIF:Comment, or WebP:XMP"
     )
 }
 
@@ -533,6 +550,33 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path) -> ExitCode {
                 keyword,
                 value: text.clone(),
             }];
+            apply_png_edits(paths, &edits)
+        }
+        CopyKey::PngXmp => {
+            if source_metadata.file_info.format != metra::FileFormat::Png {
+                eprintln!(
+                    "metra: {}: source format {} is not PNG",
+                    source.display(),
+                    source_metadata.file_info.format
+                );
+                return ExitCode::from(1);
+            }
+            let Some(packet) = source_metadata.find("XMP:Packet") else {
+                eprintln!(
+                    "metra: {}: source does not contain an XMP packet",
+                    source.display()
+                );
+                return ExitCode::from(1);
+            };
+            let metra::TagValue::Bytes(packet) = &packet.value else {
+                eprintln!("metra: {}: XMP:Packet is not raw bytes", source.display());
+                return ExitCode::from(1);
+            };
+            let Ok(packet) = String::from_utf8(packet.clone()) else {
+                eprintln!("metra: {}: XMP:Packet is not valid UTF-8", source.display());
+                return ExitCode::from(1);
+            };
+            let edits = [metra::PngEdit::SetXmp(packet)];
             apply_png_edits(paths, &edits)
         }
         CopyKey::WavInfo(name) => {

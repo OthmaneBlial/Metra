@@ -108,6 +108,20 @@ fn minimal_png(comment: &str) -> Vec<u8> {
     bytes
 }
 
+fn minimal_png_xmp(format: &str) -> Vec<u8> {
+    let xmp = format!(
+        "<x:xmpmeta><rdf:RDF><rdf:Description xmlns:dc=\"urn:dc\" dc:format=\"{format}\"/></rdf:RDF></x:xmpmeta>"
+    );
+    let mut itxt = b"XML:com.adobe.xmp\0\0\0\0\0".to_vec();
+    itxt.extend_from_slice(xmp.as_bytes());
+    let mut bytes = b"\x89PNG\r\n\x1A\n".to_vec();
+    bytes.extend_from_slice(&png_chunk(b"IHDR", &[0; 13]));
+    bytes.extend_from_slice(&png_chunk(b"iTXt", &itxt));
+    bytes.extend_from_slice(&png_chunk(b"IDAT", &[1, 2, 3, 4]));
+    bytes.extend_from_slice(&png_chunk(b"IEND", &[]));
+    bytes
+}
+
 fn wav_chunk(kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
     let mut chunk = kind.to_vec();
     chunk.extend_from_slice(&(data.len() as u32).to_le_bytes());
@@ -495,6 +509,60 @@ fn cli_can_edit_and_copy_a_png_text_chunk() {
             .unwrap()
             .display_value(),
         "source value"
+    );
+}
+
+#[test]
+fn cli_can_edit_and_copy_png_xmp() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.file("source-xmp.png", &minimal_png_xmp("source"));
+    let target = directory.file("target-xmp.png", &minimal_png_xmp("target"));
+
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "PNG:XMP=<x:xmpmeta><rdf:RDF><rdf:Description xmlns:dc=\"urn:dc\" dc:format=\"edited\"/></rdf:RDF></x:xmpmeta>",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("XMP:dc:format")
+            .unwrap()
+            .display_value(),
+        "edited"
+    );
+
+    let delete = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--delete",
+            "PNG:XMP",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(delete.status.success(), "stderr: {:?}", delete.stderr);
+    assert!(metra::read(&target).unwrap().find("XMP:Packet").is_none());
+
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            &format!("PNG:XMP={}", source.to_str().expect("UTF-8 test path")),
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("XMP:dc:format")
+            .unwrap()
+            .display_value(),
+        "source"
     );
 }
 
