@@ -27,6 +27,7 @@ mod isobmff_writer;
 mod jpeg;
 mod makers;
 mod matroska;
+mod ogg;
 mod pdf;
 mod png;
 mod png_writer;
@@ -57,6 +58,7 @@ pub use isobmff_writer::{
 };
 pub use jpeg::{JpegEdit, read_jpeg, rewrite_jpeg, rewrite_jpeg_path, rewrite_jpeg_to_vec};
 pub use matroska::read_matroska;
+pub use ogg::read_ogg;
 pub use pdf::read_pdf;
 pub use png::read_png;
 pub use png_writer::{PngEdit, rewrite_png, rewrite_png_path, rewrite_png_to_vec};
@@ -191,6 +193,11 @@ pub fn detect_format(bytes: &[u8]) -> Option<DetectedFormat> {
         Some(DetectedFormat {
             format: FileFormat::Mp3,
             signature: "ID3 header",
+        })
+    } else if ogg::is_ogg_signature(bytes) {
+        Some(DetectedFormat {
+            format: FileFormat::Ogg,
+            signature: "OggS container",
         })
     } else if bytes.starts_with(b"fLaC") {
         Some(DetectedFormat {
@@ -385,6 +392,7 @@ pub fn read_reader_with_limits<R: Read + Seek>(
         | FileFormat::M4a => isobmff::read_isobmff(reader, file_info, limits),
         FileFormat::Mp3 => id3::read_mp3(reader, file_info, limits),
         FileFormat::Flac => flac::read_flac(reader, file_info, limits),
+        FileFormat::Ogg => ogg::read_ogg(reader, file_info, limits),
         FileFormat::Pdf => pdf::read_pdf(reader, file_info, limits),
         FileFormat::Wav => wav::read_wav(reader, file_info, limits),
         FileFormat::Svg => svg::read_svg(reader, file_info, limits),
@@ -487,6 +495,10 @@ mod tests {
         assert_eq!(
             detect_format(b"ID3\x04\0\0\0\0\0\0\0").unwrap().format,
             FileFormat::Mp3
+        );
+        assert_eq!(
+            detect_format(b"OggS\0\0\0\0").unwrap().format,
+            FileFormat::Ogg
         );
         assert_eq!(
             detect_format(b"\xFF\xFB\x90\x64").unwrap().format,

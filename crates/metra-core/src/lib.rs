@@ -875,6 +875,7 @@ pub enum FileFormat {
     Gif,
     Mp3,
     Flac,
+    Ogg,
     Wav,
     Svg,
     Icc,
@@ -903,6 +904,7 @@ impl FileFormat {
             Self::Gif => Some("image/gif"),
             Self::Mp3 => Some("audio/mpeg"),
             Self::Flac => Some("audio/flac"),
+            Self::Ogg => Some("audio/ogg"),
             Self::Wav => Some("audio/wav"),
             Self::Svg => Some("image/svg+xml"),
             Self::Icc => Some("application/vnd.iccprofile"),
@@ -933,6 +935,7 @@ impl fmt::Display for FileFormat {
             Self::Gif => "GIF",
             Self::Mp3 => "MP3",
             Self::Flac => "FLAC",
+            Self::Ogg => "OGG",
             Self::Wav => "WAV",
             Self::Svg => "SVG",
             Self::Icc => "ICC",
@@ -1083,6 +1086,15 @@ const FORMAT_CAPABILITIES: &[FormatCapabilities] = &[
         create: CapabilityStatus::Planned,
         delete: CapabilityStatus::Partial,
         lossless_rewrite: CapabilityStatus::Partial,
+        streaming: CapabilityStatus::Partial,
+    },
+    FormatCapabilities {
+        format: FileFormat::Ogg,
+        read: CapabilityStatus::Partial,
+        write: CapabilityStatus::Planned,
+        create: CapabilityStatus::Planned,
+        delete: CapabilityStatus::Planned,
+        lossless_rewrite: CapabilityStatus::Planned,
         streaming: CapabilityStatus::Partial,
     },
     FormatCapabilities {
@@ -1692,6 +1704,6 @@ mod tests {
             format_capabilities(FileFormat::Xmp).read,
             CapabilityStatus::Partial
         );
-        assert_eq!(format_capabilities_all().len(), 22);
+        assert_eq!(format_capabilities_all().len(), 23);
     }
 }
