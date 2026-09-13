@@ -1,7 +1,7 @@
 use std::io::{Read, Seek};
 
 use quick_xml::Reader;
-use quick_xml::events::{BytesStart, Event};
+use quick_xml::events::{BytesRef, BytesStart, Event};
 
 use metra_core::{
     FileInfo, Metadata, MetraError, ParseLimits, Result, Source, Tag, TagValue, ValueType,
@@ -186,12 +186,8 @@ fn parse_document(bytes: &[u8], limits: ParseLimits, metadata: &mut Metadata) ->
                 });
             }
             Event::GeneralRef(reference) => {
-                return Err(MetraError::InvalidXml {
-                    message: format!(
-                        "unresolved XML entity {} is not allowed in SVG metadata",
-                        display_name(reference.as_ref())
-                    ),
-                });
+                let value = resolve_general_ref(&reference)?;
+                append_text(stack.last_mut(), &value, &mut text_bytes, limits)?;
             }
             Event::Eof => break,
             Event::Decl(_) | Event::PI(_) => {}
@@ -367,6 +363,18 @@ fn display_name(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
 }
 
+pub(crate) fn resolve_general_ref(reference: &BytesRef<'_>) -> Result<String> {
+    let name = reference.decode().map_err(|error| MetraError::InvalidXml {
+        message: error.to_string(),
+    })?;
+    let raw = format!("&{name};");
+    quick_xml::escape::unescape(&raw)
+        .map(|value| value.into_owned())
+        .map_err(|error| MetraError::InvalidXml {
+            message: format!("unsupported XML entity {name}: {error}"),
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;
@@ -433,6 +441,15 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.to_string().contains("DOCTYPE"));
+
+        let bytes = br#"<svg><title>&custom;</title></svg>"#;
+        let error = read_svg(
+            &mut Cursor::new(bytes.as_slice()),
+            info(bytes.len()),
+            ParseLimits::default(),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("unsupported XML entity"));
 
         let bytes = br#"<svg><title>long title</title></svg>"#;
         let limits = ParseLimits {
