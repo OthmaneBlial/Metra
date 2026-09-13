@@ -40,7 +40,15 @@ struct Arguments {
         long = "tag",
         value_name = "NAME",
         action = clap::ArgAction::Append,
-        conflicts_with_all = ["set", "delete", "copy", "create_tiff", "create_png", "compare"]
+        conflicts_with_all = [
+            "set",
+            "delete",
+            "copy",
+            "create_tiff",
+            "create_png",
+            "create_xmp",
+            "compare"
+        ]
     )]
     tag: Vec<String>,
 
@@ -80,6 +88,7 @@ struct Arguments {
             "delete",
             "copy",
             "create_png",
+            "create_xmp",
             "json",
             "jsonl",
             "csv",
@@ -101,6 +110,7 @@ struct Arguments {
             "delete",
             "copy",
             "create_tiff",
+            "create_xmp",
             "json",
             "jsonl",
             "csv",
@@ -111,6 +121,28 @@ struct Arguments {
         ]
     )]
     create_png: Vec<String>,
+
+    /// Create a new standalone XMP packet from validated XML.
+    #[arg(
+        long = "create-xmp",
+        value_name = "PACKET",
+        conflicts_with_all = [
+            "set",
+            "delete",
+            "copy",
+            "create_tiff",
+            "create_png",
+            "json",
+            "jsonl",
+            "csv",
+            "toml",
+            "yaml",
+            "tag",
+            "validate",
+            "compare"
+        ]
+    )]
+    create_xmp: Option<String>,
 
     /// Validate inputs and return a failure when any warning is produced.
     #[arg(long, conflicts_with_all = ["set", "delete", "copy"])]
@@ -194,6 +226,22 @@ fn main() -> ExitCode {
             }
         };
         return match metra::create_png_path(&arguments.files[0], &options, limits) {
+            Ok(()) => {
+                println!("created: {}", arguments.files[0].display());
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", arguments.files[0].display());
+                ExitCode::from(1)
+            }
+        };
+    }
+    if let Some(packet) = arguments.create_xmp.as_deref() {
+        if arguments.files.len() != 1 {
+            eprintln!("metra: --create-xmp requires exactly one destination path");
+            return ExitCode::from(2);
+        }
+        return match metra::create_xmp_path(&arguments.files[0], packet, limits) {
             Ok(()) => {
                 println!("created: {}", arguments.files[0].display());
                 ExitCode::SUCCESS
