@@ -16,6 +16,7 @@ use crate::matroska::read_matroska;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MatroskaEdit {
     SetTag { name: String, value: String },
+    SetString { key: String, value: String },
 }
 
 pub fn rewrite_matroska<R: Read + Seek, W: Write + Seek>(
@@ -144,48 +145,65 @@ fn collect_patches(
 ) -> Result<Vec<Patch>> {
     let mut patches = Vec::with_capacity(edits.len());
     for edit in edits {
-        let MatroskaEdit::SetTag { name, value } = edit;
-        if name.is_empty() || name.contains('\0') {
-            return Err(MetraError::WriteFailure {
-                message: "Matroska SimpleTag name cannot be empty or contain NUL".to_owned(),
-            });
-        }
+        let (key, value, simple_tag) = match edit {
+            MatroskaEdit::SetTag { name, value } => {
+                if name.is_empty() || name.contains('\0') {
+                    return Err(MetraError::WriteFailure {
+                        message: "Matroska SimpleTag name cannot be empty or contain NUL"
+                            .to_owned(),
+                    });
+                }
+                (format!("Matroska:Tag:{name}"), value, true)
+            }
+            MatroskaEdit::SetString { key, value } => {
+                if !is_writable_string_key(key) {
+                    return Err(MetraError::WriteFailure {
+                        message: format!("Matroska string field {key} is not writable"),
+                    });
+                }
+                (key.clone(), value, false)
+            }
+        };
         if value.contains('\0') {
             return Err(MetraError::WriteFailure {
-                message: format!("Matroska SimpleTag value for {name} cannot contain NUL"),
+                message: format!("Matroska string value for {key} cannot contain NUL"),
             });
         }
-        let key = format!("Matroska:Tag:{name}");
         let tag = match metadata.find_all(&key).as_slice() {
             [tag] => *tag,
             [] => {
                 return Err(MetraError::WriteFailure {
-                    message: format!("Matroska SimpleTag {name} does not exist"),
+                    message: format!("Matroska string field {key} does not exist"),
                 });
             }
             _ => {
                 return Err(MetraError::WriteFailure {
                     message: format!(
-                        "Matroska SimpleTag {name} is repeated; an unambiguous target is required"
+                        "Matroska string field {key} is repeated; an unambiguous target is required"
                     ),
                 });
             }
         };
-        if tag.source.container != "Matroska/Tags" {
+        let expected_container = if simple_tag {
+            "Matroska/Tags"
+        } else {
+            "Matroska/Info"
+        };
+        if tag.source.container != expected_container {
             return Err(MetraError::WriteFailure {
-                message: format!("Matroska SimpleTag {name} has no tag source"),
+                message: format!("Matroska string field {key} has no {expected_container} source"),
             });
         }
         if !matches!(tag.value, TagValue::String(_)) {
             return Err(MetraError::WriteFailure {
-                message: format!("Matroska SimpleTag {name} is not a string"),
+                message: format!("Matroska string field {key} is not a string"),
             });
         }
         let offset = tag.source.offset.ok_or_else(|| MetraError::WriteFailure {
-            message: format!("Matroska SimpleTag {name} has no source offset"),
+            message: format!("Matroska string field {key} has no source offset"),
         })?;
         let span = tag.source.length.ok_or_else(|| MetraError::WriteFailure {
-            message: format!("Matroska SimpleTag {name} has no source length"),
+            message: format!("Matroska string field {key} has no source length"),
         })?;
         let span_usize = usize::try_from(span).map_err(|_| MetraError::ResourceLimitExceeded {
             resource: "Matroska SimpleTag value".to_owned(),
@@ -200,7 +218,7 @@ fn collect_patches(
         if value.len() > span_usize {
             return Err(MetraError::WriteFailure {
                 message: format!(
-                    "Matroska SimpleTag {name} has {} bytes available, {} needed",
+                    "Matroska string field {key} has {} bytes available, {} needed",
                     span_usize,
                     value.len()
                 ),
@@ -231,6 +249,13 @@ fn collect_patches(
         }
     }
     Ok(patches)
+}
+
+fn is_writable_string_key(key: &str) -> bool {
+    matches!(
+        key,
+        "Matroska:Title" | "Matroska:MuxingApp" | "Matroska:WritingApp"
+    )
 }
 
 fn is_matroska_format(format: FileFormat) -> bool {
@@ -360,6 +385,16 @@ mod tests {
         [ebml_header, tags].concat()
     }
 
+    fn minimal_webm_with_info_title(title: &str) -> Vec<u8> {
+        let ebml = element(&[0x42, 0x82], b"webm");
+        let ebml_header = element(b"\x1A\x45\xDF\xA3", &ebml);
+        let info = element(
+            &[0x15, 0x49, 0xA9, 0x66],
+            &element(&[0x7B, 0xA9], title.as_bytes()),
+        );
+        [ebml_header, info].concat()
+    }
+
     #[test]
     fn replaces_existing_simple_tag_without_changing_ebml_layout() {
         let bytes = minimal_webm("old");
@@ -400,5 +435,31 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.to_string().contains("available"));
+    }
+
+    #[test]
+    fn replaces_existing_info_title_without_changing_ebml_layout() {
+        let bytes = minimal_webm_with_info_title("old");
+        let output = rewrite_matroska_to_vec(
+            &bytes,
+            FileInfo::new("editable.webm".into(), bytes.len() as u64, FileFormat::Webm),
+            ParseLimits::default(),
+            &[MatroskaEdit::SetString {
+                key: "Matroska:Title".to_owned(),
+                value: "new".to_owned(),
+            }],
+        )
+        .unwrap();
+        assert_eq!(output.len(), bytes.len());
+        let metadata = read_matroska(
+            &mut Cursor::new(output),
+            FileInfo::new("editable.webm".into(), bytes.len() as u64, FileFormat::Webm),
+            ParseLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            metadata.find("Matroska:Title").unwrap().display_value(),
+            "new"
+        );
     }
 }
