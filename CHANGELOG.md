@@ -128,6 +128,8 @@ Initial read-first foundation with narrow validated rewrites:
   bounded public stream and path dispatch;
 - added bounded Ogg page and logical-stream inspection for Vorbis, Opus, and
   Ogg-FLAC metadata packets, including typed stream headers and comments;
+- decoded Ogg-FLAC mapping `STREAMINFO` blocks with typed sample, channel,
+  frame-size, block-size, total-sample, duration, and MD5 fields;
 - expanded Matroska/WebM inspection with bounded chapter, cue-point, and
   attachment descriptors while skipping cluster and attachment payload data;
 - expanded corpus differential aliases for Vorbis and Opus namespaces, with
