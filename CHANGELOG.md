@@ -8,9 +8,9 @@ Initial read-first foundation with narrow validated rewrites:
   including DNG, CR2, NEF, ARW, ORF, RW2, and PEF, with explicit rejection of
   proprietary RAW variants, generic and registry API dispatch, atomic
   replacement, and CLI `--set`/`--copy` coverage;
-- added bounded Matroska/WebM `SimpleTag` string rewrites with fixed EBML
-  layout preservation, generic and registry API dispatch, atomic replacement,
-  and CLI `--set`/`--copy` coverage;
+- added bounded Matroska/WebM `Info` title/app and `SimpleTag` string rewrites
+  with fixed EBML layout preservation, generic and registry API dispatch,
+  atomic replacement, and CLI `--set`/`--copy` coverage;
 - added bounded AVI `LIST/INFO` string rewrites with fixed chunk-size
   preservation, generic and registry API dispatch, atomic replacement, and CLI
   `--set`/`--copy` coverage;

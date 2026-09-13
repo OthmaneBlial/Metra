@@ -76,9 +76,10 @@ atomic replacement.
 AVI INFO writes are limited to existing known text chunks and bounded payloads;
 the replacement is zero-padded within the original chunk, so RIFF sizes and
 media bytes remain unchanged before the validated atomic replacement.
-Matroska/WebM writes are limited to existing `SimpleTag` string payloads and
-zero-pad within the original EBML element, so element sizes, names, and media
-bytes remain unchanged before the validated atomic replacement.
+Matroska/WebM writes are limited to existing `Info` title/app and `SimpleTag`
+string payloads and zero-pad within the original EBML element, so element
+sizes, names, and media bytes remain unchanged before the validated atomic
+replacement.
 RAW writes are limited to TIFF/BigTIFF ASCII slots in TIFF-like containers;
 the adapter rejects CR3 and proprietary RAW variants before delegating to the
 validated TIFF writer, so RAW payload layout remains unchanged.
