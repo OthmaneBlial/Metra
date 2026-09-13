@@ -62,6 +62,19 @@ fn public_reader_api_handles_short_signature_reads() {
 }
 
 #[test]
+fn public_format_registry_reports_every_read_dispatch_entry() {
+    let handlers = metra::format_handlers();
+    assert_eq!(handlers.len(), metra::format_capabilities_all().len());
+
+    for capabilities in metra::format_capabilities_all() {
+        let handler = metra::handler_for_format(capabilities.format)
+            .expect("every advertised format should have a public handler");
+        assert_eq!(handler.format(), capabilities.format);
+        assert_eq!(handler.capabilities(), *capabilities);
+    }
+}
+
+#[test]
 fn public_batch_api_keeps_input_order_and_supports_streaming() {
     let paths = vec![
         std::env::temp_dir().join("metra-batch-z-does-not-exist"),

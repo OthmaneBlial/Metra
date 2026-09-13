@@ -16,6 +16,7 @@ mod flac;
 mod flac_writer;
 mod gif;
 mod gif_writer;
+mod handler;
 mod icc;
 mod id3;
 mod id3_writer;
@@ -50,6 +51,7 @@ pub use flac::read_flac;
 pub use flac_writer::{FlacEdit, rewrite_flac, rewrite_flac_path, rewrite_flac_to_vec};
 pub use gif::read_gif;
 pub use gif_writer::{GifEdit, rewrite_gif, rewrite_gif_path, rewrite_gif_to_vec};
+pub use handler::{FormatHandler, ReadSeek, format_handlers, handler_for_format};
 pub use icc::read_icc;
 pub use id3::read_mp3;
 pub use id3_writer::{Mp3Edit, rewrite_mp3, rewrite_mp3_path, rewrite_mp3_to_vec};
@@ -381,33 +383,9 @@ pub fn read_reader_with_limits<R: Read + Seek>(
         })?;
     let file_info = FileInfo::new(file_info.path.clone(), file_info.size, detected.format);
 
-    match detected.format {
-        FileFormat::Jpeg => jpeg::read_jpeg(reader, file_info, limits),
-        FileFormat::Tiff => tiff::read_tiff(reader, file_info, limits),
-        FileFormat::Png => png::read_png(reader, file_info, limits),
-        FileFormat::Webp => webp::read_webp(reader, file_info, limits),
-        FileFormat::Gif => gif::read_gif(reader, file_info, limits),
-        FileFormat::Heif
-        | FileFormat::Avif
-        | FileFormat::Mp4
-        | FileFormat::Mov
-        | FileFormat::M4a => isobmff::read_isobmff(reader, file_info, limits),
-        FileFormat::Mp3 => id3::read_mp3(reader, file_info, limits),
-        FileFormat::Flac => flac::read_flac(reader, file_info, limits),
-        FileFormat::Ogg => ogg::read_ogg(reader, file_info, limits),
-        FileFormat::Pdf => pdf::read_pdf(reader, file_info, limits),
-        FileFormat::Wav => wav::read_wav(reader, file_info, limits),
-        FileFormat::Svg => svg::read_svg(reader, file_info, limits),
-        FileFormat::Icc => icc::read_icc(reader, file_info, limits),
-        FileFormat::Xmp => xmp::read_xmp(reader, file_info, limits),
-        FileFormat::Psd => psd::read_psd(reader, file_info, limits),
-        FileFormat::Avi => avi::read_avi(reader, file_info, limits),
-        FileFormat::Mkv | FileFormat::Webm => matroska::read_matroska(reader, file_info, limits),
-        FileFormat::Raw => raw::read_raw(reader, file_info, limits),
-        format => Err(MetraError::UnsupportedFormat {
-            description: format!("{format} is detected but its reader is not implemented yet"),
-        }),
-    }
+    handler::handler_for_format(detected.format)
+        .ok_or_else(|| handler::unsupported_handler(detected.format))?
+        .read_metadata(reader, file_info, limits)
 }
 
 pub fn read_path_with_limits(path: impl AsRef<Path>, limits: ParseLimits) -> Result<Metadata> {
