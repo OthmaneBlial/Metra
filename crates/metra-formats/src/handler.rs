@@ -189,6 +189,11 @@ writer_adapter!(
     super::edit::collect_ogg
 );
 writer_adapter!(
+    write_pdf,
+    super::pdf_writer::rewrite_pdf,
+    super::edit::collect_pdf
+);
+writer_adapter!(
     write_wav,
     super::wav_writer::rewrite_wav,
     super::edit::collect_wav
@@ -248,7 +253,7 @@ static FORMAT_HANDLERS: &[RegisteredFormatHandler] = &[
     RegisteredFormatHandler {
         format: FileFormat::Pdf,
         reader: read_pdf,
-        writer: None,
+        writer: Some(write_pdf),
     },
     RegisteredFormatHandler {
         format: FileFormat::Gif,
@@ -412,19 +417,51 @@ mod tests {
     }
 
     #[test]
-    fn handlers_without_writers_report_explicit_unsupported_errors() {
+    fn registered_pdf_writer_dispatches_canonical_edits() {
+        let bytes = b"%PDF-1.7\n5 0 obj\n<< /Title (Before) >>\nendobj\ntrailer\n<< /Info 5 0 R >>\nstartxref\n9\n%%EOF\n";
         let handler = handler_for_format(FileFormat::Pdf).expect("PDF handler should exist");
+        let mut reader = std::io::Cursor::new(bytes.to_vec());
+        let mut writer = std::io::Cursor::new(Vec::new());
+        handler
+            .write_metadata(
+                &mut reader,
+                &mut writer,
+                FileInfo::new("handler.pdf".into(), bytes.len() as u64, FileFormat::Pdf),
+                ParseLimits::default(),
+                &[MetadataEdit::set("PDF:Title", "After!")],
+            )
+            .expect("registered PDF writer should accept canonical edits");
+
+        let output = writer.into_inner();
+        let metadata = crate::read_reader(
+            &mut std::io::Cursor::new(output.clone()),
+            FileInfo::new(
+                "handler.pdf".into(),
+                output.len() as u64,
+                FileFormat::Unknown,
+            ),
+        )
+        .expect("registered PDF writer output should remain readable");
+        assert_eq!(
+            metadata.find("PDF:Title").unwrap().display_value(),
+            "After!"
+        );
+    }
+
+    #[test]
+    fn handlers_without_writers_report_explicit_unsupported_errors() {
+        let handler = handler_for_format(FileFormat::Psd).expect("PSD handler should exist");
         let mut reader = std::io::Cursor::new(b"%PDF-1.7".to_vec());
         let mut writer = std::io::Cursor::new(Vec::new());
         let error = handler
             .write_metadata(
                 &mut reader,
                 &mut writer,
-                FileInfo::new("document.pdf".into(), 8, FileFormat::Pdf),
+                FileInfo::new("document.psd".into(), 8, FileFormat::Psd),
                 ParseLimits::default(),
                 &[MetadataEdit::set("PDF:Title", "new")],
             )
-            .expect_err("PDF has no validated writer");
-        assert!(error.to_string().contains("PDF"));
+            .expect_err("PSD has no validated writer");
+        assert!(error.to_string().contains("PSD"));
     }
 }

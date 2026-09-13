@@ -144,6 +144,13 @@ fn minimal_svg() -> Vec<u8> {
         .to_vec()
 }
 
+fn minimal_pdf(title: &str) -> Vec<u8> {
+    format!(
+        "%PDF-1.7\n5 0 obj\n<< /Title ({title}) /Author <FEFF004F0074> >>\nendobj\ntrailer\n<< /Info 5 0 R >>\nstartxref\n9\n%%EOF\n"
+    )
+    .into_bytes()
+}
+
 fn minimal_svg_document(title: &str, description: &str, comment: &str) -> Vec<u8> {
     format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\"><!-- {comment} --><title>{title}</title><desc>{description}</desc><rect width=\"2\" height=\"2\"/></svg>"
@@ -788,6 +795,50 @@ fn cli_can_copy_existing_tiff_ascii_from_another_tiff() {
 
     let metadata = metra::read(&target).expect("copied TIFF should remain readable");
     assert_eq!(metadata.find("EXIF:Make").unwrap().display_value(), "Sony");
+}
+
+#[test]
+fn cli_can_set_and_copy_existing_pdf_info() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.file("source.pdf", &minimal_pdf("Source"));
+    let target = directory.file("target.pdf", &minimal_pdf("Target"));
+
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "PDF:Title=Edited",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("PDF:Title")
+            .unwrap()
+            .display_value(),
+        "Edited"
+    );
+
+    let copy_assignment = format!("PDF:Title={}", source.to_str().expect("UTF-8 test path"));
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            copy_assignment.as_str(),
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("PDF:Title")
+            .unwrap()
+            .display_value(),
+        "Source"
+    );
 }
 
 #[test]

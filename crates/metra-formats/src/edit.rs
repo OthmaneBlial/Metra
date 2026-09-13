@@ -69,6 +69,7 @@ pub fn rewrite_metadata_path(
         FileFormat::Ogg => crate::rewrite_ogg_path(path, limits, &collect_ogg(edits, format)?),
         FileFormat::Wav => crate::rewrite_wav_path(path, limits, &collect_wav(edits, format)?),
         FileFormat::Svg => crate::rewrite_svg_path(path, limits, &collect_svg(edits, format)?),
+        FileFormat::Pdf => crate::rewrite_pdf_path(path, limits, &collect_pdf(edits, format)?),
         _ => Err(unsupported_format(format)),
     }
 }
@@ -134,6 +135,9 @@ pub fn rewrite_metadata_to_vec(
         }
         FileFormat::Svg => {
             crate::rewrite_svg_to_vec(bytes, file_info, limits, &collect_svg(edits, detected)?)
+        }
+        FileFormat::Pdf => {
+            crate::rewrite_pdf_to_vec(bytes, file_info, limits, &collect_pdf(edits, detected)?)
         }
         _ => Err(unsupported_format(detected)),
     }
@@ -410,6 +414,24 @@ pub(crate) fn collect_ogg(
         .collect()
 }
 
+pub(crate) fn collect_pdf(
+    edits: &[MetadataEdit],
+    format: FileFormat,
+) -> Result<Vec<crate::PdfEdit>> {
+    edits
+        .iter()
+        .map(|edit| match edit {
+            MetadataEdit::Set { key, value } => pdf_info_name(key)
+                .map(|name| crate::PdfEdit::SetInfo {
+                    name: name.to_owned(),
+                    value: value.clone(),
+                })
+                .ok_or_else(|| unsupported_edit(format, key)),
+            MetadataEdit::Delete { key } => Err(unsupported_edit(format, key)),
+        })
+        .collect()
+}
+
 pub(crate) fn collect_wav(
     edits: &[MetadataEdit],
     format: FileFormat,
@@ -483,6 +505,22 @@ fn png_text_keyword(key: &str) -> Option<&str> {
 
 fn webp_xmp_key(key: &str) -> bool {
     matches!(key, "WebP:XMP" | "WEBP:XMP")
+}
+
+fn pdf_info_name(key: &str) -> Option<&str> {
+    let name = key.strip_prefix("PDF:")?;
+    matches!(
+        name,
+        "Title"
+            | "Author"
+            | "Subject"
+            | "Keywords"
+            | "Creator"
+            | "Producer"
+            | "CreationDate"
+            | "ModifyDate"
+    )
+    .then_some(name)
 }
 
 fn isobmff_text_key(key: &str) -> bool {

@@ -107,6 +107,36 @@ fn public_generic_edit_api_rewrites_and_revalidates_jpeg() {
 }
 
 #[test]
+fn public_generic_edit_api_rewrites_and_revalidates_pdf_info() {
+    let bytes = b"%PDF-1.7\n5 0 obj\n<< /Title (Before) >>\nendobj\ntrailer\n<< /Info 5 0 R >>\nstartxref\n9\n%%EOF\n";
+    let output = metra::rewrite_metadata_to_vec(
+        bytes,
+        metra::FileInfo::new(
+            "memory.pdf".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::set("PDF:Title", "After!")],
+    )
+    .expect("generic PDF edit should validate its rewritten bytes");
+
+    let metadata = metra::read_from(
+        &mut std::io::Cursor::new(output),
+        metra::FileInfo::new(
+            "memory.pdf".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+    )
+    .expect("rewritten PDF should remain readable");
+    assert_eq!(
+        metadata.find("PDF:Title").unwrap().display_value(),
+        "After!"
+    );
+}
+
+#[test]
 fn public_generic_copy_api_reads_source_before_atomic_target_rewrite() {
     let source_bytes = [
         0xFF, 0xD8, 0xFF, 0xFE, 0x00, 0x0D, b'f', b'r', b'o', b'm', b' ', b's', b'o', b'u', b'r',

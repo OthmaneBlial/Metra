@@ -18,16 +18,17 @@ pub use metra_core::{
 };
 pub use metra_formats::{
     DetectedFormat, FlacEdit, FormatHandler, GifEdit, IsobmffEdit, JpegEdit, MetadataEdit, Mp3Edit,
-    OggEdit, PngEdit, ReadSeek, SvgEdit, TiffEdit, WavEdit, WebpEdit, WriteSeek,
+    OggEdit, PdfEdit, PngEdit, ReadSeek, SvgEdit, TiffEdit, WavEdit, WebpEdit, WriteSeek,
     copy_metadata_path, detect_format, format_handlers, handler_for_format, read_icc, read_ogg,
     read_path_with_limits, read_reader, read_reader_with_limits, read_xmp, rewrite_flac,
     rewrite_flac_path, rewrite_flac_to_vec, rewrite_gif, rewrite_gif_path, rewrite_gif_to_vec,
     rewrite_isobmff, rewrite_isobmff_path, rewrite_isobmff_to_vec, rewrite_jpeg, rewrite_jpeg_path,
     rewrite_jpeg_to_vec, rewrite_metadata_path, rewrite_metadata_to_vec, rewrite_mp3,
     rewrite_mp3_path, rewrite_mp3_to_vec, rewrite_ogg, rewrite_ogg_path, rewrite_ogg_to_vec,
-    rewrite_png, rewrite_png_path, rewrite_png_to_vec, rewrite_svg, rewrite_svg_path,
-    rewrite_svg_to_vec, rewrite_tiff, rewrite_tiff_path, rewrite_tiff_to_vec, rewrite_wav,
-    rewrite_wav_path, rewrite_wav_to_vec, rewrite_webp, rewrite_webp_path, rewrite_webp_to_vec,
+    rewrite_pdf, rewrite_pdf_path, rewrite_pdf_to_vec, rewrite_png, rewrite_png_path,
+    rewrite_png_to_vec, rewrite_svg, rewrite_svg_path, rewrite_svg_to_vec, rewrite_tiff,
+    rewrite_tiff_path, rewrite_tiff_to_vec, rewrite_wav, rewrite_wav_path, rewrite_wav_to_vec,
+    rewrite_webp, rewrite_webp_path, rewrite_webp_to_vec,
 };
 
 /// Read metadata from a path using the default defensive parser limits.

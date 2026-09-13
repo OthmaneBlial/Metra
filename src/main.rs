@@ -262,6 +262,7 @@ enum EditRequest {
     DirectWav(Vec<metra::WavEdit>),
     DirectFlac(Vec<metra::FlacEdit>),
     DirectOgg(Vec<metra::OggEdit>),
+    DirectPdf(Vec<metra::PdfEdit>),
     DirectMp3(Vec<metra::Mp3Edit>),
     DirectGif(Vec<metra::GifEdit>),
     DirectWebp(Vec<metra::WebpEdit>),
@@ -282,6 +283,7 @@ enum CopyKey {
     WavInfo(String),
     FlacComment(String),
     OggComment(String),
+    PdfInfo(String),
     Mp3Text(String),
     Mp3Comment,
     GifComment,
@@ -318,6 +320,14 @@ fn parse_edits(
                 return Ok(Some(EditRequest::DirectTiff(vec![
                     metra::TiffEdit::SetAscii {
                         key: tiff_key.to_owned(),
+                        value: value.to_owned(),
+                    },
+                ])));
+            }
+            if let Some(name) = pdf_info_name(key) {
+                return Ok(Some(EditRequest::DirectPdf(vec![
+                    metra::PdfEdit::SetInfo {
+                        name: name.to_owned(),
                         value: value.to_owned(),
                     },
                 ])));
@@ -503,6 +513,8 @@ fn parse_edits(
             CopyKey::JpegExifAscii(exif_key.to_owned())
         } else if let Some(tiff_key) = tiff_ascii_key(key) {
             CopyKey::TiffAscii(tiff_key.to_owned())
+        } else if let Some(name) = pdf_info_name(key) {
+            CopyKey::PdfInfo(name.to_owned())
         } else if isobmff_text_key(key) {
             CopyKey::IsobmffText(key.to_owned())
         } else if jpeg_xmp_key(key) {
@@ -551,6 +563,22 @@ fn tiff_ascii_key(key: &str) -> Option<&str> {
         .iter()
         .any(|prefix| key.starts_with(prefix))
         .then_some(key)
+}
+
+fn pdf_info_name(key: &str) -> Option<&str> {
+    let name = key.strip_prefix("PDF:")?;
+    matches!(
+        name,
+        "Title"
+            | "Author"
+            | "Subject"
+            | "Keywords"
+            | "Creator"
+            | "Producer"
+            | "CreationDate"
+            | "ModifyDate"
+    )
+    .then_some(name)
 }
 
 fn jpeg_exif_ascii_key(key: &str) -> Option<&str> {
@@ -650,7 +678,7 @@ fn svg_text_key(key: &str) -> Option<SvgTextKey> {
 
 fn unsupported_edit_message(key: &str) -> String {
     format!(
-        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:EXIF:<ASCII tag>, JPEG:XMP, IPTC:<dataset>, TIFF:EXIF:<ASCII tag>, ISOBMFF:<text field>, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, Ogg:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
+        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:EXIF:<ASCII tag>, JPEG:XMP, IPTC:<dataset>, TIFF:EXIF:<ASCII tag>, PDF:<Info field>, ISOBMFF:<text field>, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, Ogg:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
     )
 }
 
@@ -770,6 +798,7 @@ fn apply_request(paths: &[PathBuf], request: EditRequest, limits: ParseLimits) -
         EditRequest::DirectWav(edits) => apply_wav_edits(paths, &edits, limits),
         EditRequest::DirectFlac(edits) => apply_flac_edits(paths, &edits, limits),
         EditRequest::DirectOgg(edits) => apply_ogg_edits(paths, &edits, limits),
+        EditRequest::DirectPdf(edits) => apply_pdf_edits(paths, &edits, limits),
         EditRequest::DirectMp3(edits) => apply_mp3_edits(paths, &edits, limits),
         EditRequest::DirectGif(edits) => apply_gif_edits(paths, &edits, limits),
         EditRequest::DirectWebp(edits) => apply_webp_edits(paths, &edits, limits),
@@ -947,6 +976,39 @@ fn apply_svg_edits(paths: &[PathBuf], edits: &[metra::SvgEdit], limits: ParseLim
     }
 }
 
+fn apply_pdf_edits(paths: &[PathBuf], edits: &[metra::PdfEdit], limits: ParseLimits) -> ExitCode {
+    let mut failures = 0_usize;
+    for path in paths {
+        match metra::read_with_limits(path, limits) {
+            Ok(metadata) if metadata.file_info.format == metra::FileFormat::Pdf => {
+                if let Err(error) = metra::rewrite_pdf_path(path, limits, edits) {
+                    eprintln!("metra: {}: {error}", path.display());
+                    failures += 1;
+                } else {
+                    println!("updated: {}", path.display());
+                }
+            }
+            Ok(metadata) => {
+                eprintln!(
+                    "metra: {}: {} edits are supported only for PDF files",
+                    path.display(),
+                    metadata.file_info.format
+                );
+                failures += 1;
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", path.display());
+                failures += 1;
+            }
+        }
+    }
+    if failures == 0 {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
 fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path, limits: ParseLimits) -> ExitCode {
     let source_metadata = match metra::read_with_limits(source, limits) {
         Ok(metadata) => metadata,
@@ -1081,6 +1143,30 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path, limits: ParseLimit
                 value: value.clone(),
             }];
             apply_tiff_edits(paths, &edits, limits)
+        }
+        CopyKey::PdfInfo(name) => {
+            if source_metadata.file_info.format != metra::FileFormat::Pdf {
+                eprintln!(
+                    "metra: {}: source format {} is not PDF",
+                    source.display(),
+                    source_metadata.file_info.format
+                );
+                return ExitCode::from(1);
+            }
+            let key = format!("PDF:{name}");
+            let Some(tag) = source_metadata.find(&key) else {
+                eprintln!("metra: {}: source does not contain {key}", source.display());
+                return ExitCode::from(1);
+            };
+            let metra::TagValue::String(value) = &tag.value else {
+                eprintln!("metra: {}: {key} is not a string", source.display());
+                return ExitCode::from(1);
+            };
+            let edits = [metra::PdfEdit::SetInfo {
+                name,
+                value: value.clone(),
+            }];
+            apply_pdf_edits(paths, &edits, limits)
         }
         CopyKey::IsobmffText(key) => {
             if !is_isobmff_format(source_metadata.file_info.format) {
