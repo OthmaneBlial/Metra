@@ -42,6 +42,8 @@ Initial read-first foundation with narrow validated rewrites:
 - added TOML and YAML output while preserving the versioned metadata schema;
 - added streaming human-readable, JSON Lines, and CSV batch output with
   deterministic ordering and bounded out-of-order buffering;
+- added opt-in local corpus and oracle-differential harnesses without counting
+  an unexecuted corpus as compatibility evidence;
 - added human-readable, JSON, and JSON Lines CLI output;
 - added malformed-input, resource-limit, and end-to-end CLI tests;
 - documented the verified surface and remaining compatibility boundaries.

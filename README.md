@@ -157,6 +157,10 @@ boxes, and CLI JSON/human output. Real-world corpus and differential
 compatibility tests are separate follow-up gates; passing these local tests does
 not claim complete ExifTool compatibility.
 
+The opt-in corpus checks live in [`tests/corpus.rs`](tests/corpus.rs) and require
+an explicit local corpus; because no real corpus or oracle run is bundled here,
+the corpus axis below remains at its conservative 30 %.
+
 For batch output, human-readable, JSON Lines, and CSV modes render as results
 arrive while preserving deterministic input-path order. JSON, TOML, and YAML
 need a complete document or collection, so they intentionally retain their
@@ -173,7 +177,7 @@ huit axes ci-dessous, calculée uniquement sur le code et les tests présents ; 
 ne représente pas un pourcentage de compatibilité ExifTool.
 
 1. **80 %** — Étendre le modèle de lecture et les définitions de tags sans perdre les données brutes.
-2. **30 %** — Ajouter des corpus réels et des tests différentiels JPEG/TIFF/PNG/WebP.
+2. **30 %** — Ajouter des corpus réels et des tests différentiels JPEG/TIFF/PNG/WebP ; le harnais opt-in est présent, mais aucune exécution de corpus réel n’est comptée.
 3. **90 %** — Approfondir HEIF/AVIF et les conteneurs média, puis couvrir les lecteurs restants.
 4. **70 %** — Étendre XMP/IPTC/ICC/ID3 et isoler les espaces MakerNote ; les champs texte/commentaires ID3v2 courants sont maintenant réécrits sous limites explicites.
 5. **55 %** — Concevoir l’écriture read-modify-write avec validation et remplacement atomique ; cinq writers bornés couvrent maintenant JPEG, PNG, WAV, FLAC et ID3v2.
