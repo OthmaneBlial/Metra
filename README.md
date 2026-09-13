@@ -47,7 +47,7 @@ Implemented today:
 | Batch | Deterministic path ordering with bounded parallel inspection through `--jobs N`; human, JSON Lines, and CSV modes stream results with a bounded out-of-order buffer |
 | Safety | Checked offsets, bounded reads, recursion and entry limits, deterministic recursive traversal, safe XML entity handling, structured warnings, and platform-aware atomic replacement after output validation |
 
-Generic creation, full PSD/PSB/RAW writing, MakerNote tag
+Generic creation and full PSD/PSB/RAW writing, MakerNote tag
 interpretation beyond the bounded Nikon Type 1/2, Canon, Fujifilm, Panasonic, Olympus, legacy Sony, Apple, Pentax, Samsung, and DJI fields, and full media and
 ExifTool compatibility are intentionally not advertised as implemented yet.
 The library now supports validated, lossless
