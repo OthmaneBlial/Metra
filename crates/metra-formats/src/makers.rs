@@ -16,15 +16,16 @@ pub(crate) fn inspect_maker_note(
     metadata: &mut Metadata,
     limits: ParseLimits,
 ) {
-    inspect_maker_note_with_make(bytes, data_offset, metadata, limits, None);
+    inspect_maker_note_with_context(bytes, data_offset, metadata, limits, None, None);
 }
 
-pub(crate) fn inspect_maker_note_with_make(
+pub(crate) fn inspect_maker_note_with_context(
     bytes: &[u8],
     data_offset: u64,
     metadata: &mut Metadata,
     limits: ParseLimits,
     make: Option<&str>,
+    tiff_base: Option<u64>,
 ) {
     let Some(identity) = identify(bytes, make) else {
         return;
@@ -59,6 +60,8 @@ pub(crate) fn inspect_maker_note_with_make(
         parse_olympus_makernote(bytes, data_offset, metadata, limits);
     } else if identity.format == "Apple MakerNote" {
         parse_apple_makernote(bytes, data_offset, metadata, limits);
+    } else if identity.format == "Pentax MakerNote" {
+        parse_pentax_makernote(bytes, data_offset, metadata, limits, tiff_base);
     } else if identity.format == "Samsung STMN MakerNote" {
         parse_samsung_stmn(bytes, data_offset, metadata, limits);
     } else if identity.format == "DJI MakerNote" {
@@ -138,6 +141,7 @@ fn parse_nikon_type1(bytes: &[u8], data_offset: u64, metadata: &mut Metadata, li
             unknown_description: "Unknown Nikon Type 1 MakerNote tag",
             definition: nikon_type1_tag_definition,
             endian: Endian::Little,
+            value_offset_base: None,
         },
     );
 }
@@ -865,6 +869,7 @@ struct VendorIfdConfig {
     unknown_description: &'static str,
     definition: fn(u16) -> Option<(&'static str, &'static str)>,
     endian: Endian,
+    value_offset_base: Option<u64>,
 }
 
 fn parse_panasonic_makernote(
@@ -897,6 +902,7 @@ fn parse_panasonic_makernote(
             unknown_description: "Unknown Panasonic MakerNote tag",
             definition: panasonic_tag_definition,
             endian: Endian::Little,
+            value_offset_base: None,
         },
     );
 }
@@ -933,6 +939,7 @@ fn parse_olympus_makernote(
             unknown_description: "Unknown Olympus MakerNote tag",
             definition: olympus_tag_definition,
             endian: Endian::Little,
+            value_offset_base: None,
         },
     );
 }
@@ -977,6 +984,43 @@ fn parse_apple_makernote(
             unknown_description: "Unknown Apple MakerNote tag",
             definition: apple_tag_definition,
             endian: Endian::Big,
+            value_offset_base: None,
+        },
+    );
+}
+
+fn parse_pentax_makernote(
+    bytes: &[u8],
+    data_offset: u64,
+    metadata: &mut Metadata,
+    limits: ParseLimits,
+    tiff_base: Option<u64>,
+) {
+    if bytes.len() < 8 {
+        metadata.add_warning(
+            Warning::new(
+                "truncated-pentax-makernote",
+                "Pentax MakerNote does not contain a complete Big Endian IFD header",
+            )
+            .at(data_offset),
+        );
+        return;
+    }
+    parse_vendor_ifd(
+        bytes,
+        6,
+        data_offset,
+        metadata,
+        limits,
+        VendorIfdConfig {
+            group: "Pentax",
+            name_prefix: "Pentax:",
+            source: "EXIF/MakerNote/Pentax",
+            warning_prefix: "pentax-makernote",
+            unknown_description: "Unknown Pentax MakerNote tag",
+            definition: pentax_tag_definition,
+            endian: Endian::Big,
+            value_offset_base: tiff_base,
         },
     );
 }
@@ -1118,6 +1162,7 @@ fn parse_dji_makernote(
             unknown_description: "Unknown DJI MakerNote tag",
             definition: dji_tag_definition,
             endian,
+            value_offset_base: None,
         },
     );
 }
@@ -1292,15 +1337,36 @@ fn parse_vendor_little_entry(
         );
         return;
     }
-    let value_offset = if total_size <= 4 {
-        entry_offset.saturating_add(8)
+    let (value_offset, value_source_offset) = if total_size <= 4 {
+        let value_offset = entry_offset.saturating_add(8);
+        (
+            value_offset,
+            data_offset.saturating_add(value_offset as u64),
+        )
     } else {
-        let Some(value_offset) =
-            read_u32(entry, 8, endian).and_then(|value| usize::try_from(value).ok())
-        else {
+        let Some(raw_offset) = read_u32(entry, 8, endian).map(u64::from) else {
             return;
         };
-        value_offset
+        if let Some(base) = config.value_offset_base {
+            let Some(value_source_offset) = base.checked_add(raw_offset) else {
+                return;
+            };
+            let Some(relative_offset) = value_source_offset.checked_sub(data_offset) else {
+                return;
+            };
+            let Some(value_offset) = usize::try_from(relative_offset).ok() else {
+                return;
+            };
+            (value_offset, value_source_offset)
+        } else {
+            let Some(value_offset) = usize::try_from(raw_offset).ok() else {
+                return;
+            };
+            (
+                value_offset,
+                data_offset.saturating_add(value_offset as u64),
+            )
+        }
     };
     let Some(value_end) = value_offset.checked_add(total_size) else {
         return;
@@ -1314,7 +1380,7 @@ fn parse_vendor_little_entry(
                     config.group
                 ),
             )
-            .at(data_offset.saturating_add(value_offset as u64)),
+            .at(value_source_offset),
         );
         return;
     };
@@ -1350,7 +1416,7 @@ fn parse_vendor_little_entry(
         value,
         source: Source::new(
             config.source,
-            Some(data_offset.saturating_add(value_offset as u64)),
+            Some(value_source_offset),
             Some(total_size as u64),
         ),
         writable: false,
@@ -1493,6 +1559,94 @@ fn dji_tag_definition(id: u16) -> Option<(&'static str, &'static str)> {
         0x0009 => ("DJI:CameraPitch", "DJI camera pitch"),
         0x000A => ("DJI:CameraYaw", "DJI camera yaw"),
         0x000B => ("DJI:CameraRoll", "DJI camera roll"),
+        _ => return None,
+    })
+}
+
+fn pentax_tag_definition(id: u16) -> Option<(&'static str, &'static str)> {
+    Some(match id {
+        0x0000 => ("Pentax:PentaxVersion", "Pentax MakerNote version"),
+        0x0001 => ("Pentax:PentaxModelType", "Pentax model type"),
+        0x0002 => ("Pentax:PreviewImageSize", "Pentax preview-image dimensions"),
+        0x0003 => (
+            "Pentax:PreviewImageLength",
+            "Pentax preview-image byte length",
+        ),
+        0x0004 => (
+            "Pentax:PreviewImageStart",
+            "Pentax preview-image start offset",
+        ),
+        0x0005 => ("Pentax:PentaxModelID", "Pentax model identifier"),
+        0x0006 => ("Pentax:Date", "Pentax capture date bytes"),
+        0x0007 => ("Pentax:Time", "Pentax capture time bytes"),
+        0x0008 => ("Pentax:Quality", "Pentax image quality"),
+        0x000C => ("Pentax:FlashMode", "Pentax flash mode"),
+        0x000D => ("Pentax:FocusMode", "Pentax focus mode"),
+        0x000E => ("Pentax:AFPointSelected", "Pentax selected autofocus point"),
+        0x0012 => ("Pentax:ExposureTime", "Pentax exposure time"),
+        0x0013 => ("Pentax:FNumber", "Pentax f-number"),
+        0x0014 => ("Pentax:ISO", "Pentax ISO setting"),
+        0x0016 => (
+            "Pentax:ExposureCompensation",
+            "Pentax exposure compensation",
+        ),
+        0x0017 => ("Pentax:MeteringMode", "Pentax metering mode"),
+        0x0018 => ("Pentax:AutoBracketing", "Pentax auto-bracketing settings"),
+        0x0019 => ("Pentax:WhiteBalance", "Pentax white balance"),
+        0x001A => ("Pentax:WhiteBalanceMode", "Pentax white-balance mode"),
+        0x001D => ("Pentax:FocalLength", "Pentax focal length"),
+        0x001F => ("Pentax:Saturation", "Pentax saturation"),
+        0x0020 => ("Pentax:Contrast", "Pentax contrast"),
+        0x0021 => ("Pentax:Sharpness", "Pentax sharpness"),
+        0x0022 => ("Pentax:WorldTimeLocation", "Pentax world-time location"),
+        0x0023 => ("Pentax:HometownCity", "Pentax hometown city"),
+        0x0024 => ("Pentax:DestinationCity", "Pentax destination city"),
+        0x0025 => ("Pentax:HometownDST", "Pentax hometown daylight-saving flag"),
+        0x0026 => (
+            "Pentax:DestinationDST",
+            "Pentax destination daylight-saving flag",
+        ),
+        0x0027 => (
+            "Pentax:DSPFirmwareVersion",
+            "Pentax DSP firmware version bytes",
+        ),
+        0x0028 => (
+            "Pentax:CPUFirmwareVersion",
+            "Pentax CPU firmware version bytes",
+        ),
+        0x002D => ("Pentax:EffectiveLV", "Pentax effective light value"),
+        0x0032 => ("Pentax:ImageEditing", "Pentax image-editing flags"),
+        0x0033 => ("Pentax:PictureMode", "Pentax picture mode"),
+        0x0034 => ("Pentax:DriveMode", "Pentax drive mode"),
+        0x0037 => ("Pentax:ColorSpace", "Pentax color space"),
+        0x003D => ("Pentax:DataScaling", "Pentax data scaling"),
+        0x003E => ("Pentax:PreviewImageBorders", "Pentax preview-image borders"),
+        0x003F => ("Pentax:LensType", "Pentax lens type"),
+        0x0040 => ("Pentax:SensitivityAdjust", "Pentax sensitivity adjustment"),
+        0x0041 => ("Pentax:ImageEditCount", "Pentax image-edit count"),
+        0x0042 => ("Pentax:CameraTemperature", "Pentax camera temperature"),
+        0x0043 => ("Pentax:AELock", "Pentax auto-exposure lock"),
+        0x0044 => ("Pentax:NoiseReduction", "Pentax noise reduction"),
+        0x0045 => (
+            "Pentax:FlashExposureComp",
+            "Pentax flash exposure compensation",
+        ),
+        0x0046 => ("Pentax:ImageTone", "Pentax image tone"),
+        0x0047 => ("Pentax:SRResult", "Pentax shake-reduction result"),
+        0x0048 => ("Pentax:ShakeReduction", "Pentax shake-reduction mode"),
+        0x0049 => (
+            "Pentax:SRHalfPressTime",
+            "Pentax shake-reduction half-press time",
+        ),
+        0x004A => (
+            "Pentax:SRFocalLength",
+            "Pentax shake-reduction focal length",
+        ),
+        0x004B => ("Pentax:ShutterCount", "Pentax shutter count"),
+        0x004C => (
+            "Pentax:RawDevelopmentProcess",
+            "Pentax raw-development process",
+        ),
         _ => return None,
     })
 }
@@ -1803,6 +1957,12 @@ fn identify(bytes: &[u8], make: Option<&str>) -> Option<MakerNoteIdentity> {
             format: "Apple MakerNote",
         });
     }
+    if bytes.starts_with(b"AOC\0MM") {
+        return Some(MakerNoteIdentity {
+            vendor: "Pentax",
+            format: "Pentax MakerNote",
+        });
+    }
     if bytes.starts_with(b"Nikon\0") {
         let format = match bytes.get(6) {
             Some(2) => "Nikon Type 2",
@@ -1950,6 +2110,73 @@ mod tests {
         assert_eq!(
             metadata.find("MakerNotes:Vendor").unwrap().source.offset,
             Some(100)
+        );
+    }
+
+    #[test]
+    fn reads_bounded_pentax_big_endian_ifd_values() {
+        let mut maker_note = b"AOC\0MM".to_vec();
+        maker_note.extend_from_slice(&3_u16.to_be_bytes());
+        maker_note.extend_from_slice(&[
+            0x00, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00, 0x04, b'3', 0, 0, 0,
+        ]);
+        maker_note.extend_from_slice(&[
+            0x00, 0x08, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0, 0,
+        ]);
+        maker_note.extend_from_slice(&[
+            0x00, 0x27, 0x00, 0x07, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x68,
+        ]);
+        maker_note.extend_from_slice(&[0, 0, 0, 0]);
+        maker_note.resize(52, 0);
+        maker_note.extend_from_slice(&[1, 2, 3, 4, 5, 6, 7, 8]);
+
+        let mut metadata = Metadata::new(FileInfo::new(
+            "pentax.jpg".into(),
+            maker_note.len() as u64,
+            FileFormat::Jpeg,
+        ));
+        inspect_maker_note_with_context(
+            &maker_note,
+            5_000,
+            &mut metadata,
+            ParseLimits::default(),
+            Some("PENTAX"),
+            Some(4_948),
+        );
+
+        assert_eq!(
+            metadata
+                .find("MakerNotes:Pentax:PentaxVersion")
+                .unwrap()
+                .value,
+            TagValue::Bytes(vec![b'3', 0, 0, 0])
+        );
+        assert_eq!(
+            metadata.find("MakerNotes:Pentax:Quality").unwrap().value,
+            TagValue::Unsigned(1)
+        );
+        assert_eq!(
+            metadata
+                .find("MakerNotes:Pentax:Quality")
+                .unwrap()
+                .source
+                .offset,
+            Some(5_028)
+        );
+        assert_eq!(
+            metadata
+                .find("MakerNotes:Pentax:DSPFirmwareVersion")
+                .unwrap()
+                .value,
+            TagValue::Bytes(vec![1, 2, 3, 4, 5, 6, 7, 8])
+        );
+        assert_eq!(
+            metadata
+                .find("MakerNotes:Pentax:DSPFirmwareVersion")
+                .unwrap()
+                .source
+                .offset,
+            Some(5_052)
         );
     }
 
@@ -2110,12 +2337,13 @@ mod tests {
             maker_note.len() as u64,
             FileFormat::Jpeg,
         ));
-        inspect_maker_note_with_make(
+        inspect_maker_note_with_context(
             &maker_note,
             4_000,
             &mut metadata,
             ParseLimits::default(),
             Some("DJI"),
+            None,
         );
 
         assert_eq!(

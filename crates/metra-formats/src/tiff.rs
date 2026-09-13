@@ -5,7 +5,7 @@ use metra_core::{
     FileInfo, Metadata, MetraError, ParseLimits, Result, Source, Tag, TagValue, ValueType, Warning,
 };
 
-use crate::makers::{inspect_maker_note, inspect_maker_note_with_make};
+use crate::makers::{inspect_maker_note, inspect_maker_note_with_context};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Endian {
@@ -521,12 +521,13 @@ impl<R: Read + Seek> TiffParser<'_, R> {
                 _ => None,
             });
             if let Some(make) = make.as_deref() {
-                inspect_maker_note_with_make(
+                inspect_maker_note_with_context(
                     &bytes,
                     maker_note_offset,
                     metadata,
                     self.limits,
                     Some(make),
+                    Some(self.absolute_start),
                 );
             } else {
                 inspect_maker_note(&bytes, maker_note_offset, metadata, self.limits);
