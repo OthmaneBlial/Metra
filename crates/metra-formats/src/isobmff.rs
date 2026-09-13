@@ -1196,4 +1196,51 @@ mod tests {
             "image/heic"
         );
     }
+
+    #[test]
+    fn reads_version_one_movie_and_track_timing() {
+        let ftyp = box_with_kind(b"ftyp", b"isom\0\0\0\0");
+        let mut mvhd_data = vec![0_u8; 112];
+        mvhd_data[0] = 1;
+        mvhd_data[4..12].copy_from_slice(&11_u64.to_be_bytes());
+        mvhd_data[12..20].copy_from_slice(&22_u64.to_be_bytes());
+        mvhd_data[20..24].copy_from_slice(&1_000_u32.to_be_bytes());
+        mvhd_data[24..32].copy_from_slice(&7_000_u64.to_be_bytes());
+        let mvhd = box_with_kind(b"mvhd", &mvhd_data);
+        let mut tkhd_data = vec![0_u8; 104];
+        tkhd_data[0] = 1;
+        tkhd_data[20..24].copy_from_slice(&3_u32.to_be_bytes());
+        tkhd_data[28..36].copy_from_slice(&7_000_u64.to_be_bytes());
+        tkhd_data[92..96].copy_from_slice(&(1_280_u32 << 16).to_be_bytes());
+        tkhd_data[96..100].copy_from_slice(&(720_u32 << 16).to_be_bytes());
+        let tkhd = box_with_kind(b"tkhd", &tkhd_data);
+        let mut movie_data = mvhd;
+        movie_data.extend_from_slice(&tkhd);
+        let moov = box_with_kind(b"moov", &movie_data);
+        let bytes = [ftyp, moov].concat();
+        let info = FileInfo::new(
+            "version-one.mp4".into(),
+            bytes.len() as u64,
+            FileFormat::Mp4,
+        );
+        let metadata = read_isobmff(&mut Cursor::new(bytes), info, ParseLimits::default())
+            .expect("version-one ISO-BMFF fixture should parse");
+
+        assert_eq!(
+            metadata.find("ISOBMFF:MovieDuration").unwrap().value,
+            TagValue::Unsigned(7_000)
+        );
+        assert_eq!(
+            metadata.find("ISOBMFF:TrackId").unwrap().value,
+            TagValue::Unsigned(3)
+        );
+        assert_eq!(
+            metadata.find("ISOBMFF:TrackWidth").unwrap().value,
+            TagValue::Float(1_280.0)
+        );
+        assert_eq!(
+            metadata.find("ISOBMFF:TrackHeight").unwrap().value,
+            TagValue::Float(720.0)
+        );
+    }
 }
