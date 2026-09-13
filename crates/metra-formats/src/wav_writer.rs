@@ -408,7 +408,7 @@ fn write_chunk<W: Write>(writer: &mut W, kind: &[u8; 4], data: &[u8]) -> Result<
     Ok(())
 }
 
-fn info_kind(name: &str) -> Option<[u8; 4]> {
+pub(crate) fn info_kind(name: &str) -> Option<[u8; 4]> {
     Some(match name {
         "Title" => *b"INAM",
         "Artist" => *b"IART",

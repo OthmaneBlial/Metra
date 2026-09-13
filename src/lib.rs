@@ -19,8 +19,9 @@ pub use metra_core::{
 pub use metra_formats::{
     AviEdit, DetectedFormat, FlacEdit, FormatHandler, GifEdit, IsobmffEdit, JpegEdit, MatroskaEdit,
     MetadataEdit, Mp3Edit, OggEdit, PdfEdit, PngCreateEntry, PngCreateOptions, PngEdit, PsdEdit,
-    ReadSeek, SvgEdit, TiffCreateEntry, TiffCreateOptions, TiffEdit, WavEdit, WebpEdit, WriteSeek,
-    copy_metadata_path, create_png_path, create_png_to_vec, create_tiff_path, create_tiff_to_vec,
+    ReadSeek, SvgEdit, TiffCreateEntry, TiffCreateOptions, TiffEdit, WavCreateEntry,
+    WavCreateOptions, WavEdit, WebpEdit, WriteSeek, copy_metadata_path, create_png_path,
+    create_png_to_vec, create_tiff_path, create_tiff_to_vec, create_wav_path, create_wav_to_vec,
     create_xmp_path, create_xmp_to_vec, detect_format, format_handlers, handler_for_format,
     read_icc, read_ogg, read_path_with_limits, read_reader, read_reader_with_limits, read_xmp,
     rewrite_avi, rewrite_avi_path, rewrite_avi_to_vec, rewrite_flac, rewrite_flac_path,
