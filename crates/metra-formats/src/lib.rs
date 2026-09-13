@@ -28,6 +28,7 @@ mod tiff;
 mod wav;
 mod wav_writer;
 mod webp;
+mod webp_writer;
 mod xmp;
 
 pub use flac::read_flac;
@@ -46,6 +47,7 @@ pub use tiff::read_tiff;
 pub use wav::read_wav;
 pub use wav_writer::{WavEdit, rewrite_wav, rewrite_wav_path, rewrite_wav_to_vec};
 pub use webp::read_webp;
+pub use webp_writer::{WebpEdit, rewrite_webp, rewrite_webp_path, rewrite_webp_to_vec};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DetectedFormat {
