@@ -244,6 +244,44 @@ fn minimal_flac(title: &str) -> Vec<u8> {
     bytes
 }
 
+fn ogg_page(serial: u32, sequence: u32, header_type: u8, packet: &[u8]) -> Vec<u8> {
+    assert!(packet.len() < 255);
+    let mut page = b"OggS".to_vec();
+    page.extend_from_slice(&[0, header_type]);
+    page.extend_from_slice(&0_u64.to_le_bytes());
+    page.extend_from_slice(&serial.to_le_bytes());
+    page.extend_from_slice(&sequence.to_le_bytes());
+    page.extend_from_slice(&[0; 4]);
+    page.push(1);
+    page.push(packet.len() as u8);
+    page.extend_from_slice(packet);
+    page
+}
+
+fn minimal_ogg(title: &str) -> Vec<u8> {
+    let mut identification = vec![1];
+    identification.extend_from_slice(b"vorbis");
+    identification.extend_from_slice(&0_u32.to_le_bytes());
+    identification.push(2);
+    identification.extend_from_slice(&44_100_u32.to_le_bytes());
+    identification.extend_from_slice(&[0; 12]);
+    identification.extend_from_slice(&[0x98, 0x88, 1, 1]);
+
+    let vendor = b"Metra CLI";
+    let comment = format!("TITLE={title}");
+    let mut comments = vec![3];
+    comments.extend_from_slice(b"vorbis");
+    comments.extend_from_slice(&(vendor.len() as u32).to_le_bytes());
+    comments.extend_from_slice(vendor);
+    comments.extend_from_slice(&1_u32.to_le_bytes());
+    comments.extend_from_slice(&(comment.len() as u32).to_le_bytes());
+    comments.extend_from_slice(comment.as_bytes());
+
+    let mut bytes = ogg_page(15, 0, 0x02, &identification);
+    bytes.extend_from_slice(&ogg_page(15, 1, 0, &comments));
+    bytes
+}
+
 fn id3_synchsafe(value: usize) -> [u8; 4] {
     [
         ((value >> 21) & 0x7F) as u8,
@@ -1236,6 +1274,60 @@ fn cli_can_edit_and_copy_flac_comments() {
             .display_value(),
         "source title"
     );
+}
+
+#[test]
+fn cli_can_edit_and_copy_ogg_comments() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.file("source.ogg", &minimal_ogg("source"));
+    let target = directory.file("target.ogg", &minimal_ogg("target"));
+
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "Ogg:Title=edited",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("Ogg:Title")
+            .unwrap()
+            .display_value(),
+        "edited"
+    );
+
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            &format!("Ogg:Title={}", source.to_str().expect("UTF-8 test path")),
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("Ogg:Title")
+            .unwrap()
+            .display_value(),
+        "source"
+    );
+
+    let delete = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--delete",
+            "Ogg:Title",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(delete.status.success(), "stderr: {:?}", delete.stderr);
+    assert!(metra::read(&target).unwrap().find("Ogg:Title").is_none());
 }
 
 #[test]

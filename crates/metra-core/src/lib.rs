@@ -1091,10 +1091,10 @@ const FORMAT_CAPABILITIES: &[FormatCapabilities] = &[
     FormatCapabilities {
         format: FileFormat::Ogg,
         read: CapabilityStatus::Partial,
-        write: CapabilityStatus::Planned,
+        write: CapabilityStatus::Partial,
         create: CapabilityStatus::Planned,
-        delete: CapabilityStatus::Planned,
-        lossless_rewrite: CapabilityStatus::Planned,
+        delete: CapabilityStatus::Partial,
+        lossless_rewrite: CapabilityStatus::Partial,
         streaming: CapabilityStatus::Partial,
     },
     FormatCapabilities {
@@ -1693,6 +1693,11 @@ mod tests {
         assert_eq!(jpeg.read, CapabilityStatus::Partial);
         assert_eq!(jpeg.write, CapabilityStatus::Partial);
         assert_eq!(jpeg.create, CapabilityStatus::Planned);
+
+        let ogg = format_capabilities(FileFormat::Ogg);
+        assert_eq!(ogg.write, CapabilityStatus::Partial);
+        assert_eq!(ogg.delete, CapabilityStatus::Partial);
+        assert_eq!(ogg.lossless_rewrite, CapabilityStatus::Partial);
 
         let unknown = format_capabilities(FileFormat::Unknown);
         assert_eq!(unknown.read, CapabilityStatus::Unsupported);

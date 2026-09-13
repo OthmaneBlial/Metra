@@ -28,6 +28,7 @@ mod jpeg;
 mod makers;
 mod matroska;
 mod ogg;
+mod ogg_writer;
 mod pdf;
 mod png;
 mod png_writer;
@@ -59,6 +60,7 @@ pub use isobmff_writer::{
 pub use jpeg::{JpegEdit, read_jpeg, rewrite_jpeg, rewrite_jpeg_path, rewrite_jpeg_to_vec};
 pub use matroska::read_matroska;
 pub use ogg::read_ogg;
+pub use ogg_writer::{OggEdit, rewrite_ogg, rewrite_ogg_path, rewrite_ogg_to_vec};
 pub use pdf::read_pdf;
 pub use png::read_png;
 pub use png_writer::{PngEdit, rewrite_png, rewrite_png_path, rewrite_png_to_vec};

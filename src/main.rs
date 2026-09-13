@@ -261,6 +261,7 @@ enum EditRequest {
     DirectPng(Vec<metra::PngEdit>),
     DirectWav(Vec<metra::WavEdit>),
     DirectFlac(Vec<metra::FlacEdit>),
+    DirectOgg(Vec<metra::OggEdit>),
     DirectMp3(Vec<metra::Mp3Edit>),
     DirectGif(Vec<metra::GifEdit>),
     DirectWebp(Vec<metra::WebpEdit>),
@@ -279,6 +280,7 @@ enum CopyKey {
     PngXmp,
     WavInfo(String),
     FlacComment(String),
+    OggComment(String),
     Mp3Text(String),
     Mp3Comment,
     GifComment,
@@ -364,6 +366,14 @@ fn parse_edits(
                     },
                 ])));
             }
+            if let Some(name) = ogg_comment_name(key) {
+                return Ok(Some(EditRequest::DirectOgg(vec![
+                    metra::OggEdit::SetComment {
+                        key: name.to_owned(),
+                        value: value.to_owned(),
+                    },
+                ])));
+            }
             if key == "ID3:Comment" {
                 return Ok(Some(EditRequest::DirectMp3(vec![
                     metra::Mp3Edit::SetComment(value.to_owned()),
@@ -436,6 +446,13 @@ fn parse_edits(
                     },
                 ])));
             }
+            if let Some(name) = ogg_comment_name(key) {
+                return Ok(Some(EditRequest::DirectOgg(vec![
+                    metra::OggEdit::DeleteComment {
+                        key: name.to_owned(),
+                    },
+                ])));
+            }
             if key == "ID3:Comment" {
                 return Ok(Some(EditRequest::DirectMp3(vec![
                     metra::Mp3Edit::DeleteComments,
@@ -491,6 +508,8 @@ fn parse_edits(
             CopyKey::WavInfo(name.to_owned())
         } else if let Some(name) = flac_comment_name(key) {
             CopyKey::FlacComment(name.to_owned())
+        } else if let Some(name) = ogg_comment_name(key) {
+            CopyKey::OggComment(name.to_owned())
         } else if key == "ID3:Comment" {
             CopyKey::Mp3Comment
         } else if let Some(name) = mp3_text_name(key) {
@@ -615,7 +634,7 @@ fn svg_text_key(key: &str) -> Option<SvgTextKey> {
 
 fn unsupported_edit_message(key: &str) -> String {
     format!(
-        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:XMP, IPTC:<dataset>, TIFF:EXIF:<ASCII tag>, ISOBMFF:<text field>, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
+        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:XMP, IPTC:<dataset>, TIFF:EXIF:<ASCII tag>, ISOBMFF:<text field>, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, Ogg:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
     )
 }
 
@@ -677,6 +696,31 @@ fn flac_comment_name(key: &str) -> Option<&str> {
     .then_some(name)
 }
 
+fn ogg_comment_name(key: &str) -> Option<&str> {
+    let name = key.strip_prefix("Ogg:")?;
+    let name = name.strip_prefix("Comment:").unwrap_or(name);
+    matches!(
+        name,
+        "Title"
+            | "Artist"
+            | "Album"
+            | "AlbumArtist"
+            | "Date"
+            | "Genre"
+            | "TrackNumber"
+            | "DiscNumber"
+            | "Comment"
+            | "Composer"
+            | "Copyright"
+            | "Description"
+            | "Encoder"
+            | "License"
+            | "Organization"
+            | "ISRC"
+    )
+    .then_some(name)
+}
+
 fn webp_xmp_key(key: &str) -> bool {
     matches!(key, "WebP:XMP" | "WEBP:XMP")
 }
@@ -709,6 +753,7 @@ fn apply_request(paths: &[PathBuf], request: EditRequest, limits: ParseLimits) -
         EditRequest::DirectPng(edits) => apply_png_edits(paths, &edits, limits),
         EditRequest::DirectWav(edits) => apply_wav_edits(paths, &edits, limits),
         EditRequest::DirectFlac(edits) => apply_flac_edits(paths, &edits, limits),
+        EditRequest::DirectOgg(edits) => apply_ogg_edits(paths, &edits, limits),
         EditRequest::DirectMp3(edits) => apply_mp3_edits(paths, &edits, limits),
         EditRequest::DirectGif(edits) => apply_gif_edits(paths, &edits, limits),
         EditRequest::DirectWebp(edits) => apply_webp_edits(paths, &edits, limits),
@@ -1149,6 +1194,30 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path, limits: ParseLimit
             }];
             apply_flac_edits(paths, &edits, limits)
         }
+        CopyKey::OggComment(name) => {
+            if source_metadata.file_info.format != metra::FileFormat::Ogg {
+                eprintln!(
+                    "metra: {}: source format {} is not Ogg",
+                    source.display(),
+                    source_metadata.file_info.format
+                );
+                return ExitCode::from(1);
+            }
+            let key = format!("Ogg:{name}");
+            let Some(text) = source_metadata.find(&key) else {
+                eprintln!("metra: {}: source does not contain {key}", source.display());
+                return ExitCode::from(1);
+            };
+            let metra::TagValue::String(text) = &text.value else {
+                eprintln!("metra: {}: {key} is not a string", source.display());
+                return ExitCode::from(1);
+            };
+            let edits = [metra::OggEdit::SetComment {
+                key: name,
+                value: text.clone(),
+            }];
+            apply_ogg_edits(paths, &edits, limits)
+        }
         CopyKey::Mp3Comment => {
             if source_metadata.file_info.format != metra::FileFormat::Mp3 {
                 eprintln!(
@@ -1297,6 +1366,39 @@ fn apply_flac_edits(paths: &[PathBuf], edits: &[metra::FlacEdit], limits: ParseL
             Ok(metadata) => {
                 eprintln!(
                     "metra: {}: {} edits are supported only for FLAC files",
+                    path.display(),
+                    metadata.file_info.format
+                );
+                failures += 1;
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", path.display());
+                failures += 1;
+            }
+        }
+    }
+    if failures == 0 {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
+fn apply_ogg_edits(paths: &[PathBuf], edits: &[metra::OggEdit], limits: ParseLimits) -> ExitCode {
+    let mut failures = 0_usize;
+    for path in paths {
+        match metra::read_with_limits(path, limits) {
+            Ok(metadata) if metadata.file_info.format == metra::FileFormat::Ogg => {
+                if let Err(error) = metra::rewrite_ogg_path(path, limits, edits) {
+                    eprintln!("metra: {}: {error}", path.display());
+                    failures += 1;
+                } else {
+                    println!("updated: {}", path.display());
+                }
+            }
+            Ok(metadata) => {
+                eprintln!(
+                    "metra: {}: {} edits are supported only for Ogg files",
                     path.display(),
                     metadata.file_info.format
                 );
