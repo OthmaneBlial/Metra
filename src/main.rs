@@ -689,6 +689,12 @@ fn is_isobmff_format(format: metra::FileFormat) -> bool {
     )
 }
 
+fn is_cr3_metadata(metadata: &metra::Metadata) -> bool {
+    metadata.find("RAW:Variant").is_some_and(
+        |tag| matches!(&tag.value, metra::TagValue::String(variant) if variant == "CR3"),
+    )
+}
+
 fn png_xmp_key(key: &str) -> bool {
     matches!(key, "PNG:XMP" | "PNG:iTXt:XMP")
 }
@@ -971,8 +977,17 @@ fn apply_isobmff_edits(
     let mut failures = 0_usize;
     for path in paths {
         match metra::read_with_limits(path, limits) {
-            Ok(metadata) if is_isobmff_format(metadata.file_info.format) => {
-                if let Err(error) = metra::rewrite_isobmff_path(path, limits, edits) {
+            Ok(metadata)
+                if is_isobmff_format(metadata.file_info.format)
+                    || (metadata.file_info.format == metra::FileFormat::Raw
+                        && is_cr3_metadata(&metadata)) =>
+            {
+                let result = if metadata.file_info.format == metra::FileFormat::Raw {
+                    metra::rewrite_raw_cr3_path(path, limits, edits)
+                } else {
+                    metra::rewrite_isobmff_path(path, limits, edits)
+                };
+                if let Err(error) = result {
                     eprintln!("metra: {}: {error}", path.display());
                     failures += 1;
                 } else {
@@ -1471,9 +1486,12 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path, limits: ParseLimit
             apply_matroska_edits(paths, &edits, limits)
         }
         CopyKey::IsobmffText(key) => {
-            if !is_isobmff_format(source_metadata.file_info.format) {
+            if !(is_isobmff_format(source_metadata.file_info.format)
+                || (source_metadata.file_info.format == metra::FileFormat::Raw
+                    && is_cr3_metadata(&source_metadata)))
+            {
                 eprintln!(
-                    "metra: {}: source format {} is not ISO-BMFF",
+                    "metra: {}: source format {} is not ISO-BMFF or CR3",
                     source.display(),
                     source_metadata.file_info.format
                 );
