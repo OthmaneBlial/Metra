@@ -1,9 +1,8 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+  # Automatic push and pull-request runs are intentionally disabled.
+  workflow_dispatch:
 
 permissions:
   contents: read

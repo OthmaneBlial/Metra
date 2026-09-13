@@ -131,15 +131,23 @@ boxes, and CLI JSON/human output. Real-world corpus and differential
 compatibility tests are separate follow-up gates; passing these local tests does
 not claim complete ExifTool compatibility.
 
+GitHub Actions automatic push and pull-request triggers are currently disabled;
+the workflow remains available for a deliberate manual run. The commands above
+are the local validation gate.
+
 ## Roadmap
 
-1. Expand the read model and generated tag definitions without losing raw data.
-2. Add corpus and differential tests for JPEG/TIFF/PNG/WebP edge cases.
-3. Deepen HEIF/AVIF and media container readers, then add PDF readers.
-4. Expand XMP/IPTC/ICC/ID3 coverage and add isolated MakerNote namespaces.
-5. Design read-modify-write with validation, temporary files, and atomic replace.
-6. Add carefully scoped set/delete/copy commands only after round-trip tests.
-7. Add controlled parallel batch processing and benchmark real collections.
+Avancement global vérifié : **37 %**. Ce chiffre est une moyenne indicative des
+sept axes ci-dessous, calculée uniquement sur le code et les tests présents ; il
+ne représente pas un pourcentage de compatibilité ExifTool.
+
+1. **70 %** — Étendre le modèle de lecture et les définitions de tags sans perdre les données brutes.
+2. **30 %** — Ajouter des corpus réels et des tests différentiels JPEG/TIFF/PNG/WebP.
+3. **75 %** — Approfondir HEIF/AVIF et les conteneurs média, puis couvrir les lecteurs restants.
+4. **65 %** — Étendre XMP/IPTC/ICC/ID3 et isoler les espaces MakerNote.
+5. **0 %** — Concevoir l’écriture read-modify-write avec validation et remplacement atomique.
+6. **0 %** — Ajouter `set`/`delete`/`copy` après les tests round-trip.
+7. **20 %** — Ajouter le traitement parallèle contrôlé et les benchmarks sur collections réelles.
 
 ## License
 
