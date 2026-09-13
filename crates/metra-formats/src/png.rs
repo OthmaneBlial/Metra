@@ -138,6 +138,7 @@ fn process_chunk(
     limits: ParseLimits,
 ) -> Result<()> {
     match chunk_type {
+        b"IHDR" => parse_ihdr(data, data_offset, metadata),
         b"tEXt" => parse_text_chunk(data, data_offset, metadata, limits),
         b"zTXt" => parse_ztxt_chunk(data, data_offset, metadata, limits),
         b"iTXt" => parse_itxt_chunk(data, data_offset, metadata, limits),
@@ -172,6 +173,198 @@ fn process_chunk(
         _ => {}
     }
     Ok(())
+}
+
+fn parse_ihdr(data: &[u8], data_offset: u64, metadata: &mut Metadata) {
+    if data.len() != 13 {
+        metadata.add_warning(
+            Warning::new("invalid-ihdr", "PNG IHDR chunk must contain 13 bytes").at(data_offset),
+        );
+        return;
+    }
+    let width = u32::from_be_bytes(data[..4].try_into().expect("PNG IHDR width"));
+    let height = u32::from_be_bytes(data[4..8].try_into().expect("PNG IHDR height"));
+    if width == 0 || height == 0 {
+        metadata.add_warning(
+            Warning::new("invalid-ihdr", "PNG image dimensions must be non-zero").at(data_offset),
+        );
+    }
+    add_ihdr_unsigned(
+        metadata,
+        "ImageWidth",
+        u64::from(width),
+        &data[..4],
+        data_offset,
+        0,
+        "PNG image width in pixels",
+    );
+    add_ihdr_unsigned(
+        metadata,
+        "ImageHeight",
+        u64::from(height),
+        &data[4..8],
+        data_offset,
+        4,
+        "PNG image height in pixels",
+    );
+    add_ihdr_unsigned(
+        metadata,
+        "BitDepth",
+        u64::from(data[8]),
+        &data[8..9],
+        data_offset,
+        8,
+        "PNG sample bit depth",
+    );
+    let color_type = png_color_type(data[9], metadata, data_offset + 9);
+    let compression_method = if data[10] == 0 {
+        "Deflate".to_owned()
+    } else {
+        metadata.add_warning(
+            Warning::new(
+                "invalid-ihdr-compression",
+                format!("unsupported PNG compression method {}", data[10]),
+            )
+            .at(data_offset + 10),
+        );
+        format!("Unknown({})", data[10])
+    };
+    let filter_method = if data[11] == 0 {
+        "Adaptive".to_owned()
+    } else {
+        metadata.add_warning(
+            Warning::new(
+                "invalid-ihdr-filter",
+                format!("unsupported PNG filter method {}", data[11]),
+            )
+            .at(data_offset + 11),
+        );
+        format!("Unknown({})", data[11])
+    };
+    let interlace_method = match data[12] {
+        0 => "None".to_owned(),
+        1 => "Adam7".to_owned(),
+        other => {
+            metadata.add_warning(
+                Warning::new(
+                    "invalid-ihdr-interlace",
+                    format!("unsupported PNG interlace method {other}"),
+                )
+                .at(data_offset + 12),
+            );
+            format!("Unknown({other})")
+        }
+    };
+    add_ihdr_string(
+        metadata,
+        "ColorType",
+        color_type,
+        &data[9..10],
+        data_offset,
+        9,
+        "PNG color type",
+    );
+    add_ihdr_string(
+        metadata,
+        "CompressionMethod",
+        compression_method,
+        &data[10..11],
+        data_offset,
+        10,
+        "PNG compression method",
+    );
+    add_ihdr_string(
+        metadata,
+        "FilterMethod",
+        filter_method,
+        &data[11..12],
+        data_offset,
+        11,
+        "PNG filter method",
+    );
+    add_ihdr_string(
+        metadata,
+        "InterlaceMethod",
+        interlace_method,
+        &data[12..13],
+        data_offset,
+        12,
+        "PNG interlace method",
+    );
+}
+
+fn png_color_type(value: u8, metadata: &mut Metadata, offset: u64) -> String {
+    match value {
+        0 => "Grayscale".to_owned(),
+        2 => "TrueColor".to_owned(),
+        3 => "Indexed".to_owned(),
+        4 => "GrayscaleAlpha".to_owned(),
+        6 => "TrueColorAlpha".to_owned(),
+        other => {
+            metadata.add_warning(
+                Warning::new(
+                    "invalid-ihdr-color-type",
+                    format!("unsupported PNG color type {other}"),
+                )
+                .at(offset),
+            );
+            format!("Unknown({other})")
+        }
+    }
+}
+
+fn add_ihdr_unsigned(
+    metadata: &mut Metadata,
+    name: &str,
+    value: u64,
+    raw_value: &[u8],
+    data_offset: u64,
+    relative_offset: u64,
+    description: &str,
+) {
+    metadata.add_tag(Tag {
+        namespace: "PNG".to_owned(),
+        group: "IHDR".to_owned(),
+        id: None,
+        name: name.to_owned(),
+        description: Some(description.to_owned()),
+        raw_value: Some(raw_value.to_vec()),
+        value: TagValue::Unsigned(value),
+        value_type: ValueType::UnsignedInteger,
+        source: Source::new(
+            "PNG/IHDR",
+            Some(data_offset + relative_offset),
+            Some(raw_value.len() as u64),
+        ),
+        writable: false,
+    });
+}
+
+fn add_ihdr_string(
+    metadata: &mut Metadata,
+    name: &str,
+    value: String,
+    raw_value: &[u8],
+    data_offset: u64,
+    relative_offset: u64,
+    description: &str,
+) {
+    metadata.add_tag(Tag {
+        namespace: "PNG".to_owned(),
+        group: "IHDR".to_owned(),
+        id: None,
+        name: name.to_owned(),
+        description: Some(description.to_owned()),
+        raw_value: Some(raw_value.to_vec()),
+        value: TagValue::String(value),
+        value_type: ValueType::String,
+        source: Source::new(
+            "PNG/IHDR",
+            Some(data_offset + relative_offset),
+            Some(raw_value.len() as u64),
+        ),
+        writable: false,
+    });
 }
 
 fn parse_iccp_chunk(data: &[u8], data_offset: u64, metadata: &mut Metadata, limits: ParseLimits) {
@@ -613,6 +806,42 @@ mod tests {
         assert_eq!(
             metadata.find("PNG:PixelsPerUnitX").unwrap().display_value(),
             "96"
+        );
+    }
+
+    #[test]
+    fn reads_ihdr_dimensions_and_encoding() {
+        let mut bytes = PNG_SIGNATURE.to_vec();
+        bytes.extend_from_slice(&chunk(b"IHDR", &[0, 0, 2, 0, 0, 0, 1, 0, 8, 6, 0, 0, 1]));
+        bytes.extend_from_slice(&chunk(b"IEND", &[]));
+        let info = FileInfo::new("ihdr.png".into(), bytes.len() as u64, FileFormat::Png);
+        let metadata = read_png(&mut Cursor::new(bytes), info, ParseLimits::default()).unwrap();
+
+        assert_eq!(
+            metadata.find("PNG:ImageWidth").unwrap().display_value(),
+            "512"
+        );
+        assert_eq!(
+            metadata.find("PNG:ImageHeight").unwrap().display_value(),
+            "256"
+        );
+        assert_eq!(metadata.find("PNG:BitDepth").unwrap().display_value(), "8");
+        assert_eq!(
+            metadata.find("PNG:ColorType").unwrap().display_value(),
+            "TrueColorAlpha"
+        );
+        assert_eq!(
+            metadata
+                .find("PNG:InterlaceMethod")
+                .unwrap()
+                .display_value(),
+            "Adam7"
+        );
+        assert!(
+            !metadata
+                .warnings
+                .iter()
+                .any(|warning| warning.code.starts_with("invalid-ihdr"))
         );
     }
 
