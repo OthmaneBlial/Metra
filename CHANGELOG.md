@@ -62,6 +62,8 @@ Initial read-first foundation with narrow validated rewrites:
   checks before profile inspection;
 - added typed WebP `ICCP` profile inspection under the configured value budget;
 - added bounded ICC text and XYZ table-tag inspection with stable 4CC IDs;
+- added isolated detection of common Nikon, Canon, Fujifilm, Sony, Panasonic,
+  and Olympus MakerNote containers without claiming proprietary tag decoding;
 - preserved numeric IPTC-IIM dataset identifiers in parsed tags and stable lookup;
 - decoded EXIF `UserComment` ASCII and Unicode payloads while preserving raw bytes;
 - expanded canonical EXIF names for common image, exposure, color, and lens tags;

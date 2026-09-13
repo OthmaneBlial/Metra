@@ -47,6 +47,8 @@ and ICC payloads delegate bounded profile-header, typed illuminant, and tag-tabl
 ICC APP2 fragments are collected and reassembled by sequence number before that inspection, while
 common ICC text and XYZ table tags retain their 4CC identifiers. PNG and WebP carry their bounded
 profile payloads directly. TIFF
+MakerNote payloads are handed to an isolated detector that records recognized
+vendor/container headers; proprietary MakerNote tag decoding remains separate.
 also derives GPS decimal coordinates, signed altitude, image direction, speed
 in meters per second, and seconds since midnight only after validating their
 rational values, units, and ranges.
