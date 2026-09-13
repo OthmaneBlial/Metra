@@ -171,7 +171,8 @@ Consumers should use `namespace` plus canonical `name` (for example
 `EXIF:DateTimeOriginal`) or `find_by_id` when a format-level numeric identifier
 is available, rather than relying on human display text. Use `find_all` or
 `find_all_by_id` when a file can contain repeated blocks or datasets. The shared tag catalog
-is intentionally partial and will grow through generated definitions. IPTC-IIM
+is intentionally partial and can be expanded by editing the versioned source
+data and rebuilding. IPTC-IIM
 tags retain their numeric dataset identifiers, so `find_by_id("IPTC", 25)` and
 structured output remain stable even when repeated values are represented as arrays.
 

@@ -185,7 +185,7 @@ non-zero code when differences or read failures are found.
 
 The following changes are deferred until their acceptance tests exist:
 
-- generated and expanded tag definitions migrated across all format readers;
+- additional tag definitions beyond the current generated catalog;
 - a `FormatHandler` capability abstraction once write/create behavior creates
   meaningful shared operations;
 - additional manufacturer-specific MakerNote modules beyond the bounded Nikon
