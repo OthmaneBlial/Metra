@@ -133,6 +133,8 @@ Initial read-first foundation with narrow validated rewrites:
   payload retention under the configured value budget;
 - added bounded DJI MakerNote IFD decoding with manufacturer-context dispatch,
   byte-order selection, known motion fields, and source-range preservation;
+- decoded Apple runtime binary-plist integer fields into a bounded structured
+  value while retaining the original MakerNote bytes;
 - catalogued the bounded Nikon MakerNote identifiers centrally and covered the
   EXIF integration path with absolute source-offset assertions;
 - added bounded PSD/PSB inspection for headers, dimensions, common Photoshop

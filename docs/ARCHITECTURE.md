@@ -56,7 +56,9 @@ common ICC text and XYZ table tags retain their 4CC identifiers. PNG and WebP ca
 profile payloads directly. TIFF MakerNote payloads are handed to an isolated
 detector. Nikon Type 1/2, Canon, Fujifilm, Panasonic, Olympus, legacy Sony,
 and Apple payloads additionally pass through bounded embedded IFD readers that
-expose known fields with stable numeric identifiers and typed values. Samsung
+expose known fields with stable numeric identifiers and typed values; Apple
+runtime binary plists are decoded into bounded structures while their raw
+payloads remain attached to the parent tag. Samsung
 STMN payloads expose bounded header/preview fields and preserve the nested
 payload under the value budget. DJI payloads with a standard IFD expose known
 fields after bounded byte-order selection. GoPro is detected using the parsed
