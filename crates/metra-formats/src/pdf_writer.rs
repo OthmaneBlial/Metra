@@ -247,12 +247,27 @@ fn is_writable_info_name(name: &str) -> bool {
 
 fn encode_pdf_string(token: &[u8], value: &str) -> Result<Vec<u8>> {
     if token.starts_with(b"(") {
-        if !value.is_ascii() {
+        let old_bytes = decode_literal_string(token).ok_or_else(|| MetraError::WriteFailure {
+            message: "PDF Info field uses an invalid literal string token".to_owned(),
+        })?;
+        let replacement_bytes = if old_bytes.starts_with(&[0xFE, 0xFF]) {
+            let mut bytes = vec![0xFE, 0xFF];
+            for unit in value.encode_utf16() {
+                bytes.extend_from_slice(&unit.to_be_bytes());
+            }
+            bytes
+        } else if value.is_ascii() {
+            value.as_bytes().to_vec()
+        } else {
             return Err(MetraError::WriteFailure {
                 message: "literal PDF Info strings only accept ASCII replacements".to_owned(),
             });
-        }
-        return Ok(encode_literal_string(value.as_bytes()));
+        };
+        return Ok(if old_bytes.starts_with(&[0xFE, 0xFF]) {
+            encode_binary_literal_string(&replacement_bytes)
+        } else {
+            encode_literal_string(&replacement_bytes)
+        });
     }
     if token.starts_with(b"<") && token.get(1) != Some(&b'<') {
         let old_bytes = decode_hex_string(token).ok_or_else(|| MetraError::WriteFailure {
@@ -278,6 +293,61 @@ fn encode_pdf_string(token: &[u8], value: &str) -> Result<Vec<u8>> {
     })
 }
 
+fn decode_literal_string(token: &[u8]) -> Option<Vec<u8>> {
+    if token.first() != Some(&b'(') || token.last() != Some(&b')') {
+        return None;
+    }
+    let mut result = Vec::new();
+    let mut cursor = 1_usize;
+    let mut depth = 1_usize;
+    while cursor < token.len() {
+        let byte = token[cursor];
+        cursor += 1;
+        if byte == b'\\' {
+            let escaped = *token.get(cursor)?;
+            cursor += 1;
+            match escaped {
+                b'n' => result.push(b'\n'),
+                b'r' => result.push(b'\r'),
+                b't' => result.push(b'\t'),
+                b'b' => result.push(8),
+                b'f' => result.push(12),
+                b'(' | b')' | b'\\' => result.push(escaped),
+                b'\r' => {
+                    if token.get(cursor) == Some(&b'\n') {
+                        cursor += 1;
+                    }
+                }
+                b'\n' => {}
+                b'0'..=b'7' => {
+                    let mut value = u16::from(escaped - b'0');
+                    for _ in 0..2 {
+                        let Some(next @ b'0'..=b'7') = token.get(cursor).copied() else {
+                            break;
+                        };
+                        value = value * 8 + u16::from(next - b'0');
+                        cursor += 1;
+                    }
+                    result.push(value as u8);
+                }
+                other => result.push(other),
+            }
+        } else if byte == b'(' {
+            depth += 1;
+            result.push(byte);
+        } else if byte == b')' {
+            depth -= 1;
+            if depth == 0 {
+                return (cursor == token.len()).then_some(result);
+            }
+            result.push(byte);
+        } else {
+            result.push(byte);
+        }
+    }
+    None
+}
+
 fn encode_literal_string(value: &[u8]) -> Vec<u8> {
     let mut encoded = Vec::with_capacity(value.len() + 2);
     encoded.push(b'(');
@@ -297,6 +367,22 @@ fn encode_literal_string(value: &[u8]) -> Vec<u8> {
                 encoded.push(b'0' + (*byte >> 6));
                 encoded.push(b'0' + ((*byte >> 3) & 7));
                 encoded.push(b'0' + (*byte & 7));
+            }
+            _ => encoded.push(*byte),
+        }
+    }
+    encoded.push(b')');
+    encoded
+}
+
+fn encode_binary_literal_string(value: &[u8]) -> Vec<u8> {
+    let mut encoded = Vec::with_capacity(value.len() + 2);
+    encoded.push(b'(');
+    for byte in value {
+        match byte {
+            b'(' | b')' | b'\\' => {
+                encoded.push(b'\\');
+                encoded.push(*byte);
             }
             _ => encoded.push(*byte),
         }
@@ -539,6 +625,35 @@ mod tests {
         )
         .unwrap();
         assert_eq!(metadata.find("PDF:Author").unwrap().display_value(), "Li");
+    }
+
+    #[test]
+    fn rewrites_utf16_pdf_literal_strings() {
+        let mut bytes = b"%PDF-1.7\n5 0 obj\n<< /Title (".to_vec();
+        bytes.extend_from_slice(&[
+            0xFE, 0xFF, 0x00, b'B', 0x00, b'e', 0x00, b'f', 0x00, b'o', 0x00, b'r', 0x00, b'e',
+        ]);
+        bytes.extend_from_slice(b") >>\nendobj\ntrailer\n<< /Info 5 0 R >>\nstartxref\n9\n%%EOF\n");
+        let output = rewrite_pdf_to_vec(
+            &bytes,
+            info(&bytes),
+            ParseLimits::default(),
+            &[PdfEdit::SetInfo {
+                name: "Title".to_owned(),
+                value: "After!".to_owned(),
+            }],
+        )
+        .unwrap();
+        let metadata = read_pdf(
+            &mut Cursor::new(output),
+            info(&bytes),
+            ParseLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            metadata.find("PDF:Title").unwrap().display_value(),
+            "After!"
+        );
     }
 
     #[test]
