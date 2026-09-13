@@ -58,6 +58,8 @@ Initial read-first foundation with narrow validated rewrites:
 - added bounded zlib decoding for PNG `zTXt` and compressed `iTXt` text/XMP,
   including expansion-limit warnings instead of unbounded allocation;
 - added bounded PNG `iCCP` decompression and typed ICC profile inspection;
+- added bounded JPEG ICC APP2 fragment reassembly with sequence and duplicate
+  checks before profile inspection;
 - expanded GPS derived values with validated decimal coordinates, signed
   altitude, image direction, seconds-since-midnight time, and SI speed;
 - expanded ISO-BMFF inspection with `ispe` dimensions, item/handler fields,

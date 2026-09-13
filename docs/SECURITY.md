@@ -15,6 +15,8 @@ before allocating or traversing metadata.
   output exceeds `max_value_bytes`;
 - compressed PNG `iCCP` profiles use the same bounded zlib path before ICC
   header and tag-table inspection;
+- JPEG ICC fragments are sequence-checked, deduplicated, and reassembled only
+  within the configured profile budget;
 - derived GPS coordinates, altitude, direction, speed, and time values reject
   non-finite rationals and out-of-range references or units before conversion;
 - malformed embedded EXIF can be downgraded to a warning at the container
