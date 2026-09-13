@@ -4,7 +4,7 @@ use quick_xml::Reader;
 use quick_xml::events::{BytesStart, Event};
 
 use metra_core::{
-    FileInfo, Metadata, MetraError, ParseLimits, Result, Source, Tag, TagValue, ValueType,
+    FileInfo, Metadata, MetraError, ParseLimits, Result, Source, Tag, TagValue, ValueType, Warning,
 };
 
 use crate::xml::resolve_general_ref;
@@ -56,6 +56,7 @@ fn parse_document(bytes: &[u8], limits: ParseLimits, metadata: &mut Metadata) ->
     let mut text_bytes = 0_usize;
     let mut seen_root = false;
     let mut closed_root = false;
+    let mut embedded_xmp: Option<(usize, usize)> = None;
 
     loop {
         let event =
@@ -73,6 +74,13 @@ fn parse_document(bytes: &[u8], limits: ParseLimits, metadata: &mut Metadata) ->
                     });
                 }
                 let name = local_name(element.name().as_ref());
+                if embedded_xmp.is_none() && name == "xmpmeta" {
+                    let end = reader.buffer_position() as usize;
+                    let start = end.saturating_sub(element.as_ref().len().saturating_add(2));
+                    embedded_xmp = Some((start, 1));
+                } else if let Some((_, depth)) = embedded_xmp.as_mut() {
+                    *depth = depth.saturating_add(1);
+                }
                 if !seen_root {
                     if name != "svg" {
                         return Err(MetraError::InvalidXml {
@@ -166,6 +174,37 @@ fn parse_document(bytes: &[u8], limits: ParseLimits, metadata: &mut Metadata) ->
                     parent.text.push_str(&element.text);
                 } else {
                     closed_root = true;
+                }
+                if let Some((_, depth)) = embedded_xmp.as_mut() {
+                    *depth = depth.saturating_sub(1);
+                    if *depth == 0 {
+                        let (start, _) = embedded_xmp
+                            .take()
+                            .expect("embedded XMP capture should still be present");
+                        let end = reader.buffer_position() as usize;
+                        if let Some(packet) = bytes.get(start..end) {
+                            if let Err(error) = crate::xmp::parse_xmp(
+                                packet,
+                                start as u64,
+                                "SVG/XMP",
+                                metadata,
+                                limits,
+                            ) {
+                                metadata.add_warning(
+                                    Warning::new("invalid-svg-xmp", error.to_string())
+                                        .at(start as u64),
+                                );
+                            }
+                        } else {
+                            metadata.add_warning(
+                                Warning::new(
+                                    "invalid-svg-xmp-range",
+                                    "embedded SVG XMP range is outside the document",
+                                )
+                                .at(start as u64),
+                            );
+                        }
+                    }
                 }
             }
             Event::Comment(comment) => {
@@ -453,5 +492,26 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.to_string().contains("SVG text"));
+    }
+
+    #[test]
+    fn extracts_embedded_xmp_from_metadata_element() {
+        let bytes = br#"<svg xmlns="http://www.w3.org/2000/svg"><metadata><x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description xmlns:dc="urn:dc" dc:format="image/svg+xml"/></rdf:RDF></x:xmpmeta></metadata></svg>"#;
+        let metadata = read_svg(
+            &mut Cursor::new(bytes.as_slice()),
+            info(bytes.len()),
+            ParseLimits::default(),
+        )
+        .expect("SVG with embedded XMP should parse");
+
+        let packet = metadata
+            .find("XMP:Packet")
+            .expect("XMP packet should be read");
+        assert_eq!(packet.source.container, "SVG/XMP");
+        assert_eq!(packet.source.offset, Some(50));
+        assert_eq!(
+            metadata.find("XMP:dc:format").unwrap().display_value(),
+            "image/svg+xml"
+        );
     }
 }
