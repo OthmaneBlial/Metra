@@ -99,4 +99,6 @@ Initial read-first foundation with narrow validated rewrites:
   an unexecuted corpus as compatibility evidence;
 - added human-readable, JSON, and JSON Lines CLI output;
 - added malformed-input, resource-limit, and end-to-end CLI tests;
+- added bounded TIFF ASCII copy from TIFF-like sources into existing TIFF
+  fields, with target-format, string-type, capacity, and output re-read checks;
 - documented the verified surface and remaining compatibility boundaries.

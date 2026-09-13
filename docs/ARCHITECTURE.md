@@ -116,7 +116,9 @@ ASCII value slots, JPEG COM segments, APP1
 XMP packets, and known IPTC-IIM datasets inside Photoshop APP13 resources, PNG
 `tEXt` chunks and uncompressed `iTXt` XMP chunks, GIF comment extensions, WebP `XMP ` chunks,
 SVG title/description/comment nodes, WAV `LIST/INFO` fields, FLAC Vorbis
-Comment key/value pairs, and common ID3v2 text/comment frames. The WebP and
+Comment key/value pairs, and common ID3v2 text/comment frames. TIFF ASCII
+values can be copied from a validated TIFF-like source into an existing target
+slot when the target field has enough storage. The WebP and
 PNG writers validate replacement packets with the bounded XMP parser. The
 JPEG IPTC writer validates dataset names and lengths, rewrites only the target
 dataset in the `0x0404` resource, preserves unrelated Photoshop resources, and

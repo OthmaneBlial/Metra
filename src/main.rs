@@ -257,6 +257,7 @@ enum CopyKey {
     JpegComment,
     JpegXmp,
     JpegIptc(String),
+    TiffAscii(String),
     PngText(String),
     PngXmp,
     WavInfo(String),
@@ -447,6 +448,8 @@ fn parse_edits(
         }
         let key = if key == "JPEG:Comment" {
             CopyKey::JpegComment
+        } else if let Some(tiff_key) = tiff_ascii_key(key) {
+            CopyKey::TiffAscii(tiff_key.to_owned())
         } else if jpeg_xmp_key(key) {
             CopyKey::JpegXmp
         } else if let Some(name) = iptc_name(key) {
@@ -877,6 +880,32 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path, limits: ParseLimit
                 value: value.clone(),
             }];
             apply_jpeg_edits(paths, &edits, limits)
+        }
+        CopyKey::TiffAscii(key) => {
+            if !matches!(
+                source_metadata.file_info.format,
+                metra::FileFormat::Tiff | metra::FileFormat::Raw
+            ) {
+                eprintln!(
+                    "metra: {}: source format {} is not TIFF or RAW",
+                    source.display(),
+                    source_metadata.file_info.format
+                );
+                return ExitCode::from(1);
+            }
+            let Some(tag) = source_metadata.find(&key) else {
+                eprintln!("metra: {}: source does not contain {key}", source.display());
+                return ExitCode::from(1);
+            };
+            let metra::TagValue::String(value) = &tag.value else {
+                eprintln!("metra: {}: {key} is not a string", source.display());
+                return ExitCode::from(1);
+            };
+            let edits = [metra::TiffEdit::SetAscii {
+                key,
+                value: value.clone(),
+            }];
+            apply_tiff_edits(paths, &edits, limits)
         }
         CopyKey::PngText(keyword) => {
             if source_metadata.file_info.format != metra::FileFormat::Png {

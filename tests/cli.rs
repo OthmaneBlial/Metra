@@ -669,6 +669,40 @@ fn cli_can_edit_existing_tiff_ascii_in_place() {
 }
 
 #[test]
+fn cli_can_copy_existing_tiff_ascii_from_another_tiff() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.file("source.tif", &minimal_raw_tiff());
+    let target = directory.file("target.tif", &minimal_raw_tiff());
+
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "TIFF:EXIF:Make=Sony",
+            source.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+
+    let copy_assignment = format!(
+        "TIFF:EXIF:Make={}",
+        source.to_str().expect("UTF-8 test path")
+    );
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            copy_assignment.as_str(),
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+
+    let metadata = metra::read(&target).expect("copied TIFF should remain readable");
+    assert_eq!(metadata.find("EXIF:Make").unwrap().display_value(), "Sony");
+}
+
+#[test]
 fn cli_can_set_and_delete_a_jpeg_comment_atomically() {
     let directory = TemporaryDirectory::new();
     let path = directory.file("editable.jpg", &minimal_exif_jpeg());

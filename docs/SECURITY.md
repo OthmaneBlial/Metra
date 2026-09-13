@@ -40,8 +40,9 @@ expansion and nesting limits before being enabled.
 
 Only JPEG comment, bounded APP1 XMP, and known IPTC-IIM datasets in Photoshop
 APP13 resources, PNG `tEXt` and uncompressed `iTXt` XMP, GIF comments, WebP XMP, SVG
-title/description/comments, WAV `LIST/INFO`, FLAC Vorbis Comment, and common
-ID3v2 text/comment replacement/deletion/copy is implemented, through the
+title/description/comments, WAV `LIST/INFO`, FLAC Vorbis Comment, common
+ID3v2 text/comment replacement/deletion/copy, and bounded TIFF ASCII copy are
+implemented, through the
 library API and the explicit `--set`/`--delete`/`--copy` CLI flags. JPEG XMP
 writes validate replacement packets with the bounded XML reader. IPTC writes
 validate the dataset allowlist, NUL-free values, resource sizes, and APP13
