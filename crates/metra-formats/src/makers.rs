@@ -59,6 +59,8 @@ pub(crate) fn inspect_maker_note_with_make(
         parse_apple_makernote(bytes, data_offset, metadata, limits);
     } else if identity.format == "Samsung STMN MakerNote" {
         parse_samsung_stmn(bytes, data_offset, metadata, limits);
+    } else if identity.format == "DJI MakerNote" {
+        parse_dji_makernote(bytes, data_offset, metadata, limits);
     }
 }
 
@@ -1084,6 +1086,71 @@ fn parse_samsung_stmn(
     );
 }
 
+fn parse_dji_makernote(
+    bytes: &[u8],
+    data_offset: u64,
+    metadata: &mut Metadata,
+    limits: ParseLimits,
+) {
+    let Some(endian) = dji_ifd_endian(bytes, limits) else {
+        metadata.add_warning(
+            Warning::new(
+                "invalid-dji-makernote",
+                "DJI MakerNote does not contain a bounded IFD in a supported byte order",
+            )
+            .at(data_offset),
+        );
+        return;
+    };
+    parse_vendor_ifd(
+        bytes,
+        0,
+        data_offset,
+        metadata,
+        limits,
+        VendorIfdConfig {
+            group: "DJI",
+            name_prefix: "DJI:",
+            source: "EXIF/MakerNote/DJI",
+            warning_prefix: "dji-makernote",
+            unknown_description: "Unknown DJI MakerNote tag",
+            definition: dji_tag_definition,
+            endian,
+        },
+    );
+}
+
+fn dji_ifd_endian(bytes: &[u8], limits: ParseLimits) -> Option<Endian> {
+    let little = dji_ifd_candidate(bytes, Endian::Little, limits);
+    let big = dji_ifd_candidate(bytes, Endian::Big, limits);
+    match (little, big) {
+        (Some(little_score), Some(big_score)) => (big_score > little_score)
+            .then_some(Endian::Big)
+            .or(Some(Endian::Little)),
+        (Some(_), None) => Some(Endian::Little),
+        (None, Some(_)) => Some(Endian::Big),
+        (None, None) => None,
+    }
+}
+
+fn dji_ifd_candidate(bytes: &[u8], endian: Endian, limits: ParseLimits) -> Option<usize> {
+    let count = usize::from(read_u16(bytes, 0, endian)?);
+    let count_to_read = count.min(limits.max_ifd_entries);
+    let entries_end = 2usize.checked_add(count_to_read.checked_mul(12)?)?;
+    if entries_end > bytes.len() {
+        return None;
+    }
+    let mut score = 0;
+    for index in 0..count_to_read {
+        let entry_offset = 2 + index * 12;
+        let type_id = read_u16(bytes, entry_offset + 2, endian)?;
+        if type_size(type_id).is_some() {
+            score += 1;
+        }
+    }
+    Some(score)
+}
+
 fn parse_vendor_little_ifd(
     bytes: &[u8],
     offset: usize,
@@ -1397,6 +1464,23 @@ fn apple_tag_definition(id: u16) -> Option<(&'static str, &'static str)> {
         0x0030 => ("Apple:HDRGain", "Apple HDR gain"),
         0x0038 => ("Apple:AFMeasuredDepth", "Apple measured autofocus depth"),
         0x003C => ("Apple:AFConfidence", "Apple autofocus confidence"),
+        _ => return None,
+    })
+}
+
+fn dji_tag_definition(id: u16) -> Option<(&'static str, &'static str)> {
+    Some(match id {
+        0x0001 => ("DJI:Make", "DJI MakerNote manufacturer"),
+        0x0002 => ("DJI:Flags", "DJI MakerNote flags"),
+        0x0003 => ("DJI:SpeedX", "DJI horizontal speed X"),
+        0x0004 => ("DJI:SpeedY", "DJI horizontal speed Y"),
+        0x0005 => ("DJI:SpeedZ", "DJI vertical speed Z"),
+        0x0006 => ("DJI:Pitch", "DJI aircraft pitch"),
+        0x0007 => ("DJI:Yaw", "DJI aircraft yaw"),
+        0x0008 => ("DJI:Roll", "DJI aircraft roll"),
+        0x0009 => ("DJI:CameraPitch", "DJI camera pitch"),
+        0x000A => ("DJI:CameraYaw", "DJI camera yaw"),
+        0x000B => ("DJI:CameraRoll", "DJI camera roll"),
         _ => return None,
     })
 }
@@ -1836,6 +1920,41 @@ mod tests {
                 .source
                 .offset,
             Some(3_048)
+        );
+    }
+
+    #[test]
+    fn reads_bounded_dji_ifd_values_with_manufacturer_context() {
+        let mut maker_note = vec![2, 0];
+        maker_note.extend_from_slice(&[1, 0, 2, 0, 4, 0, 0, 0, b'D', b'J', b'I', 0]);
+        maker_note.extend_from_slice(&[6, 0, 11, 0, 1, 0, 0, 0]);
+        maker_note.extend_from_slice(&1.5_f32.to_le_bytes());
+        maker_note.extend_from_slice(&[0, 0, 0, 0]);
+
+        let mut metadata = Metadata::new(FileInfo::new(
+            "dji.jpg".into(),
+            maker_note.len() as u64,
+            FileFormat::Jpeg,
+        ));
+        inspect_maker_note_with_make(
+            &maker_note,
+            4_000,
+            &mut metadata,
+            ParseLimits::default(),
+            Some("DJI"),
+        );
+
+        assert_eq!(
+            metadata.find("MakerNotes:DJI:Make").unwrap().value,
+            TagValue::String("DJI".to_owned())
+        );
+        assert_eq!(
+            metadata.find("MakerNotes:DJI:Pitch").unwrap().value,
+            TagValue::Float(1.5)
+        );
+        assert_eq!(
+            metadata.find("MakerNotes:DJI:Pitch").unwrap().source.offset,
+            Some(4_022)
         );
     }
 
