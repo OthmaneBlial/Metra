@@ -243,3 +243,34 @@ fn cli_can_set_and_delete_a_jpeg_comment_atomically() {
     let after_delete = metra::read(&path).expect("rewritten JPEG should remain readable");
     assert!(after_delete.find("JPEG:Comment").is_none());
 }
+
+#[test]
+fn cli_can_copy_a_jpeg_comment_between_files() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.file("source.jpg", &minimal_exif_jpeg());
+    let target = directory.file("target.jpg", &minimal_exif_jpeg());
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "JPEG:Comment=copied value",
+            source.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            &format!("JPEG:Comment={}", source.to_str().expect("UTF-8 test path")),
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+    let metadata = metra::read(&target).expect("target JPEG should remain readable");
+    assert_eq!(
+        metadata.find("JPEG:Comment").unwrap().display_value(),
+        "copied value"
+    );
+}

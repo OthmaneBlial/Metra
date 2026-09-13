@@ -55,6 +55,14 @@ struct Arguments {
     )]
     delete: Option<String>,
 
+    /// Copy a supported writable tag from SOURCE into each target file.
+    #[arg(
+        long,
+        value_name = "KEY=SOURCE",
+        conflicts_with_all = ["set", "delete", "json", "jsonl", "csv", "toml", "yaml"]
+    )]
+    copy: Option<String>,
+
     /// Traverse directories recursively in deterministic path order.
     #[arg(short = 'r', long)]
     recursive: bool,
@@ -78,15 +86,19 @@ fn main() -> ExitCode {
         }
     };
 
-    let edits = match parse_edits(arguments.set.as_deref(), arguments.delete.as_deref()) {
-        Ok(edits) => edits,
+    let request = match parse_edits(
+        arguments.set.as_deref(),
+        arguments.delete.as_deref(),
+        arguments.copy.as_deref(),
+    ) {
+        Ok(request) => request,
         Err(message) => {
             eprintln!("metra: {message}");
             return ExitCode::from(2);
         }
     };
-    if !edits.is_empty() {
-        return apply_edits(&paths, &edits);
+    if let Some(request) = request {
+        return apply_request(&paths, request);
     }
 
     let failures = if arguments.json || arguments.toml || arguments.yaml {
@@ -124,7 +136,16 @@ fn main() -> ExitCode {
     }
 }
 
-fn parse_edits(set: Option<&str>, delete: Option<&str>) -> Result<Vec<metra::JpegEdit>, String> {
+enum EditRequest {
+    Direct(Vec<metra::JpegEdit>),
+    CopyComment { source: PathBuf },
+}
+
+fn parse_edits(
+    set: Option<&str>,
+    delete: Option<&str>,
+    copy: Option<&str>,
+) -> Result<Option<EditRequest>, String> {
     if let Some(assignment) = set {
         let (key, value) = assignment
             .split_once('=')
@@ -134,7 +155,9 @@ fn parse_edits(set: Option<&str>, delete: Option<&str>) -> Result<Vec<metra::Jpe
                 "unsupported writable tag {key}; only JPEG:Comment is currently writable"
             ));
         }
-        return Ok(vec![metra::JpegEdit::SetComment(value.to_owned())]);
+        return Ok(Some(EditRequest::Direct(vec![
+            metra::JpegEdit::SetComment(value.to_owned()),
+        ])));
     }
     if let Some(key) = delete {
         if key != "JPEG:Comment" {
@@ -142,12 +165,37 @@ fn parse_edits(set: Option<&str>, delete: Option<&str>) -> Result<Vec<metra::Jpe
                 "unsupported writable tag {key}; only JPEG:Comment is currently writable"
             ));
         }
-        return Ok(vec![metra::JpegEdit::DeleteComments]);
+        return Ok(Some(EditRequest::Direct(vec![
+            metra::JpegEdit::DeleteComments,
+        ])));
     }
-    Ok(Vec::new())
+    if let Some(assignment) = copy {
+        let (key, source) = assignment
+            .split_once('=')
+            .ok_or_else(|| "--copy expects KEY=SOURCE".to_owned())?;
+        if key != "JPEG:Comment" {
+            return Err(format!(
+                "unsupported copied tag {key}; only JPEG:Comment is currently supported"
+            ));
+        }
+        if source.is_empty() {
+            return Err("--copy requires a non-empty source path".to_owned());
+        }
+        return Ok(Some(EditRequest::CopyComment {
+            source: PathBuf::from(source),
+        }));
+    }
+    Ok(None)
 }
 
-fn apply_edits(paths: &[PathBuf], edits: &[metra::JpegEdit]) -> ExitCode {
+fn apply_request(paths: &[PathBuf], request: EditRequest) -> ExitCode {
+    match request {
+        EditRequest::Direct(edits) => apply_direct_edits(paths, &edits),
+        EditRequest::CopyComment { source } => apply_comment_copy(paths, &source),
+    }
+}
+
+fn apply_direct_edits(paths: &[PathBuf], edits: &[metra::JpegEdit]) -> ExitCode {
     let mut failures = 0_usize;
     for path in paths {
         match metra::read(path) {
@@ -178,6 +226,37 @@ fn apply_edits(paths: &[PathBuf], edits: &[metra::JpegEdit]) -> ExitCode {
     } else {
         ExitCode::from(1)
     }
+}
+
+fn apply_comment_copy(paths: &[PathBuf], source: &Path) -> ExitCode {
+    let source_metadata = match metra::read(source) {
+        Ok(metadata) if metadata.file_info.format == metra::FileFormat::Jpeg => metadata,
+        Ok(metadata) => {
+            eprintln!(
+                "metra: {}: source format {} is not JPEG",
+                source.display(),
+                metadata.file_info.format
+            );
+            return ExitCode::from(1);
+        }
+        Err(error) => {
+            eprintln!("metra: {}: {error}", source.display());
+            return ExitCode::from(1);
+        }
+    };
+    let Some(comment) = source_metadata.find("JPEG:Comment") else {
+        eprintln!(
+            "metra: {}: source does not contain JPEG:Comment",
+            source.display()
+        );
+        return ExitCode::from(1);
+    };
+    let metra::TagValue::String(comment) = &comment.value else {
+        eprintln!("metra: {}: JPEG:Comment is not a string", source.display());
+        return ExitCode::from(1);
+    };
+    let edits = [metra::JpegEdit::SetComment(comment.clone())];
+    apply_direct_edits(paths, &edits)
 }
 
 fn parse_jobs(value: &str) -> std::result::Result<usize, String> {
