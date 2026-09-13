@@ -26,6 +26,7 @@ mod makers;
 mod pdf;
 mod png;
 mod png_writer;
+mod psd;
 mod svg;
 mod svg_writer;
 mod tiff;
@@ -47,6 +48,7 @@ pub use jpeg::{JpegEdit, read_jpeg, rewrite_jpeg, rewrite_jpeg_path, rewrite_jpe
 pub use pdf::read_pdf;
 pub use png::read_png;
 pub use png_writer::{PngEdit, rewrite_png, rewrite_png_path, rewrite_png_to_vec};
+pub use psd::read_psd;
 pub use svg::read_svg;
 pub use svg_writer::{SvgEdit, rewrite_svg, rewrite_svg_path, rewrite_svg_to_vec};
 pub use tiff::read_tiff;
@@ -64,7 +66,12 @@ pub struct DetectedFormat {
 /// Detect a format from magic bytes. Extensions are deliberately not used as
 /// the primary signal.
 pub fn detect_format(bytes: &[u8]) -> Option<DetectedFormat> {
-    if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+    if bytes.starts_with(b"8BPS") {
+        Some(DetectedFormat {
+            format: FileFormat::Psd,
+            signature: "PSD/PSB header",
+        })
+    } else if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
         Some(DetectedFormat {
             format: FileFormat::Jpeg,
             signature: "JPEG SOI",
@@ -241,6 +248,7 @@ pub fn read_path_with_limits(path: impl AsRef<Path>, limits: ParseLimits) -> Res
         FileFormat::Pdf => pdf::read_pdf(&mut file, file_info, limits),
         FileFormat::Wav => wav::read_wav(&mut file, file_info, limits),
         FileFormat::Svg => svg::read_svg(&mut file, file_info, limits),
+        FileFormat::Psd => psd::read_psd(&mut file, file_info, limits),
         format => Err(MetraError::UnsupportedFormat {
             description: format!("{format} is detected but its reader is not implemented yet"),
         }),
@@ -264,6 +272,10 @@ mod tests {
         assert_eq!(
             detect_format(b"II*\0rest").unwrap().format,
             FileFormat::Tiff
+        );
+        assert_eq!(
+            detect_format(b"8BPS\0\x01rest").unwrap().format,
+            FileFormat::Psd
         );
         assert!(detect_format(b"photo.jpg").is_none());
         assert_eq!(

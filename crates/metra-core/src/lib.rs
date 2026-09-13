@@ -732,6 +732,7 @@ pub enum FileFormat {
     Flac,
     Wav,
     Svg,
+    Psd,
     Unknown,
 }
 
@@ -753,6 +754,7 @@ impl FileFormat {
             Self::Flac => Some("audio/flac"),
             Self::Wav => Some("audio/wav"),
             Self::Svg => Some("image/svg+xml"),
+            Self::Psd => Some("image/vnd.adobe.photoshop"),
             Self::Unknown => None,
         }
     }
@@ -776,6 +778,7 @@ impl fmt::Display for FileFormat {
             Self::Flac => "FLAC",
             Self::Wav => "WAV",
             Self::Svg => "SVG",
+            Self::Psd => "PSD",
             Self::Unknown => "Unknown",
         })
     }
@@ -935,6 +938,15 @@ const FORMAT_CAPABILITIES: &[FormatCapabilities] = &[
         create: CapabilityStatus::Planned,
         delete: CapabilityStatus::Partial,
         lossless_rewrite: CapabilityStatus::Partial,
+        streaming: CapabilityStatus::Partial,
+    },
+    FormatCapabilities {
+        format: FileFormat::Psd,
+        read: CapabilityStatus::Partial,
+        write: CapabilityStatus::Planned,
+        create: CapabilityStatus::Planned,
+        delete: CapabilityStatus::Planned,
+        lossless_rewrite: CapabilityStatus::Planned,
         streaming: CapabilityStatus::Partial,
     },
 ];
@@ -1452,6 +1464,6 @@ mod tests {
 
         let unknown = format_capabilities(FileFormat::Unknown);
         assert_eq!(unknown.read, CapabilityStatus::Unsupported);
-        assert_eq!(format_capabilities_all().len(), 15);
+        assert_eq!(format_capabilities_all().len(), 16);
     }
 }

@@ -4,6 +4,15 @@ use metra_core::{
 
 const PHOTOSHOP_PREFIX: &[u8] = b"Photoshop 3.0\0";
 
+pub(crate) fn parse_iptc_resource(
+    bytes: &[u8],
+    data_offset: u64,
+    metadata: &mut Metadata,
+    limits: ParseLimits,
+) -> Result<()> {
+    parse_iptc_iim(bytes, data_offset, metadata, limits)
+}
+
 pub(crate) fn parse_photoshop_resources(
     bytes: &[u8],
     data_offset: u64,
