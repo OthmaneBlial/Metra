@@ -52,7 +52,8 @@ profile payloads directly. TIFF MakerNote payloads are handed to an isolated
 detector. Nikon Type 2 and Canon payloads additionally pass through bounded
 embedded IFD readers that expose known fields with stable numeric
 identifiers and typed values; other vendors remain detection-only, and
-proprietary MakerNote tag decoding remains separate. TIFF also derives GPS
+proprietary MakerNote tag decoding remains separate. Known and unknown values
+from those bounded IFDs retain their raw bytes. TIFF also derives GPS
 decimal coordinates, signed altitude, image direction, speed
 in meters per second, and seconds since midnight only after validating their
 rational values, units, and ranges.

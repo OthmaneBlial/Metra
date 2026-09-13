@@ -223,20 +223,28 @@ fn parse_nikon_entry(
         };
         (value_bytes, value_start)
     };
-    let definition = tag_definition("MakerNotes", u32::from(id));
-    if definition.name == "Unknown" {
-        return;
-    }
     let Some(value) = decode_value(type_id, count, value_bytes, endian) else {
         return;
+    };
+    let definition = tag_definition("MakerNotes", u32::from(id));
+    let (name, description) = if definition.name == "Unknown" {
+        (
+            format!("Nikon:Tag0x{id:04X}"),
+            "Unknown Nikon MakerNote tag".to_owned(),
+        )
+    } else {
+        (
+            definition.name.to_owned(),
+            definition.description.to_owned(),
+        )
     };
     let value_type = value_type(&value);
     metadata.add_tag(Tag {
         namespace: "MakerNotes".to_owned(),
         group: "Nikon".to_owned(),
         id: Some(u32::from(id)),
-        name: definition.name.to_owned(),
-        description: Some(definition.description.to_owned()),
+        name,
+        description: Some(description),
         raw_value: Some(value_bytes.to_vec()),
         value,
         value_type,
@@ -392,18 +400,23 @@ fn parse_canon_entry(
         );
         return;
     };
-    let Some((name, description)) = canon_tag_definition(id) else {
-        return;
-    };
     let Some(value) = decode_value(type_id, count, value_bytes, Endian::Little) else {
         return;
     };
+    let (name, description) = canon_tag_definition(id)
+        .map(|(name, description)| (name.to_owned(), description.to_owned()))
+        .unwrap_or_else(|| {
+            (
+                format!("Canon:Tag0x{id:04X}"),
+                "Unknown Canon MakerNote tag".to_owned(),
+            )
+        });
     metadata.add_tag(Tag {
         namespace: "MakerNotes".to_owned(),
         group: "Canon".to_owned(),
         id: Some(u32::from(id)),
-        name: name.to_owned(),
-        description: Some(description.to_owned()),
+        name,
+        description: Some(description),
         raw_value: Some(value_bytes.to_vec()),
         value_type: value_type(&value),
         value,
@@ -751,5 +764,27 @@ mod tests {
                 .offset,
             Some(447)
         );
+    }
+
+    #[test]
+    fn retains_unknown_nikon_values_with_stable_fallback_names() {
+        let mut tiff = vec![b'I', b'I', 42, 0, 8, 0, 0, 0, 1, 0];
+        tiff.extend_from_slice(&[0x34, 0x12, 7, 0, 3, 0, 0, 0, 1, 2, 3, 0]);
+        tiff.extend_from_slice(&[0, 0, 0, 0]);
+        let mut maker_note = b"Nikon\0\x02\0\0\0".to_vec();
+        maker_note.extend_from_slice(&tiff);
+
+        let mut metadata = Metadata::new(FileInfo::new(
+            "nikon.jpg".into(),
+            maker_note.len() as u64,
+            FileFormat::Jpeg,
+        ));
+        inspect_maker_note(&maker_note, 500, &mut metadata, ParseLimits::default());
+
+        let tag = metadata
+            .find("MakerNotes:Nikon:Tag0x1234")
+            .expect("unknown Nikon tag should be retained");
+        assert_eq!(tag.value, TagValue::Bytes(vec![1, 2, 3]));
+        assert_eq!(tag.id, Some(0x1234));
     }
 }

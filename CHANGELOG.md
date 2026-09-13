@@ -71,6 +71,8 @@ Initial read-first foundation with narrow validated rewrites:
   typed values, stable numeric identifiers, source offsets, and ParseLimits;
 - added bounded Canon MakerNote IFD parsing for selected camera strings and
   arrays with typed values, source offsets, and ParseLimits;
+- retained bounded, decodable unknown Nikon and Canon MakerNote values with
+  stable fallback names and raw bytes;
   other detected vendors remain header-only;
 - catalogued the bounded Nikon MakerNote identifiers centrally and covered the
   EXIF integration path with absolute source-offset assertions;
