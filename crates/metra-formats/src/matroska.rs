@@ -31,6 +31,31 @@ const TAG_NAME: u64 = 0x45A3;
 const TAG_STRING: u64 = 0x4487;
 const TARGET_TYPE_VALUE: u64 = 0x68CA;
 const CLUSTER: u64 = 0x1F43_B675;
+const CHAPTERS: u64 = 0x1043_A770;
+const EDITION_ENTRY: u64 = 0x45B9;
+const EDITION_UID: u64 = 0x45BC;
+const EDITION_FLAG_DEFAULT: u64 = 0x45DB;
+const CHAPTER_ATOM: u64 = 0xB6;
+const CHAPTER_UID: u64 = 0x73C4;
+const CHAPTER_TIME_START: u64 = 0x91;
+const CHAPTER_TIME_END: u64 = 0x92;
+const CHAPTER_DISPLAY: u64 = 0x80;
+const CHAP_STRING: u64 = 0x85;
+const CHAP_LANGUAGE: u64 = 0x437C;
+const CHAP_COUNTRY: u64 = 0x437D;
+const CUES: u64 = 0x1C53_BB6B;
+const CUE_POINT: u64 = 0xBB;
+const CUE_TIME: u64 = 0xB3;
+const CUE_TRACK_POSITIONS: u64 = 0xB7;
+const CUE_TRACK: u64 = 0xF7;
+const CUE_CLUSTER_POSITION: u64 = 0xF1;
+const ATTACHMENTS: u64 = 0x1941_A469;
+const ATTACHED_FILE: u64 = 0x61A7;
+const FILE_DESCRIPTION: u64 = 0x467E;
+const FILE_NAME: u64 = 0x466E;
+const FILE_MIME_TYPE: u64 = 0x4660;
+const FILE_DATA: u64 = 0x465C;
+const FILE_UID: u64 = 0x46AE;
 
 #[derive(Debug, Default)]
 struct MatroskaState {
@@ -208,10 +233,21 @@ fn scan_region<R: Read + Seek>(
             break;
         }
         match header.id {
-            EBML | SEGMENT | INFO | TRACKS => {
+            EBML | SEGMENT | INFO | TRACKS | CHAPTERS | EDITION_ENTRY | CHAPTER_ATOM
+            | CHAPTER_DISPLAY | CUES | CUE_POINT | CUE_TRACK_POSITIONS | ATTACHMENTS
+            | ATTACHED_FILE => {
                 let child_group = match header.id {
                     INFO => "Info",
                     TRACKS => "Tracks",
+                    CHAPTERS => "Chapters",
+                    EDITION_ENTRY => "Edition",
+                    CHAPTER_ATOM => "Chapter",
+                    CHAPTER_DISPLAY => "ChapterDisplay",
+                    CUES => "Cues",
+                    CUE_POINT => "CuePoint",
+                    CUE_TRACK_POSITIONS => "CueTrackPositions",
+                    ATTACHMENTS => "Attachments",
+                    ATTACHED_FILE => "Attachment",
                     _ => group,
                 };
                 scan_region(
@@ -438,8 +474,32 @@ fn read_known_value<R: Read + Seek>(
         LANGUAGE => ("Language", ValueType::String),
         CODEC_ID => ("CodecID", ValueType::String),
         TARGET_TYPE_VALUE => ("TargetTypeValue", ValueType::UnsignedInteger),
+        EDITION_UID => ("EditionUID", ValueType::UnsignedInteger),
+        EDITION_FLAG_DEFAULT => ("EditionFlagDefault", ValueType::UnsignedInteger),
+        CHAPTER_UID => ("ChapterUID", ValueType::UnsignedInteger),
+        CHAPTER_TIME_START => ("ChapterTimeStart", ValueType::UnsignedInteger),
+        CHAPTER_TIME_END => ("ChapterTimeEnd", ValueType::UnsignedInteger),
+        CHAP_STRING => ("ChapterString", ValueType::String),
+        CHAP_LANGUAGE => ("ChapterLanguage", ValueType::String),
+        CHAP_COUNTRY => ("ChapterCountry", ValueType::String),
+        CUE_TIME => ("CueTime", ValueType::UnsignedInteger),
+        CUE_TRACK => ("CueTrack", ValueType::UnsignedInteger),
+        CUE_CLUSTER_POSITION => ("CueClusterPosition", ValueType::UnsignedInteger),
+        FILE_DESCRIPTION => ("FileDescription", ValueType::String),
+        FILE_NAME => ("FileName", ValueType::String),
+        FILE_MIME_TYPE => ("FileMimeType", ValueType::String),
+        FILE_UID => ("FileUID", ValueType::UnsignedInteger),
+        FILE_DATA => ("FileDataSize", ValueType::UnsignedInteger),
         _ => return Ok(None),
     };
+    if id == FILE_DATA {
+        return Ok(Some((
+            "FileDataSize",
+            TagValue::Unsigned(length),
+            ValueType::UnsignedInteger,
+            Vec::new(),
+        )));
+    }
     let Some(bytes) = read_value(
         reader,
         offset,
@@ -455,7 +515,9 @@ fn read_known_value<R: Read + Seek>(
         return Ok(None);
     };
     let (value, value_type) = match id {
-        DOC_TYPE | TITLE | MUXING_APP | WRITING_APP | TRACK_NAME | LANGUAGE | CODEC_ID => (
+        DOC_TYPE | TITLE | MUXING_APP | WRITING_APP | TRACK_NAME | LANGUAGE | CODEC_ID
+        | CHAP_STRING | CHAP_LANGUAGE | CHAP_COUNTRY | FILE_DESCRIPTION | FILE_NAME
+        | FILE_MIME_TYPE => (
             TagValue::String(
                 String::from_utf8_lossy(&bytes)
                     .trim_end_matches('\0')
@@ -475,7 +537,9 @@ fn read_known_value<R: Read + Seek>(
             };
             (TagValue::Signed(value), ValueType::SignedInteger)
         }
-        TIMECODE_SCALE | TRACK_NUMBER | TRACK_UID | TRACK_TYPE | TARGET_TYPE_VALUE => {
+        TIMECODE_SCALE | TRACK_NUMBER | TRACK_UID | TRACK_TYPE | TARGET_TYPE_VALUE
+        | EDITION_UID | EDITION_FLAG_DEFAULT | CHAPTER_UID | CHAPTER_TIME_START
+        | CHAPTER_TIME_END | CUE_TIME | CUE_TRACK | CUE_CLUSTER_POSITION | FILE_UID => {
             let Some(value) = parse_unsigned_integer(&bytes) else {
                 return Ok(None);
             };
@@ -484,6 +548,7 @@ fn read_known_value<R: Read + Seek>(
             }
             (TagValue::Unsigned(value), ValueType::UnsignedInteger)
         }
+        FILE_DATA => (TagValue::Unsigned(length), ValueType::UnsignedInteger),
         _ => return Ok(None),
     };
     Ok(Some((name, value, value_type, bytes)))
@@ -556,6 +621,12 @@ fn add_tag(
             "Track".to_owned()
         } else if container.ends_with("Tags") {
             "Tags".to_owned()
+        } else if container.contains("Chapter") || container.ends_with("Edition") {
+            "Chapters".to_owned()
+        } else if container.contains("Cue") {
+            "Cues".to_owned()
+        } else if container.contains("Attachment") {
+            "Attachments".to_owned()
         } else {
             "Derived".to_owned()
         },
@@ -794,6 +865,83 @@ mod tests {
                 .unwrap()
                 .display_value(),
             "0.01"
+        );
+    }
+
+    #[test]
+    fn reads_chapters_cues_and_attachment_descriptors_without_loading_file_data() {
+        let display = [element(&[0x85], b"Intro"), element(&[0x43, 0x7C], b"eng")].concat();
+        let chapter_atom = [
+            element(&[0x73, 0xC4], &[1]),
+            element(&[0x91], &1_u64.to_be_bytes()),
+            element(&[0x92], &2_u64.to_be_bytes()),
+            element(&[0x80], &display),
+        ]
+        .concat();
+        let edition = element(&[0x45, 0xB9], &element(&[0xB6], &chapter_atom));
+        let chapters = element(&[0x10, 0x43, 0xA7, 0x70], &edition);
+
+        let attached_file = [
+            element(&[0x46, 0x6E], b"cover.jpg"),
+            element(&[0x46, 0x60], b"image/jpeg"),
+            element(&[0x46, 0x7E], b"cover art"),
+            element(&[0x46, 0x5C], b"not loaded"),
+        ]
+        .concat();
+        let attachments = element(
+            &[0x19, 0x41, 0xA4, 0x69],
+            &element(&[0x61, 0xA7], &attached_file),
+        );
+
+        let cue_positions = [element(&[0xF7], &[1]), element(&[0xF1], &[0x20])].concat();
+        let cue_point = [element(&[0xB3], &[0, 1]), element(&[0xB7], &cue_positions)].concat();
+        let cues = element(&[0x1C, 0x53, 0xBB, 0x6B], &element(&[0xBB], &cue_point));
+
+        let ebml = element(&[0x42, 0x82], b"matroska");
+        let ebml_header = element(EBML_SIGNATURE, &ebml);
+        let segment_data = [chapters, attachments, cues].concat();
+        let bytes = [
+            ebml_header,
+            element(&[0x18, 0x53, 0x80, 0x67], &segment_data),
+        ]
+        .concat();
+        let info = FileInfo::new(
+            "chapters.mkv".into(),
+            bytes.len() as u64,
+            metra_core::FileFormat::Mkv,
+        );
+        let metadata = read_matroska(&mut Cursor::new(bytes), info, ParseLimits::default())
+            .expect("Matroska chapter fixture should parse");
+
+        assert_eq!(
+            metadata.find("Matroska:ChapterTimeStart").unwrap().value,
+            TagValue::Unsigned(1)
+        );
+        assert_eq!(
+            metadata
+                .find("Matroska:ChapterString")
+                .unwrap()
+                .display_value(),
+            "Intro"
+        );
+        assert_eq!(
+            metadata.find("Matroska:FileName").unwrap().display_value(),
+            "cover.jpg"
+        );
+        assert_eq!(
+            metadata
+                .find("Matroska:FileMimeType")
+                .unwrap()
+                .display_value(),
+            "image/jpeg"
+        );
+        assert_eq!(
+            metadata.find("Matroska:FileDataSize").unwrap().value,
+            TagValue::Unsigned(10)
+        );
+        assert_eq!(
+            metadata.find("Matroska:CueClusterPosition").unwrap().value,
+            TagValue::Unsigned(32)
         );
     }
 
