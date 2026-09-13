@@ -23,6 +23,7 @@ mod png_writer;
 mod svg;
 mod tiff;
 mod wav;
+mod wav_writer;
 mod webp;
 mod xmp;
 
@@ -37,6 +38,7 @@ pub use png_writer::{PngEdit, rewrite_png, rewrite_png_path, rewrite_png_to_vec}
 pub use svg::read_svg;
 pub use tiff::read_tiff;
 pub use wav::read_wav;
+pub use wav_writer::{WavEdit, rewrite_wav, rewrite_wav_path, rewrite_wav_to_vec};
 pub use webp::read_webp;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
