@@ -104,6 +104,8 @@ cargo run -- --copy JPEG:EXIF:Make=source.jpg target.jpg
 cargo run -- --copy TIFF:EXIF:Make=source.tif target.tif
 cargo run -- --set 'ISOBMFF:Title=reviewed' movie.mp4
 cargo run -- --copy ISOBMFF:Title=source.mp4 target.mp4
+cargo run -- --set 'PDF:Title=reviewed' document.pdf
+cargo run -- --copy PDF:Title=source.pdf target.pdf
 cargo run -- --set 'JPEG:XMP=<x:xmpmeta>...</x:xmpmeta>' photo.jpg
 cargo run -- --delete JPEG:XMP photo.jpg
 cargo run -- --copy JPEG:XMP=source.jpg target.jpg
@@ -119,6 +121,9 @@ cargo run -- --set 'GIF:Comment=reviewed' animation.gif
 cargo run -- --set 'WebP:XMP=<x:xmpmeta>...</x:xmpmeta>' image.webp
 cargo run -- --set 'SVG:Title=reviewed' drawing.svg
 ```
+
+PDF Info edits target an existing field and preserve the document byte layout;
+the replacement must have the same encoded length as the original value token.
 
 Install the local CLI:
 
@@ -239,7 +244,7 @@ not claim complete ExifTool compatibility.
 The opt-in corpus checks live in [`tests/corpus.rs`](tests/corpus.rs) and require
 an explicit local corpus and oracle; no corpus is bundled in the repository. A
 local 194-file run completed without panics: 89 files were recognized, with
-3,273 Metra tags compared to the oracle, 1,837 stable-key matches, and 1,417
+3,303 Metra tags compared to the oracle, 1,857 stable-key matches, and 1,435
 typed-value matches. The corpus axis remains conservative because 105 files
 were outside the current format surface and the differential test is opt-in.
 
