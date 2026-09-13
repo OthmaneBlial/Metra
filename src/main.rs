@@ -151,6 +151,7 @@ enum EditRequest {
 #[derive(Debug)]
 enum CopyKey {
     JpegComment,
+    JpegXmp,
     JpegIptc(String),
     PngText(String),
     PngXmp,
@@ -180,6 +181,11 @@ fn parse_edits(
             .split_once('=')
             .ok_or_else(|| "--set expects KEY=VALUE".to_owned())?;
         if key != "JPEG:Comment" {
+            if jpeg_xmp_key(key) {
+                return Ok(Some(EditRequest::DirectJpeg(vec![
+                    metra::JpegEdit::SetXmp(value.to_owned()),
+                ])));
+            }
             if let Some(name) = iptc_name(key) {
                 return Ok(Some(EditRequest::DirectJpeg(vec![
                     metra::JpegEdit::SetIptc {
@@ -251,6 +257,11 @@ fn parse_edits(
     }
     if let Some(key) = delete {
         if key != "JPEG:Comment" {
+            if jpeg_xmp_key(key) {
+                return Ok(Some(EditRequest::DirectJpeg(vec![
+                    metra::JpegEdit::DeleteXmp,
+                ])));
+            }
             if let Some(name) = iptc_name(key) {
                 return Ok(Some(EditRequest::DirectJpeg(vec![
                     metra::JpegEdit::DeleteIptc {
@@ -324,6 +335,8 @@ fn parse_edits(
         }
         let key = if key == "JPEG:Comment" {
             CopyKey::JpegComment
+        } else if jpeg_xmp_key(key) {
+            CopyKey::JpegXmp
         } else if let Some(name) = iptc_name(key) {
             CopyKey::JpegIptc(name.to_owned())
         } else if let Some(svg_key) = svg_text_key(key) {
@@ -362,6 +375,10 @@ fn png_text_keyword(key: &str) -> Option<&str> {
 
 fn png_xmp_key(key: &str) -> bool {
     matches!(key, "PNG:XMP" | "PNG:iTXt:XMP")
+}
+
+fn jpeg_xmp_key(key: &str) -> bool {
+    matches!(key, "JPEG:XMP" | "JPEG:APP1:XMP")
 }
 
 fn iptc_name(key: &str) -> Option<&str> {
@@ -422,7 +439,7 @@ fn svg_text_key(key: &str) -> Option<SvgTextKey> {
 
 fn unsupported_edit_message(key: &str) -> String {
     format!(
-        "unsupported metadata key {key}; writable keys are JPEG:Comment, IPTC:<dataset>, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
+        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:XMP, IPTC:<dataset>, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
     )
 }
 
@@ -651,6 +668,33 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path) -> ExitCode {
                 return ExitCode::from(1);
             };
             let edits = [metra::JpegEdit::SetComment(comment.clone())];
+            apply_jpeg_edits(paths, &edits)
+        }
+        CopyKey::JpegXmp => {
+            if source_metadata.file_info.format != metra::FileFormat::Jpeg {
+                eprintln!(
+                    "metra: {}: source format {} is not JPEG",
+                    source.display(),
+                    source_metadata.file_info.format
+                );
+                return ExitCode::from(1);
+            }
+            let Some(packet) = source_metadata.find("XMP:Packet") else {
+                eprintln!(
+                    "metra: {}: source does not contain an XMP packet",
+                    source.display()
+                );
+                return ExitCode::from(1);
+            };
+            let metra::TagValue::Bytes(packet) = &packet.value else {
+                eprintln!("metra: {}: XMP:Packet is not raw bytes", source.display());
+                return ExitCode::from(1);
+            };
+            let Ok(packet) = String::from_utf8(packet.clone()) else {
+                eprintln!("metra: {}: XMP:Packet is not valid UTF-8", source.display());
+                return ExitCode::from(1);
+            };
+            let edits = [metra::JpegEdit::SetXmp(packet)];
             apply_jpeg_edits(paths, &edits)
         }
         CopyKey::JpegIptc(name) => {
