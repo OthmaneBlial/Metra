@@ -110,6 +110,8 @@ fn process_chunk(
 ) -> Result<()> {
     match kind {
         b"VP8X" => parse_vp8x(data, data_offset, metadata),
+        b"VP8 " => parse_vp8(data, data_offset, metadata),
+        b"VP8L" => parse_vp8l(data, data_offset, metadata),
         b"EXIF" => {
             let (tiff_data, absolute_start) = if data.starts_with(b"Exif\0\0") {
                 (&data[6..], data_offset + 6)
@@ -167,17 +169,95 @@ fn parse_vp8x(data: &[u8], data_offset: u64, metadata: &mut Metadata) {
     }
     let width = 1 + u32::from(data[4]) + (u32::from(data[5]) << 8) + (u32::from(data[6]) << 16);
     let height = 1 + u32::from(data[7]) + (u32::from(data[8]) << 8) + (u32::from(data[9]) << 16);
-    for (name, value, start) in [("ImageWidth", width, 4_u64), ("ImageHeight", height, 7_u64)] {
+    add_dimensions(
+        metadata,
+        "VP8X",
+        "Canvas dimension",
+        "WebP/VP8X",
+        data_offset,
+        [("ImageWidth", width, 4, 3), ("ImageHeight", height, 7, 3)],
+    );
+}
+
+fn parse_vp8(data: &[u8], data_offset: u64, metadata: &mut Metadata) {
+    if data.len() < 10 {
+        metadata.add_warning(
+            Warning::new(
+                "truncated-vp8",
+                "WebP VP8 chunk is shorter than its frame header",
+            )
+            .at(data_offset),
+        );
+        return;
+    }
+    if data[3..6] != [0x9D, 0x01, 0x2A] {
+        metadata.add_warning(
+            Warning::new("invalid-vp8-frame", "WebP VP8 frame start code is invalid")
+                .at(data_offset + 3),
+        );
+        return;
+    }
+    let width = u32::from(u16::from_le_bytes([data[6], data[7]]) & 0x3FFF);
+    let height = u32::from(u16::from_le_bytes([data[8], data[9]]) & 0x3FFF);
+    add_dimensions(
+        metadata,
+        "VP8",
+        "Bitstream dimension",
+        "WebP/VP8",
+        data_offset,
+        [("ImageWidth", width, 6, 2), ("ImageHeight", height, 8, 2)],
+    );
+}
+
+fn parse_vp8l(data: &[u8], data_offset: u64, metadata: &mut Metadata) {
+    if data.len() < 5 {
+        metadata.add_warning(
+            Warning::new(
+                "truncated-vp8l",
+                "WebP VP8L chunk is shorter than its frame header",
+            )
+            .at(data_offset),
+        );
+        return;
+    }
+    if data[0] != 0x2F {
+        metadata.add_warning(
+            Warning::new("invalid-vp8l-frame", "WebP VP8L signature is invalid").at(data_offset),
+        );
+        return;
+    }
+    let width = 1 + u32::from(data[1]) + (u32::from(data[2] & 0x3F) << 8);
+    let height =
+        1 + u32::from(data[2] >> 6) + (u32::from(data[3]) << 2) + (u32::from(data[4] & 0x0F) << 10);
+    add_dimensions(
+        metadata,
+        "VP8L",
+        "Bitstream dimension",
+        "WebP/VP8L",
+        data_offset,
+        [("ImageWidth", width, 1, 2), ("ImageHeight", height, 2, 3)],
+    );
+}
+
+fn add_dimensions(
+    metadata: &mut Metadata,
+    group: &str,
+    description: &str,
+    source_name: &str,
+    data_offset: u64,
+    dimensions: [(&str, u32, u64, u64); 2],
+) {
+    for (name, value, start, length) in dimensions {
         metadata.add_tag(Tag {
             namespace: "WebP".to_owned(),
-            group: "VP8X".to_owned(),
+            group: group.to_owned(),
             id: None,
             name: name.to_owned(),
-            description: Some("Canvas dimension".to_owned()),
+            description: Some(description.to_owned()),
             raw_value: None,
             value: TagValue::Unsigned(u64::from(value)),
             value_type: ValueType::UnsignedInteger,
-            source: Source::new("WebP/VP8X", Some(data_offset + start), Some(3)),
+            source: Source::new(source_name, Some(data_offset + start), Some(length)),
             writable: false,
         });
     }
@@ -272,6 +352,71 @@ mod tests {
         );
         assert_eq!(
             metadata.find("WebP:ImageHeight").unwrap().display_value(),
+            "480"
+        );
+    }
+
+    #[test]
+    fn reads_vp8_and_vp8l_bitstream_dimensions() {
+        let vp8 = [0, 0, 0, 0x9D, 0x01, 0x2A, 0x80, 0x02, 0xE0, 0x01];
+        let vp8_payload = chunk(b"VP8 ", &vp8);
+        let mut vp8_bytes = b"RIFF".to_vec();
+        vp8_bytes.extend_from_slice(&(4_u32 + vp8_payload.len() as u32).to_le_bytes());
+        vp8_bytes.extend_from_slice(b"WEBP");
+        vp8_bytes.extend_from_slice(&vp8_payload);
+        let vp8_metadata = read_webp(
+            &mut Cursor::new(vp8_bytes.clone()),
+            FileInfo::new(
+                "lossy.webp".into(),
+                vp8_bytes.len() as u64,
+                FileFormat::Webp,
+            ),
+            ParseLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            vp8_metadata
+                .find("WebP:ImageWidth")
+                .unwrap()
+                .display_value(),
+            "640"
+        );
+        assert_eq!(
+            vp8_metadata
+                .find("WebP:ImageHeight")
+                .unwrap()
+                .display_value(),
+            "480"
+        );
+
+        let vp8l = [0x2F, 0x7F, 0xC2, 0x77, 0];
+        let vp8l_payload = chunk(b"VP8L", &vp8l);
+        let mut vp8l_bytes = b"RIFF".to_vec();
+        vp8l_bytes.extend_from_slice(&(4_u32 + vp8l_payload.len() as u32).to_le_bytes());
+        vp8l_bytes.extend_from_slice(b"WEBP");
+        vp8l_bytes.extend_from_slice(&vp8l_payload);
+        let vp8l_metadata = read_webp(
+            &mut Cursor::new(vp8l_bytes.clone()),
+            FileInfo::new(
+                "lossless.webp".into(),
+                vp8l_bytes.len() as u64,
+                FileFormat::Webp,
+            ),
+            ParseLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            vp8l_metadata
+                .find("WebP:ImageWidth")
+                .unwrap()
+                .display_value(),
+            "640"
+        );
+        assert_eq!(
+            vp8l_metadata
+                .find("WebP:ImageHeight")
+                .unwrap()
+                .display_value(),
             "480"
         );
     }
