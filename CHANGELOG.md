@@ -128,7 +128,9 @@ Initial read-first foundation with narrow validated rewrites:
   typed values, raw-byte retention, and absolute source offsets;
 - added EXIF manufacturer-context detection for payloads whose signatures are
   not self-describing, including GoPro and DJI, while keeping proprietary
-  Samsung STMN/DJI/GoPro fields detection-only;
+  Samsung STMN nested fields and DJI/GoPro fields detection-only;
+- added bounded Samsung STMN header and preview-field decoding with nested
+  payload retention under the configured value budget;
 - catalogued the bounded Nikon MakerNote identifiers centrally and covered the
   EXIF integration path with absolute source-offset assertions;
 - added bounded PSD/PSB inspection for headers, dimensions, common Photoshop
