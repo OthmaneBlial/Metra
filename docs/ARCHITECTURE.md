@@ -54,14 +54,16 @@ and ICC payloads delegate bounded profile-header, typed illuminant, and tag-tabl
 ICC APP2 fragments are collected and reassembled by sequence number before that inspection, while
 common ICC text and XYZ table tags retain their 4CC identifiers. PNG and WebP carry their bounded
 profile payloads directly. TIFF MakerNote payloads are handed to an isolated
-detector. Nikon Type 1/2, Canon, Fujifilm, Panasonic, Olympus, legacy Sony,
-and Apple payloads additionally pass through bounded embedded IFD readers that
+detector. Nikon Type 1/2, Canon, Fujifilm, Panasonic, Olympus, legacy Sony, Apple,
+and Pentax payloads additionally pass through bounded embedded IFD readers that
 expose known fields with stable numeric identifiers and typed values; Apple
 runtime binary plists are decoded into bounded structures while their raw
 payloads remain attached to the parent tag. Samsung
 STMN payloads expose bounded header/preview fields and preserve the nested
 payload under the value budget. DJI payloads with a standard IFD expose known
-fields after bounded byte-order selection. GoPro is detected using the parsed
+fields after bounded byte-order selection. Pentax uses its Big Endian IFD and
+root-relative value offsets, and structures selected packed information blocks
+while preserving their raw payloads. GoPro is detected using the parsed
 EXIF manufacturer context, while its proprietary payload remains detection-only;
 proprietary MakerNote tag decoding remains separate. Known and unknown values
 from those bounded IFDs retain their raw bytes. TIFF also derives GPS
