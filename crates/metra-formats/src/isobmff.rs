@@ -127,6 +127,10 @@ impl<R: Read + Seek> BoxParser<'_, R> {
                 self.parse_pitm(&header, metadata)?;
             } else if &header.kind == b"hdlr" {
                 self.parse_hdlr(&header, metadata)?;
+            } else if &header.kind == b"mvhd" {
+                self.parse_mvhd(&header, metadata)?;
+            } else if &header.kind == b"tkhd" {
+                self.parse_tkhd(&header, metadata)?;
             } else if &header.kind == b"infe" {
                 self.parse_infe(&header, metadata)?;
             } else if &header.kind == b"xml " {
@@ -569,6 +573,221 @@ impl<R: Read + Seek> BoxParser<'_, R> {
         Ok(())
     }
 
+    fn parse_mvhd(&mut self, header: &BoxHeader, metadata: &mut Metadata) -> Result<()> {
+        let data = self.read_payload(header, "ISO-BMFF mvhd")?;
+        let Some(version) = data.first().copied() else {
+            metadata.add_warning(
+                Warning::new("truncated-mvhd", "mvhd box has no version").at(header.data_start),
+            );
+            return Ok(());
+        };
+        let (creation_offset, modification_offset, timescale_offset, duration_offset, duration_len) =
+            match version {
+                0 => (4_usize, 8_usize, 12_usize, 16_usize, 4_usize),
+                1 => (4_usize, 12_usize, 20_usize, 24_usize, 8_usize),
+                _ => {
+                    metadata.add_warning(
+                        Warning::new(
+                            "unsupported-mvhd-version",
+                            format!("mvhd version {version} is not supported"),
+                        )
+                        .at(header.data_start),
+                    );
+                    return Ok(());
+                }
+            };
+        let required = duration_offset + duration_len;
+        if data.len() < required {
+            metadata.add_warning(
+                Warning::new(
+                    "truncated-mvhd",
+                    format!("mvhd box is shorter than its version {version} timing fields"),
+                )
+                .at(header.data_start),
+            );
+            return Ok(());
+        }
+        let creation = read_u64_be(&data, creation_offset, if version == 0 { 4 } else { 8 });
+        let modification =
+            read_u64_be(&data, modification_offset, if version == 0 { 4 } else { 8 });
+        let timescale = read_u64_be(&data, timescale_offset, 4);
+        let duration = read_u64_be(&data, duration_offset, duration_len);
+        add_tag(
+            metadata,
+            "MovieCreationTime",
+            TagValue::Unsigned(creation),
+            header.data_start + creation_offset as u64,
+            if version == 0 { 4 } else { 8 },
+        );
+        add_tag(
+            metadata,
+            "MovieModificationTime",
+            TagValue::Unsigned(modification),
+            header.data_start + modification_offset as u64,
+            if version == 0 { 4 } else { 8 },
+        );
+        add_tag(
+            metadata,
+            "MovieTimescale",
+            TagValue::Unsigned(timescale),
+            header.data_start + timescale_offset as u64,
+            4,
+        );
+        add_tag(
+            metadata,
+            "MovieDuration",
+            TagValue::Unsigned(duration),
+            header.data_start + duration_offset as u64,
+            duration_len as u64,
+        );
+        if timescale != 0 {
+            add_tag(
+                metadata,
+                "MovieDurationSeconds",
+                TagValue::Float(duration as f64 / timescale as f64),
+                header.data_start + duration_offset as u64,
+                duration_len as u64,
+            );
+        }
+        Ok(())
+    }
+
+    fn parse_tkhd(&mut self, header: &BoxHeader, metadata: &mut Metadata) -> Result<()> {
+        let data = self.read_payload(header, "ISO-BMFF tkhd")?;
+        let Some(version) = data.first().copied() else {
+            metadata.add_warning(
+                Warning::new("truncated-tkhd", "tkhd box has no version").at(header.data_start),
+            );
+            return Ok(());
+        };
+        let (
+            track_id_offset,
+            duration_offset,
+            layer_offset,
+            alternate_group_offset,
+            volume_offset,
+            width_offset,
+            height_offset,
+            duration_len,
+        ) = match version {
+            0 => (
+                12_usize, 20_usize, 32_usize, 34_usize, 36_usize, 84_usize, 88_usize, 4_usize,
+            ),
+            1 => (
+                20_usize, 28_usize, 40_usize, 42_usize, 44_usize, 92_usize, 96_usize, 8_usize,
+            ),
+            _ => {
+                metadata.add_warning(
+                    Warning::new(
+                        "unsupported-tkhd-version",
+                        format!("tkhd version {version} is not supported"),
+                    )
+                    .at(header.data_start),
+                );
+                return Ok(());
+            }
+        };
+        if data.len() < height_offset + 4 {
+            metadata.add_warning(
+                Warning::new(
+                    "truncated-tkhd",
+                    format!("tkhd box is shorter than its version {version} fields"),
+                )
+                .at(header.data_start),
+            );
+            return Ok(());
+        }
+        add_tag(
+            metadata,
+            "TrackFlags",
+            TagValue::Unsigned(u64::from(u32::from_be_bytes(
+                data[0..4].try_into().expect("tkhd flags"),
+            ))),
+            header.data_start,
+            4,
+        );
+        add_tag(
+            metadata,
+            "TrackId",
+            TagValue::Unsigned(u64::from(u32::from_be_bytes(
+                data[track_id_offset..track_id_offset + 4]
+                    .try_into()
+                    .expect("tkhd track id"),
+            ))),
+            header.data_start + track_id_offset as u64,
+            4,
+        );
+        add_tag(
+            metadata,
+            "TrackDuration",
+            TagValue::Unsigned(read_u64_be(&data, duration_offset, duration_len)),
+            header.data_start + duration_offset as u64,
+            duration_len as u64,
+        );
+        add_tag(
+            metadata,
+            "TrackLayer",
+            TagValue::Signed(i64::from(i16::from_be_bytes(
+                data[layer_offset..layer_offset + 2]
+                    .try_into()
+                    .expect("tkhd layer"),
+            ))),
+            header.data_start + layer_offset as u64,
+            2,
+        );
+        add_tag(
+            metadata,
+            "TrackAlternateGroup",
+            TagValue::Signed(i64::from(i16::from_be_bytes(
+                data[alternate_group_offset..alternate_group_offset + 2]
+                    .try_into()
+                    .expect("tkhd alternate group"),
+            ))),
+            header.data_start + alternate_group_offset as u64,
+            2,
+        );
+        add_tag(
+            metadata,
+            "TrackVolume",
+            TagValue::Float(
+                f64::from(i16::from_be_bytes(
+                    data[volume_offset..volume_offset + 2]
+                        .try_into()
+                        .expect("tkhd volume"),
+                )) / 256.0,
+            ),
+            header.data_start + volume_offset as u64,
+            2,
+        );
+        add_tag(
+            metadata,
+            "TrackWidth",
+            TagValue::Float(
+                f64::from(u32::from_be_bytes(
+                    data[width_offset..width_offset + 4]
+                        .try_into()
+                        .expect("tkhd width"),
+                )) / 65_536.0,
+            ),
+            header.data_start + width_offset as u64,
+            4,
+        );
+        add_tag(
+            metadata,
+            "TrackHeight",
+            TagValue::Float(
+                f64::from(u32::from_be_bytes(
+                    data[height_offset..height_offset + 4]
+                        .try_into()
+                        .expect("tkhd height"),
+                )) / 65_536.0,
+            ),
+            header.data_start + height_offset as u64,
+            4,
+        );
+        Ok(())
+    }
+
     fn parse_infe(&mut self, header: &BoxHeader, metadata: &mut Metadata) -> Result<()> {
         let data = self.read_payload(header, "ISO-BMFF infe")?;
         if data.len() < 12 {
@@ -800,10 +1019,14 @@ fn add_tag(metadata: &mut Metadata, name: &str, value: TagValue, offset: u64, le
     let value_type = match &value {
         TagValue::String(_) => ValueType::String,
         TagValue::Unsigned(_) => ValueType::UnsignedInteger,
+        TagValue::Signed(_) => ValueType::SignedInteger,
         TagValue::Float(_) => ValueType::Float,
+        TagValue::Rational { .. } => ValueType::Rational,
         TagValue::UnsignedRational { .. } => ValueType::UnsignedRational,
+        TagValue::Bytes(_) => ValueType::Bytes,
         TagValue::Array(_) => ValueType::Array,
-        _ => ValueType::Unknown,
+        TagValue::Structure(_) => ValueType::Structure,
+        TagValue::Unknown { .. } => ValueType::Unknown,
     };
     metadata.add_tag(Tag {
         namespace: "ISOBMFF".to_owned(),
@@ -817,6 +1040,16 @@ fn add_tag(metadata: &mut Metadata, name: &str, value: TagValue, offset: u64, le
         source: Source::new("ISO-BMFF", Some(offset), Some(length)),
         writable: false,
     });
+}
+
+fn read_u64_be(bytes: &[u8], offset: usize, length: usize) -> u64 {
+    match length {
+        4 => u64::from(u32::from_be_bytes(
+            bytes[offset..offset + 4].try_into().expect("ISO-BMFF u32"),
+        )),
+        8 => u64::from_be_bytes(bytes[offset..offset + 8].try_into().expect("ISO-BMFF u64")),
+        _ => unreachable!("ISO-BMFF timing fields use 32 or 64 bits"),
+    }
 }
 
 fn io_error(path: &Path, source: std::io::Error) -> MetraError {
@@ -857,7 +1090,21 @@ mod tests {
         let title = box_with_kind(b"\xA9nam", &data);
         let ilst = box_with_kind(b"ilst", &title);
         let udta = box_with_kind(b"udta", &ilst);
-        let moov = box_with_kind(b"moov", &udta);
+        let mut mvhd_data = vec![0_u8; 100];
+        mvhd_data[4..8].copy_from_slice(&1_u32.to_be_bytes());
+        mvhd_data[12..16].copy_from_slice(&1_000_u32.to_be_bytes());
+        mvhd_data[16..20].copy_from_slice(&5_000_u32.to_be_bytes());
+        let mvhd = box_with_kind(b"mvhd", &mvhd_data);
+        let mut tkhd_data = vec![0_u8; 92];
+        tkhd_data[12..16].copy_from_slice(&7_u32.to_be_bytes());
+        tkhd_data[20..24].copy_from_slice(&5_000_u32.to_be_bytes());
+        tkhd_data[84..88].copy_from_slice(&(768_u32 << 16).to_be_bytes());
+        tkhd_data[88..92].copy_from_slice(&(512_u32 << 16).to_be_bytes());
+        let tkhd = box_with_kind(b"tkhd", &tkhd_data);
+        let mut movie_data = mvhd;
+        movie_data.extend_from_slice(&tkhd);
+        movie_data.extend_from_slice(&udta);
+        let moov = box_with_kind(b"moov", &movie_data);
         let ispe = box_with_kind(b"ispe", &[0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 2, 0]);
         let pixi = box_with_kind(b"pixi", &[0, 0, 0, 0, 3, 8, 10, 12]);
         let irot = box_with_kind(b"irot", &[2]);
@@ -888,6 +1135,26 @@ mod tests {
         assert_eq!(
             metadata.find("ISOBMFF:MajorBrand").unwrap().display_value(),
             "isom"
+        );
+        assert_eq!(
+            metadata.find("ISOBMFF:MovieTimescale").unwrap().value,
+            TagValue::Unsigned(1_000)
+        );
+        assert_eq!(
+            metadata.find("ISOBMFF:MovieDurationSeconds").unwrap().value,
+            TagValue::Float(5.0)
+        );
+        assert_eq!(
+            metadata.find("ISOBMFF:TrackId").unwrap().value,
+            TagValue::Unsigned(7)
+        );
+        assert_eq!(
+            metadata.find("ISOBMFF:TrackWidth").unwrap().value,
+            TagValue::Float(768.0)
+        );
+        assert_eq!(
+            metadata.find("ISOBMFF:TrackHeight").unwrap().value,
+            TagValue::Float(512.0)
         );
         assert_eq!(
             metadata.find("ISOBMFF:Title").unwrap().display_value(),
