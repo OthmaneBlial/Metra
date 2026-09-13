@@ -65,7 +65,7 @@ Repeated IPTC datasets remain typed arrays when read; `--copy` accepts only a
 single-valued source dataset, while `--set` replaces all target occurrences
 with one bounded dataset.
 MakerNotes remain partial outside the bounded Nikon Type 2 and Canon IFD fields; MP3/ID3,
-Ogg, MP3, PDF, WAV, and FLAC remain only partially covered outside their explicit
+Ogg, PDF, WAV, and FLAC remain only partially covered outside their explicit
 writable fields. ID3
 rewrites currently require a supported ID3v2 tag without unsynchronization,
 extended-header, or footer flags. Their boundaries are tracked in
@@ -151,7 +151,7 @@ Long-running callers can pass a `CancellationToken` to the corresponding
 `*_with_cancellation` helpers; the CLI maps Ctrl+C to cooperative cancellation
 and exits with status 130 after bounded in-flight reads finish.
 
-The model keeps namespaces explicit (`EXIF`, `GPS`, `PNG`, `WebP`, `JFIF`,
+The model keeps namespaces explicit (`EXIF`, `GPS`, `PNG`, `WebP`, `Ogg`, `JFIF`,
 `XMP`, `IPTC`, `ICC`, and `ISOBMFF`),
 retains bounded raw bytes, represents rational and array values without
 flattening them into strings, and exposes warnings separately from tags.
