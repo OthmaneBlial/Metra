@@ -314,7 +314,7 @@ const FORMAT_CAPABILITIES: &[FormatCapabilities] = &[
         format: FileFormat::Icc,
         read: CapabilityStatus::Partial,
         write: CapabilityStatus::Planned,
-        create: CapabilityStatus::Planned,
+        create: CapabilityStatus::Partial,
         delete: CapabilityStatus::Planned,
         lossless_rewrite: CapabilityStatus::Planned,
         streaming: CapabilityStatus::Partial,
@@ -1044,6 +1044,10 @@ mod tests {
         );
         assert_eq!(
             format_capabilities(FileFormat::Xmp).create,
+            CapabilityStatus::Partial
+        );
+        assert_eq!(
+            format_capabilities(FileFormat::Icc).create,
             CapabilityStatus::Partial
         );
         assert_eq!(
