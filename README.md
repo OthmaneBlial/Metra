@@ -237,7 +237,7 @@ are the local validation gate.
 
 ## Roadmap
 
-Avancement global vérifié : **80 %**. Ce chiffre est une moyenne indicative des
+Avancement global vérifié : **85 %**. Ce chiffre est une moyenne indicative des
 huit axes ci-dessous, calculée uniquement sur le code et les tests présents ; il
 ne représente pas un pourcentage de compatibilité ExifTool.
 
