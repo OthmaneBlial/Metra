@@ -106,5 +106,10 @@ enforces metadata/value limits, emits a fixed 1x1 seed image, and validates the
 result through the TIFF reader before returning it. Its path helper refuses an
 existing destination and removes its temporary file on failure.
 
+The PNG creation API applies the same output budget and no-overwrite rule. It
+accepts only printable ASCII `tEXt` keywords, rejects NUL bytes and duplicate
+keywords, compresses one fixed scanline, validates chunk CRCs through the PNG
+reader, and removes its temporary file if path creation fails.
+
 Security reports should include the smallest reproducible input and the exact
 Metra version. Do not include private media or secrets in an issue.

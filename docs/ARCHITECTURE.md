@@ -213,6 +213,10 @@ The CLI also exposes `--create-tiff KEY=VALUE` for the bounded TIFF creation
 seam. It accepts repeated EXIF ASCII assignments and exactly one destination;
 the destination must not already exist.
 
+The parallel PNG seam exposes `PngCreateOptions` and `--create-png KEY=VALUE`.
+It emits a 1x1 RGBA image with CRC-checked `tEXt` chunks, validates the PNG by
+reading it back, and applies the same no-overwrite destination rule.
+
 The public `MetadataEdit` API is the common string-edit boundary for the
 currently supported narrow operations. `FormatHandler::write_metadata` gives
 the same dispatch a stream-oriented contract, while `rewrite_metadata_path` keeps the
