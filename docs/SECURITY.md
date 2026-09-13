@@ -116,5 +116,11 @@ caller-provided packet with the bounded entity-safe XMP reader, enforces both
 metadata and value budgets, and writes only after validation. Existing paths
 are refused and temporary output is removed on failure.
 
+WAV creation emits only a fixed 1x1 PCM container and validates each bounded
+`LIST/INFO` key/value against the existing reader and limits. Duplicate,
+unsupported, NUL-containing, and oversized fields are rejected; path creation
+uses a same-directory temporary file, refuses an existing destination, and
+removes the temporary output on failure.
+
 Security reports should include the smallest reproducible input and the exact
 Metra version. Do not include private media or secrets in an issue.

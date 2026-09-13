@@ -221,6 +221,11 @@ Standalone XMP creation exposes `create_xmp_to_vec` and `create_xmp_path`.
 Callers provide the XML packet directly; Metra applies the same bounded XML
 reader and only creates a new destination after successful validation.
 
+The WAV creation seam exposes `WavCreateOptions`, `create_wav_to_vec`,
+`create_wav_path`, and `--create-wav KEY=VALUE`. It emits a fixed 1x1 PCM
+RIFF/WAVE seed with optional bounded `LIST/INFO` fields, validates the output
+through the WAV reader, and refuses to overwrite an existing destination.
+
 Legacy read queries are handled by a thin argument normalizer: selected
 single-dash aliases such as `-Make` and `-GPSLatitude` become `--tag` selectors,
 while `-json` and `-jsonl` become the corresponding Metra output flags. The
