@@ -5,6 +5,7 @@ use metra_core::{
     FileInfo, Metadata, MetraError, ParseLimits, Result, Source, Tag, TagValue, ValueType, Warning,
 };
 
+use crate::icc::parse_icc_profile;
 use crate::inflate::decompress_zlib;
 use crate::tiff::parse_tiff_from_reader;
 use crate::xmp::parse_xmp;
@@ -165,18 +166,73 @@ fn process_chunk(
                 }
             }
         }
-        b"iCCP" => metadata.add_warning(
-            Warning::new(
-                "unsupported-icc",
-                "PNG contains an ICC profile; ICC parsing is planned",
-            )
-            .at(data_offset),
-        ),
+        b"iCCP" => parse_iccp_chunk(data, data_offset, metadata, limits),
         b"tIME" => parse_time_chunk(data, data_offset, metadata),
         b"pHYs" => parse_phys_chunk(data, data_offset, metadata),
         _ => {}
     }
     Ok(())
+}
+
+fn parse_iccp_chunk(data: &[u8], data_offset: u64, metadata: &mut Metadata, limits: ParseLimits) {
+    let Some(name_end) = data.iter().position(|byte| *byte == 0) else {
+        metadata.add_warning(
+            Warning::new(
+                "invalid-icc",
+                "PNG iCCP chunk has no profile-name separator",
+            )
+            .at(data_offset),
+        );
+        return;
+    };
+    if name_end == 0 || name_end > 79 {
+        metadata.add_warning(
+            Warning::new(
+                "invalid-icc",
+                "PNG iCCP profile name must contain between 1 and 79 bytes",
+            )
+            .at(data_offset),
+        );
+        return;
+    }
+    let Some(compression_method) = data.get(name_end + 1).copied() else {
+        metadata.add_warning(
+            Warning::new("invalid-icc", "PNG iCCP chunk has no compression method").at(data_offset),
+        );
+        return;
+    };
+    if compression_method != 0 {
+        metadata.add_warning(
+            Warning::new(
+                "unsupported-icc-compression",
+                format!("PNG iCCP compression method {compression_method} is unsupported"),
+            )
+            .at(data_offset),
+        );
+        return;
+    }
+    let compressed_start = name_end + 2;
+    let Some(compressed) = data.get(compressed_start..) else {
+        metadata.add_warning(
+            Warning::new("invalid-icc", "PNG iCCP chunk has no compressed profile").at(data_offset),
+        );
+        return;
+    };
+    let profile = match decompress_zlib(compressed, limits, "PNG iCCP profile") {
+        Ok(profile) => profile,
+        Err(error) => {
+            metadata.add_warning(Warning::new("invalid-icc", error.to_string()).at(data_offset));
+            return;
+        }
+    };
+    if let Err(error) = parse_icc_profile(
+        &profile,
+        data_offset + u64::try_from(compressed_start).unwrap_or(u64::MAX),
+        metadata,
+        limits,
+    ) {
+        metadata.add_warning(Warning::new("invalid-icc", error.to_string()).at(data_offset));
+    }
 }
 
 fn parse_ztxt_chunk(data: &[u8], data_offset: u64, metadata: &mut Metadata, limits: ParseLimits) {
@@ -517,6 +573,23 @@ mod tests {
         encoder.finish().unwrap()
     }
 
+    fn minimal_icc_profile() -> Vec<u8> {
+        let mut profile = vec![0_u8; 132];
+        let profile_size = profile.len() as u32;
+        profile[0..4].copy_from_slice(&profile_size.to_be_bytes());
+        profile[8] = 4;
+        profile[9] = 0x30;
+        profile[12..16].copy_from_slice(b"mntr");
+        profile[16..20].copy_from_slice(b"RGB ");
+        profile[20..24].copy_from_slice(b"XYZ ");
+        profile[36..40].copy_from_slice(b"acsp");
+        profile[40..44].copy_from_slice(b"APPL");
+        profile[48..52].copy_from_slice(b"TEST");
+        profile[52..56].copy_from_slice(b"MODL");
+        profile[64..68].copy_from_slice(&1_u32.to_be_bytes());
+        profile
+    }
+
     #[test]
     fn reads_text_time_and_physical_resolution_chunks() {
         let mut bytes = PNG_SIGNATURE.to_vec();
@@ -590,6 +663,33 @@ mod tests {
                 .warnings
                 .iter()
                 .any(|warning| warning.code.contains("compression"))
+        );
+    }
+
+    #[test]
+    fn reads_bounded_icc_profile_from_iccp() {
+        let mut iccp = b"sRGB\0\0".to_vec();
+        iccp.extend_from_slice(&zlib(&minimal_icc_profile()));
+
+        let mut bytes = PNG_SIGNATURE.to_vec();
+        bytes.extend_from_slice(&chunk(b"iCCP", &iccp));
+        bytes.extend_from_slice(&chunk(b"IEND", &[]));
+        let info = FileInfo::new("profile.png".into(), bytes.len() as u64, FileFormat::Png);
+        let metadata = read_png(&mut Cursor::new(bytes), info, ParseLimits::default()).unwrap();
+
+        assert_eq!(
+            metadata.find("ICC:DeviceClass").unwrap().display_value(),
+            "mntr"
+        );
+        assert_eq!(
+            metadata.find("ICC:ColorSpace").unwrap().display_value(),
+            "RGB"
+        );
+        assert!(
+            !metadata
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "unsupported-icc")
         );
     }
 
