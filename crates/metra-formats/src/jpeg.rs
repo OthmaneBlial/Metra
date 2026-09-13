@@ -32,6 +32,7 @@ pub enum JpegEdit {
     DeleteXmp,
     SetIptc { name: String, value: String },
     DeleteIptc { name: String },
+    SetExifAscii { key: String, value: String },
 }
 
 #[derive(Debug, Default)]
@@ -271,6 +272,7 @@ fn rewrite_jpeg_stream<R: Read, W: Write>(
     let comment = comment_action(edits)?;
     let iptc = iptc_action(edits, limits)?;
     let xmp = xmp_action(edits, limits)?;
+    let exif = exif_ascii_action(edits, limits)?;
     let mut soi = [0_u8; 2];
     read_exact(reader, &mut soi, path)?;
     if soi != [0xFF, 0xD8] {
@@ -286,6 +288,7 @@ fn rewrite_jpeg_stream<R: Read, W: Write>(
     let mut comment_inserted = false;
     let mut iptc_inserted = false;
     let mut xmp_inserted = false;
+    let mut exif_rewritten = false;
     loop {
         if segments >= limits.max_jpeg_segments {
             return Err(MetraError::ResourceLimitExceeded {
@@ -315,6 +318,11 @@ fn rewrite_jpeg_stream<R: Read, W: Write>(
                 && !xmp_inserted
             {
                 write_xmp(writer, value)?;
+            }
+            if !exif.is_empty() && !exif_rewritten {
+                return Err(MetraError::WriteFailure {
+                    message: "JPEG EXIF edit did not match an existing ASCII field".to_owned(),
+                });
             }
             write_all(writer, &marker_bytes)?;
             if marker == 0xDA {
@@ -359,6 +367,17 @@ fn rewrite_jpeg_stream<R: Read, W: Write>(
                     write_all(writer, &length_bytes)?;
                     write_all(writer, &data)?;
                 }
+            }
+        } else if marker == 0xE1 && data.starts_with(b"Exif\0\0") {
+            if !exif.is_empty() && !exif_rewritten {
+                if let Some(updated) = rewrite_exif_ascii_segment(&data, limits, &exif)? {
+                    write_segment(writer, &marker_bytes, &length_bytes, &updated)?;
+                    exif_rewritten = true;
+                } else {
+                    write_segment(writer, &marker_bytes, &length_bytes, &data)?;
+                }
+            } else {
+                write_segment(writer, &marker_bytes, &length_bytes, &data)?;
             }
         } else if marker == 0xE1 && data.starts_with(XMP_PREFIX) {
             if let Some(action) = xmp.as_ref() {
@@ -423,6 +442,7 @@ fn comment_action(edits: &[JpegEdit]) -> Result<Option<CommentAction>> {
             JpegEdit::DeleteComments => action = Some(CommentAction::Delete),
             JpegEdit::SetXmp(_) | JpegEdit::DeleteXmp => {}
             JpegEdit::SetIptc { .. } | JpegEdit::DeleteIptc { .. } => {}
+            JpegEdit::SetExifAscii { .. } => {}
         }
     }
     Ok(action)
@@ -441,7 +461,8 @@ fn iptc_action(edits: &[JpegEdit], limits: ParseLimits) -> Result<Option<IptcAct
             JpegEdit::SetComment(_)
             | JpegEdit::DeleteComments
             | JpegEdit::SetXmp(_)
-            | JpegEdit::DeleteXmp => {}
+            | JpegEdit::DeleteXmp
+            | JpegEdit::SetExifAscii { .. } => {}
         }
     }
     Ok(action)
@@ -471,10 +492,374 @@ fn xmp_action(edits: &[JpegEdit], limits: ParseLimits) -> Result<Option<XmpActio
             JpegEdit::SetComment(_)
             | JpegEdit::DeleteComments
             | JpegEdit::SetIptc { .. }
-            | JpegEdit::DeleteIptc { .. } => continue,
+            | JpegEdit::DeleteIptc { .. }
+            | JpegEdit::SetExifAscii { .. } => continue,
         });
     }
     Ok(action)
+}
+
+#[derive(Debug, Clone)]
+struct ExifAsciiEdit {
+    key: String,
+    value: String,
+}
+
+fn exif_ascii_action(edits: &[JpegEdit], limits: ParseLimits) -> Result<Vec<ExifAsciiEdit>> {
+    let mut actions = Vec::new();
+    for edit in edits {
+        let JpegEdit::SetExifAscii { key, value } = edit else {
+            continue;
+        };
+        if value.contains('\0') {
+            return Err(MetraError::WriteFailure {
+                message: format!("JPEG EXIF ASCII value for {key} cannot contain NUL"),
+            });
+        }
+        let encoded_length =
+            value
+                .len()
+                .checked_add(1)
+                .ok_or_else(|| MetraError::WriteFailure {
+                    message: format!("JPEG EXIF ASCII value for {key} length overflowed"),
+                })?;
+        if encoded_length > limits.max_value_bytes {
+            return Err(MetraError::ResourceLimitExceeded {
+                resource: "JPEG EXIF ASCII value".to_owned(),
+                limit: limits.max_value_bytes,
+            });
+        }
+        if actions
+            .iter()
+            .any(|action: &ExifAsciiEdit| action.key == *key)
+        {
+            return Err(MetraError::WriteFailure {
+                message: format!("JPEG EXIF edit for {key} is repeated"),
+            });
+        }
+        actions.push(ExifAsciiEdit {
+            key: key.clone(),
+            value: value.clone(),
+        });
+    }
+    Ok(actions)
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ExifEndian {
+    Little,
+    Big,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum ExifLayout {
+    Classic { endian: ExifEndian },
+    Big { endian: ExifEndian },
+}
+
+impl ExifLayout {
+    const fn endian(self) -> ExifEndian {
+        match self {
+            Self::Classic { endian } | Self::Big { endian } => endian,
+        }
+    }
+
+    const fn entry_size(self) -> usize {
+        match self {
+            Self::Classic { .. } => 12,
+            Self::Big { .. } => 20,
+        }
+    }
+
+    const fn inline_size(self) -> usize {
+        match self {
+            Self::Classic { .. } => 4,
+            Self::Big { .. } => 8,
+        }
+    }
+
+    const fn value_field_start(self) -> usize {
+        match self {
+            Self::Classic { .. } => 8,
+            Self::Big { .. } => 12,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ExifPatch {
+    offset: usize,
+    span: usize,
+    bytes: Vec<u8>,
+}
+
+fn rewrite_exif_ascii_segment(
+    data: &[u8],
+    limits: ParseLimits,
+    edits: &[ExifAsciiEdit],
+) -> Result<Option<Vec<u8>>> {
+    if data.len() < 6 {
+        return Err(MetraError::UnexpectedEof {
+            context: "JPEG EXIF APP1".to_owned(),
+        });
+    }
+    let tiff_data = &data[6..];
+    let mut cursor = std::io::Cursor::new(tiff_data);
+    let file_info = FileInfo::new(
+        PathBuf::from("<jpeg-exif>"),
+        tiff_data.len() as u64,
+        FileFormat::Tiff,
+    );
+    let mut metadata = Metadata::new(file_info.clone());
+    parse_tiff_from_reader(
+        &mut cursor,
+        0,
+        tiff_data.len() as u64,
+        6,
+        &mut metadata,
+        limits,
+    )
+    .map_err(|error| MetraError::WriteFailure {
+        message: format!("cannot parse JPEG EXIF for rewrite: {error}"),
+    })?;
+    let layout = exif_layout(tiff_data)?;
+    let mut patches = Vec::with_capacity(edits.len());
+    let mut missing = Vec::new();
+    for edit in edits {
+        let matches = metadata.find_all(&edit.key);
+        let Some(tag) = matches.as_slice().first().copied() else {
+            missing.push(edit.key.as_str());
+            continue;
+        };
+        if matches.len() != 1 {
+            return Err(MetraError::WriteFailure {
+                message: format!("JPEG EXIF tag {} is repeated", edit.key),
+            });
+        }
+        if !matches!(tag.value, TagValue::String(_)) {
+            return Err(MetraError::WriteFailure {
+                message: format!("JPEG EXIF tag {} is not an ASCII string", edit.key),
+            });
+        }
+        let source_offset = tag.source.offset.ok_or_else(|| MetraError::WriteFailure {
+            message: format!("JPEG EXIF tag {} has no source offset", edit.key),
+        })?;
+        let entry_offset = usize::try_from(source_offset.checked_sub(6).ok_or_else(|| {
+            MetraError::WriteFailure {
+                message: format!("JPEG EXIF tag {} has an invalid source offset", edit.key),
+            }
+        })?)
+        .map_err(|_| MetraError::InvalidOffset {
+            context: format!("JPEG EXIF {} entry", edit.key),
+            offset: source_offset,
+        })?;
+        let entry_end =
+            entry_offset
+                .checked_add(layout.entry_size())
+                .ok_or(MetraError::InvalidOffset {
+                    context: format!("JPEG EXIF {} entry", edit.key),
+                    offset: source_offset,
+                })?;
+        let entry =
+            tiff_data
+                .get(entry_offset..entry_end)
+                .ok_or_else(|| MetraError::UnexpectedEof {
+                    context: format!("JPEG EXIF {} entry", edit.key),
+                })?;
+        let endian = layout.endian();
+        if read_exif_u16(entry, 2, endian) != Some(2) {
+            return Err(MetraError::WriteFailure {
+                message: format!("JPEG EXIF tag {} is not an existing ASCII value", edit.key),
+            });
+        }
+        let count = read_exif_count(entry, layout)?;
+        let count_usize =
+            usize::try_from(count).map_err(|_| MetraError::ResourceLimitExceeded {
+                resource: "JPEG EXIF ASCII value".to_owned(),
+                limit: limits.max_value_bytes,
+            })?;
+        if count == 0 || count_usize > limits.max_value_bytes {
+            return Err(MetraError::ResourceLimitExceeded {
+                resource: "JPEG EXIF ASCII value".to_owned(),
+                limit: limits.max_value_bytes,
+            });
+        }
+        let mut replacement = edit.value.as_bytes().to_vec();
+        replacement.push(0);
+        if replacement.len() > count_usize {
+            return Err(MetraError::WriteFailure {
+                message: format!(
+                    "JPEG EXIF ASCII value for {} needs {} bytes but the field stores {count} bytes",
+                    edit.key,
+                    replacement.len()
+                ),
+            });
+        }
+        replacement.resize(count_usize, 0);
+        let value_offset = if count_usize <= layout.inline_size() {
+            entry_offset.checked_add(layout.value_field_start()).ok_or(
+                MetraError::InvalidOffset {
+                    context: format!("JPEG EXIF inline value {}", edit.key),
+                    offset: source_offset,
+                },
+            )?
+        } else {
+            read_exif_offset(entry, layout)?
+        };
+        let value_end = value_offset
+            .checked_add(count_usize)
+            .ok_or(MetraError::InvalidOffset {
+                context: format!("JPEG EXIF value {}", edit.key),
+                offset: value_offset as u64,
+            })?;
+        if value_end > tiff_data.len() {
+            return Err(MetraError::UnexpectedEof {
+                context: format!("JPEG EXIF value {}", edit.key),
+            });
+        }
+        patches.push(ExifPatch {
+            offset: value_offset + 6,
+            span: count_usize,
+            bytes: replacement,
+        });
+    }
+    if patches.is_empty() {
+        return Ok(None);
+    }
+    if let Some(key) = missing.first() {
+        return Err(MetraError::WriteFailure {
+            message: format!("JPEG EXIF tag {key} does not exist; insertion is not supported"),
+        });
+    }
+    patches.sort_by_key(|patch| patch.offset);
+    for pair in patches.windows(2) {
+        let previous_end =
+            pair[0]
+                .offset
+                .checked_add(pair[0].span)
+                .ok_or(MetraError::InvalidOffset {
+                    context: "JPEG EXIF rewrite patch".to_owned(),
+                    offset: pair[0].offset as u64,
+                })?;
+        if previous_end > pair[1].offset {
+            return Err(MetraError::WriteFailure {
+                message: "JPEG EXIF rewrite patches overlap".to_owned(),
+            });
+        }
+    }
+    let mut updated = data.to_vec();
+    for patch in patches {
+        let end = patch.offset + patch.span;
+        updated[patch.offset..end].copy_from_slice(&patch.bytes);
+    }
+    Ok(Some(updated))
+}
+
+fn exif_layout(bytes: &[u8]) -> Result<ExifLayout> {
+    let header = bytes.get(..8).ok_or_else(|| MetraError::UnexpectedEof {
+        context: "JPEG EXIF TIFF header".to_owned(),
+    })?;
+    let endian = match &header[..2] {
+        b"II" => ExifEndian::Little,
+        b"MM" => ExifEndian::Big,
+        _ => {
+            return Err(MetraError::InvalidHeader {
+                context: "JPEG EXIF TIFF".to_owned(),
+                message: "byte order must be II or MM".to_owned(),
+            });
+        }
+    };
+    match read_exif_u16(header, 2, endian) {
+        Some(42) => Ok(ExifLayout::Classic { endian }),
+        Some(43) => {
+            let extended = bytes.get(4..16).ok_or_else(|| MetraError::UnexpectedEof {
+                context: "JPEG EXIF BigTIFF header".to_owned(),
+            })?;
+            if read_exif_u16(extended, 0, endian) != Some(8)
+                || read_exif_u16(extended, 2, endian) != Some(0)
+            {
+                return Err(MetraError::InvalidHeader {
+                    context: "JPEG EXIF BigTIFF".to_owned(),
+                    message: "invalid offset-size or reserved field".to_owned(),
+                });
+            }
+            Ok(ExifLayout::Big { endian })
+        }
+        Some(magic) => Err(MetraError::InvalidHeader {
+            context: "JPEG EXIF TIFF".to_owned(),
+            message: format!("expected magic 42 or 43, got {magic}"),
+        }),
+        None => Err(MetraError::UnexpectedEof {
+            context: "JPEG EXIF TIFF magic".to_owned(),
+        }),
+    }
+}
+
+fn read_exif_count(entry: &[u8], layout: ExifLayout) -> Result<u64> {
+    match layout {
+        ExifLayout::Classic { endian } => read_exif_u32(entry, 4, endian)
+            .map(u64::from)
+            .ok_or_else(|| MetraError::UnexpectedEof {
+                context: "JPEG EXIF ASCII count".to_owned(),
+            }),
+        ExifLayout::Big { endian } => {
+            read_exif_u64(entry, 4, endian).ok_or_else(|| MetraError::UnexpectedEof {
+                context: "JPEG EXIF BigTIFF ASCII count".to_owned(),
+            })
+        }
+    }
+}
+
+fn read_exif_offset(entry: &[u8], layout: ExifLayout) -> Result<usize> {
+    let offset = match layout {
+        ExifLayout::Classic { endian } => read_exif_u32(entry, 8, endian).map(u64::from),
+        ExifLayout::Big { endian } => read_exif_u64(entry, 12, endian),
+    }
+    .ok_or_else(|| MetraError::UnexpectedEof {
+        context: "JPEG EXIF ASCII offset".to_owned(),
+    })?;
+    usize::try_from(offset).map_err(|_| MetraError::InvalidOffset {
+        context: "JPEG EXIF ASCII offset".to_owned(),
+        offset,
+    })
+}
+
+fn read_exif_u16(bytes: &[u8], offset: usize, endian: ExifEndian) -> Option<u16> {
+    let bytes = bytes.get(offset..offset.checked_add(2)?)?;
+    let bytes: [u8; 2] = bytes.try_into().ok()?;
+    Some(match endian {
+        ExifEndian::Little => u16::from_le_bytes(bytes),
+        ExifEndian::Big => u16::from_be_bytes(bytes),
+    })
+}
+
+fn read_exif_u32(bytes: &[u8], offset: usize, endian: ExifEndian) -> Option<u32> {
+    let bytes = bytes.get(offset..offset.checked_add(4)?)?;
+    let bytes: [u8; 4] = bytes.try_into().ok()?;
+    Some(match endian {
+        ExifEndian::Little => u32::from_le_bytes(bytes),
+        ExifEndian::Big => u32::from_be_bytes(bytes),
+    })
+}
+
+fn read_exif_u64(bytes: &[u8], offset: usize, endian: ExifEndian) -> Option<u64> {
+    let bytes = bytes.get(offset..offset.checked_add(8)?)?;
+    let bytes: [u8; 8] = bytes.try_into().ok()?;
+    Some(match endian {
+        ExifEndian::Little => u64::from_le_bytes(bytes),
+        ExifEndian::Big => u64::from_be_bytes(bytes),
+    })
+}
+
+fn write_segment<W: Write>(
+    writer: &mut W,
+    marker: &[u8],
+    length: &[u8; 2],
+    data: &[u8],
+) -> Result<()> {
+    write_all(writer, marker)?;
+    write_all(writer, length)?;
+    write_all(writer, data)
 }
 
 fn write_comment<W: Write>(writer: &mut W, comment: &[u8]) -> Result<()> {
@@ -1025,6 +1410,30 @@ mod tests {
         bytes
     }
 
+    fn jpeg_with_exif_make(make: &str) -> Vec<u8> {
+        let mut tiff = vec![
+            b'I', b'I', 42, 0, 8, 0, 0, 0, // little-endian TIFF header
+            1, 0, // one IFD0 entry
+            0x0F, 0x01, 2, 0,
+        ];
+        let count = u32::try_from(make.len() + 1).unwrap();
+        tiff.extend_from_slice(&count.to_le_bytes());
+        tiff.extend_from_slice(&26_u32.to_le_bytes());
+        tiff.extend_from_slice(&[0, 0, 0, 0]);
+        assert_eq!(tiff.len(), 26);
+        tiff.extend_from_slice(make.as_bytes());
+        tiff.push(0);
+
+        let mut app1 = b"Exif\0\0".to_vec();
+        app1.extend_from_slice(&tiff);
+        let length = u16::try_from(app1.len() + 2).unwrap();
+        let mut bytes = vec![0xFF, 0xD8, 0xFF, 0xE1];
+        bytes.extend_from_slice(&length.to_be_bytes());
+        bytes.extend_from_slice(&app1);
+        bytes.extend_from_slice(&[0xFF, 0xD9]);
+        bytes
+    }
+
     fn jpeg_with_fragmented_icc() -> Vec<u8> {
         let mut profile = [0_u8; 132];
         let profile_size = profile.len() as u32;
@@ -1081,6 +1490,63 @@ mod tests {
         assert_eq!(
             metadata.find("XMP:dc:format").unwrap().display_value(),
             "image/jpeg"
+        );
+    }
+
+    #[test]
+    fn rewrites_existing_exif_ascii_without_changing_jpeg_layout() {
+        let bytes = jpeg_with_exif_make("Canon");
+        let output = rewrite_jpeg_to_vec(
+            &bytes,
+            FileInfo::new("exif.jpg".into(), bytes.len() as u64, FileFormat::Jpeg),
+            ParseLimits::default(),
+            &[JpegEdit::SetExifAscii {
+                key: "EXIF:Make".to_owned(),
+                value: "Sony".to_owned(),
+            }],
+        )
+        .unwrap();
+        assert_eq!(output.len(), bytes.len());
+        assert_eq!(output[0..6], bytes[0..6]);
+        assert_eq!(output[output.len() - 2..], bytes[bytes.len() - 2..]);
+        let metadata = read_jpeg(
+            &mut Cursor::new(output),
+            FileInfo::new("exif.jpg".into(), 0, FileFormat::Jpeg),
+            ParseLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(metadata.find("EXIF:Make").unwrap().display_value(), "Sony");
+    }
+
+    #[test]
+    fn rejects_exif_ascii_growth_and_missing_fields() {
+        let bytes = jpeg_with_exif_make("Canon");
+        let growth = rewrite_jpeg_to_vec(
+            &bytes,
+            FileInfo::new("exif.jpg".into(), bytes.len() as u64, FileFormat::Jpeg),
+            ParseLimits::default(),
+            &[JpegEdit::SetExifAscii {
+                key: "EXIF:Make".to_owned(),
+                value: "Sony Alpha".to_owned(),
+            }],
+        )
+        .unwrap_err();
+        assert!(growth.to_string().contains("needs"));
+
+        let missing = rewrite_jpeg_to_vec(
+            &bytes,
+            FileInfo::new("exif.jpg".into(), bytes.len() as u64, FileFormat::Jpeg),
+            ParseLimits::default(),
+            &[JpegEdit::SetExifAscii {
+                key: "EXIF:Software".to_owned(),
+                value: "Metra".to_owned(),
+            }],
+        )
+        .unwrap_err();
+        assert!(
+            missing
+                .to_string()
+                .contains("did not match an existing ASCII field")
         );
     }
 

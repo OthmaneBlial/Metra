@@ -187,6 +187,8 @@ fn source_lookup_key(key: &str) -> &str {
         key
     } else if jpeg_xmp_key(key) || png_xmp_key(key) || webp_xmp_key(key) {
         "XMP:Packet"
+    } else if let Some(key) = jpeg_exif_ascii_key(key) {
+        key
     } else {
         key
     }
@@ -216,12 +218,21 @@ pub(crate) fn collect_jpeg(
                 Ok(crate::JpegEdit::SetXmp(value.clone()))
             }
             MetadataEdit::Delete { key } if jpeg_xmp_key(key) => Ok(crate::JpegEdit::DeleteXmp),
-            MetadataEdit::Set { key, value } => iptc_name(key)
-                .map(|name| crate::JpegEdit::SetIptc {
-                    name: name.to_owned(),
-                    value: value.clone(),
-                })
-                .ok_or_else(|| unsupported_edit(format, key)),
+            MetadataEdit::Set { key, value } => {
+                if let Some(exif_key) = jpeg_exif_ascii_key(key) {
+                    Ok(crate::JpegEdit::SetExifAscii {
+                        key: exif_key.to_owned(),
+                        value: value.clone(),
+                    })
+                } else {
+                    iptc_name(key)
+                        .map(|name| crate::JpegEdit::SetIptc {
+                            name: name.to_owned(),
+                            value: value.clone(),
+                        })
+                        .ok_or_else(|| unsupported_edit(format, key))
+                }
+            }
             MetadataEdit::Delete { key } => iptc_name(key)
                 .map(|name| crate::JpegEdit::DeleteIptc {
                     name: name.to_owned(),
@@ -448,6 +459,11 @@ fn jpeg_xmp_key(key: &str) -> bool {
     matches!(key, "JPEG:XMP" | "JPEG:APP1:XMP")
 }
 
+fn jpeg_exif_ascii_key(key: &str) -> Option<&str> {
+    let key = key.strip_prefix("JPEG:").unwrap_or(key);
+    key.starts_with("EXIF:").then_some(key)
+}
+
 fn tiff_ascii_key(key: &str) -> Option<&str> {
     let key = key.strip_prefix("TIFF:")?;
     ["EXIF:", "GPS:", "Interop:", "DNG:"]
@@ -644,5 +660,27 @@ mod tests {
         let error = collect_tiff(&[MetadataEdit::delete("TIFF:EXIF:Make")], FileFormat::Tiff)
             .expect_err("TIFF deletion is not supported by the in-place writer");
         assert!(error.to_string().contains("TIFF:EXIF:Make"));
+    }
+
+    #[test]
+    fn jpeg_collector_accepts_canonical_exif_ascii_keys() {
+        assert_eq!(
+            collect_jpeg(&[MetadataEdit::set("EXIF:Make", "Sony")], FileFormat::Jpeg,).unwrap(),
+            vec![crate::JpegEdit::SetExifAscii {
+                key: "EXIF:Make".to_owned(),
+                value: "Sony".to_owned(),
+            }]
+        );
+        assert_eq!(
+            collect_jpeg(
+                &[MetadataEdit::set("JPEG:EXIF:Make", "Sony")],
+                FileFormat::Jpeg,
+            )
+            .unwrap(),
+            vec![crate::JpegEdit::SetExifAscii {
+                key: "EXIF:Make".to_owned(),
+                value: "Sony".to_owned(),
+            }]
+        );
     }
 }

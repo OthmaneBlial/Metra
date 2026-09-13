@@ -60,6 +60,30 @@ fn minimal_exif_jpeg() -> Vec<u8> {
     jpeg
 }
 
+fn minimal_exif_jpeg_with_make(make: &str) -> Vec<u8> {
+    let mut tiff = vec![
+        b'I', b'I', 42, 0, 8, 0, 0, 0, // little-endian TIFF header
+        1, 0, // one IFD0 entry
+        0x0F, 0x01, 2, 0,
+    ];
+    let count = u32::try_from(make.len() + 1).expect("fixture value should fit");
+    tiff.extend_from_slice(&count.to_le_bytes());
+    tiff.extend_from_slice(&26_u32.to_le_bytes());
+    tiff.extend_from_slice(&[0, 0, 0, 0]);
+    assert_eq!(tiff.len(), 26);
+    tiff.extend_from_slice(make.as_bytes());
+    tiff.push(0);
+
+    let mut exif = b"Exif\0\0".to_vec();
+    exif.extend_from_slice(&tiff);
+    let segment_length = u16::try_from(exif.len() + 2).expect("fixture fits in a JPEG segment");
+    let mut jpeg = vec![0xFF, 0xD8, 0xFF, 0xE1];
+    jpeg.extend_from_slice(&segment_length.to_be_bytes());
+    jpeg.extend_from_slice(&exif);
+    jpeg.extend_from_slice(&[0xFF, 0xD9]);
+    jpeg
+}
+
 fn jpeg_iptc_dataset(dataset: u8, value: &str) -> Vec<u8> {
     let value = value.as_bytes();
     let mut bytes = vec![0x1C, 2, dataset];
@@ -863,6 +887,53 @@ fn cli_can_copy_a_jpeg_comment_between_files() {
     assert_eq!(
         metadata.find("JPEG:Comment").unwrap().display_value(),
         "copied value"
+    );
+}
+
+#[test]
+fn cli_can_set_and_copy_existing_jpeg_exif_ascii() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.file("source-exif.jpg", &minimal_exif_jpeg_with_make("Canon"));
+    let target = directory.file("target-exif.jpg", &minimal_exif_jpeg_with_make("Nikon"));
+
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "JPEG:EXIF:Make=Sony",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("EXIF:Make")
+            .unwrap()
+            .display_value(),
+        "Sony"
+    );
+
+    let copy_assignment = format!(
+        "JPEG:EXIF:Make={}",
+        source.to_str().expect("UTF-8 test path")
+    );
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            copy_assignment.as_str(),
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("EXIF:Make")
+            .unwrap()
+            .display_value(),
+        "Canon"
     );
 }
 

@@ -272,6 +272,7 @@ enum EditRequest {
 #[derive(Debug)]
 enum CopyKey {
     JpegComment,
+    JpegExifAscii(String),
     JpegXmp,
     JpegIptc(String),
     TiffAscii(String),
@@ -305,6 +306,14 @@ fn parse_edits(
             .split_once('=')
             .ok_or_else(|| "--set expects KEY=VALUE".to_owned())?;
         if key != "JPEG:Comment" {
+            if let Some(exif_key) = jpeg_exif_ascii_key(key) {
+                return Ok(Some(EditRequest::DirectJpeg(vec![
+                    metra::JpegEdit::SetExifAscii {
+                        key: exif_key.to_owned(),
+                        value: value.to_owned(),
+                    },
+                ])));
+            }
             if let Some(tiff_key) = tiff_ascii_key(key) {
                 return Ok(Some(EditRequest::DirectTiff(vec![
                     metra::TiffEdit::SetAscii {
@@ -490,6 +499,8 @@ fn parse_edits(
         }
         let key = if key == "JPEG:Comment" {
             CopyKey::JpegComment
+        } else if let Some(exif_key) = jpeg_exif_ascii_key(key) {
+            CopyKey::JpegExifAscii(exif_key.to_owned())
         } else if let Some(tiff_key) = tiff_ascii_key(key) {
             CopyKey::TiffAscii(tiff_key.to_owned())
         } else if isobmff_text_key(key) {
@@ -540,6 +551,11 @@ fn tiff_ascii_key(key: &str) -> Option<&str> {
         .iter()
         .any(|prefix| key.starts_with(prefix))
         .then_some(key)
+}
+
+fn jpeg_exif_ascii_key(key: &str) -> Option<&str> {
+    let key = key.strip_prefix("JPEG:").unwrap_or(key);
+    key.starts_with("EXIF:").then_some(key)
 }
 
 fn isobmff_text_key(key: &str) -> bool {
@@ -634,7 +650,7 @@ fn svg_text_key(key: &str) -> Option<SvgTextKey> {
 
 fn unsupported_edit_message(key: &str) -> String {
     format!(
-        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:XMP, IPTC:<dataset>, TIFF:EXIF:<ASCII tag>, ISOBMFF:<text field>, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, Ogg:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
+        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:EXIF:<ASCII tag>, JPEG:XMP, IPTC:<dataset>, TIFF:EXIF:<ASCII tag>, ISOBMFF:<text field>, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, Ogg:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
     )
 }
 
@@ -961,6 +977,29 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path, limits: ParseLimit
                 return ExitCode::from(1);
             };
             let edits = [metra::JpegEdit::SetComment(comment.clone())];
+            apply_jpeg_edits(paths, &edits, limits)
+        }
+        CopyKey::JpegExifAscii(key) => {
+            if source_metadata.file_info.format != metra::FileFormat::Jpeg {
+                eprintln!(
+                    "metra: {}: source format {} is not JPEG",
+                    source.display(),
+                    source_metadata.file_info.format
+                );
+                return ExitCode::from(1);
+            }
+            let Some(tag) = source_metadata.find(&key) else {
+                eprintln!("metra: {}: source does not contain {key}", source.display());
+                return ExitCode::from(1);
+            };
+            let metra::TagValue::String(value) = &tag.value else {
+                eprintln!("metra: {}: {key} is not an ASCII string", source.display());
+                return ExitCode::from(1);
+            };
+            let edits = [metra::JpegEdit::SetExifAscii {
+                key,
+                value: value.clone(),
+            }];
             apply_jpeg_edits(paths, &edits, limits)
         }
         CopyKey::JpegXmp => {
