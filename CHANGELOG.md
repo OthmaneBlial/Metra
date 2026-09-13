@@ -59,7 +59,7 @@ Initial read-first foundation with narrow validated rewrites:
   including expansion-limit warnings instead of unbounded allocation;
 - added bounded PNG `iCCP` decompression and typed ICC profile inspection;
 - expanded GPS derived values with validated decimal coordinates, signed
-  altitude, image direction, and seconds-since-midnight time;
+  altitude, image direction, seconds-since-midnight time, and SI speed;
 - expanded ISO-BMFF inspection with `ispe` dimensions, item/handler fields,
   and direct XMP/EXIF decoding when the metadata boxes are available;
 - added deterministic CSV output with typed JSON values in the value column;
