@@ -2,7 +2,8 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
 use metra_core::{
-    FileInfo, Metadata, MetraError, ParseLimits, Result, Source, Tag, TagValue, ValueType, Warning,
+    FileFormat, FileInfo, Metadata, MetraError, ParseLimits, Result, Source, Tag, TagValue,
+    ValueType, Warning,
 };
 use quick_xml::Reader;
 use quick_xml::events::Event;
@@ -218,10 +219,26 @@ pub fn read_wav<R: Read + Seek>(
                 }
             }
             b"id3 " => {
-                metadata.add_warning(
-                    Warning::new("wav-id3", "WAV ID3 chunk is present but not decoded")
+                let bounded = read_bounded(
+                    reader,
+                    data_offset,
+                    length,
+                    &path,
+                    limits,
+                    &mut metadata_bytes,
+                    "WAV ID3 chunk",
+                )?;
+                if let Some(data) = bounded {
+                    parse_id3_chunk(&data, data_offset, limits, &mut metadata);
+                } else {
+                    metadata.add_warning(
+                        Warning::new(
+                            "wav-metadata-limit",
+                            "WAV ID3 chunk was skipped due to limits",
+                        )
                         .at(data_offset),
-                );
+                    );
+                }
             }
             b"data" => {}
             _ => {
@@ -632,6 +649,31 @@ fn parse_bext(data: &[u8], offset: u64, metadata: &mut Metadata) {
     }
 }
 
+fn parse_id3_chunk(data: &[u8], offset: u64, limits: ParseLimits, metadata: &mut Metadata) {
+    let info = FileInfo::new(
+        "<embedded WAV ID3>".into(),
+        data.len() as u64,
+        FileFormat::Mp3,
+    );
+    let mut reader = std::io::Cursor::new(data);
+    let embedded = match crate::id3::read_mp3(&mut reader, info, limits) {
+        Ok(embedded) => embedded,
+        Err(error) => {
+            metadata.add_warning(Warning::new("invalid-wav-id3", error.to_string()).at(offset));
+            return;
+        }
+    };
+    for mut tag in embedded.tags {
+        tag.source.offset = tag.source.offset.map(|value| value.saturating_add(offset));
+        tag.source.container = format!("WAV/{}", tag.source.container);
+        metadata.add_tag(tag);
+    }
+    for mut warning in embedded.warnings {
+        warning.offset = warning.offset.map(|value| value.saturating_add(offset));
+        metadata.add_warning(warning);
+    }
+}
+
 fn info_name(kind: &[u8; 4]) -> Option<&'static str> {
     Some(match kind {
         b"INAM" => "Title",
@@ -840,6 +882,40 @@ mod tests {
                 .warnings
                 .iter()
                 .any(|warning| warning.code == "wav-ixml")
+        );
+    }
+
+    #[test]
+    fn delegates_embedded_id3_to_the_id3_reader() {
+        let mut id3 = b"ID3".to_vec();
+        id3.extend_from_slice(&[4, 0, 0, 0, 0, 0, 16]);
+        id3.extend_from_slice(b"TIT2");
+        id3.extend_from_slice(&[0, 0, 0, 6, 0, 0, 3]);
+        id3.extend_from_slice(b"Track");
+        assert_eq!(id3.len(), 26);
+
+        let mut body = chunk(b"id3 ", &id3);
+        body.extend(chunk(b"data", &[0, 0]));
+        let mut bytes = b"RIFF".to_vec();
+        bytes.extend_from_slice(&((4 + body.len()) as u32).to_le_bytes());
+        bytes.extend_from_slice(b"WAVE");
+        bytes.extend(body);
+        let info = FileInfo::new(
+            "embedded-id3.wav".into(),
+            bytes.len() as u64,
+            FileFormat::Wav,
+        );
+        let metadata = read_wav(&mut Cursor::new(bytes), info, ParseLimits::default()).unwrap();
+
+        let title = metadata.find("ID3:Title").expect("embedded ID3 title");
+        assert_eq!(title.display_value(), "Track");
+        assert_eq!(title.source.container, "WAV/MP3");
+        assert_eq!(title.source.offset, Some(40));
+        assert!(
+            !metadata
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "wav-id3")
         );
     }
 
