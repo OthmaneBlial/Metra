@@ -182,6 +182,20 @@ pub fn read_ogg<R: Read + Seek>(
                     &path,
                     "Ogg page body",
                 )?;
+                let declared_crc =
+                    u32::from_le_bytes(header[22..26].try_into().expect("Ogg page checksum bytes"));
+                let computed_crc = page_crc(&header, &lacing, &body);
+                if declared_crc != computed_crc {
+                    metadata.add_warning(
+                        Warning::new(
+                            "ogg-crc",
+                            format!(
+                                "Ogg page checksum {declared_crc:08X} does not match computed {computed_crc:08X}"
+                            ),
+                        )
+                        .at(cursor + 22),
+                    );
+                }
                 metadata_bytes = next_metadata_bytes;
                 let state = streams.entry(serial).or_default();
                 process_page(
@@ -219,6 +233,32 @@ pub fn read_ogg<R: Read + Seek>(
     );
     metadata.sort_tags();
     Ok(metadata)
+}
+
+fn page_crc(header: &[u8], lacing: &[u8], body: &[u8]) -> u32 {
+    let mut normalized_header = [0_u8; OGG_PAGE_HEADER_LENGTH];
+    normalized_header.copy_from_slice(header);
+    normalized_header[22..26].fill(0);
+    let mut crc_input = Vec::with_capacity(normalized_header.len() + lacing.len() + body.len());
+    crc_input.extend_from_slice(&normalized_header);
+    crc_input.extend_from_slice(lacing);
+    crc_input.extend_from_slice(body);
+    ogg_crc(&crc_input)
+}
+
+fn ogg_crc(bytes: &[u8]) -> u32 {
+    let mut crc = 0_u32;
+    for byte in bytes {
+        crc ^= u32::from(*byte) << 24;
+        for _ in 0..8 {
+            crc = if crc & 0x8000_0000 != 0 {
+                (crc << 1) ^ 0x04C1_1DB7
+            } else {
+                crc << 1
+            };
+        }
+    }
+    crc
 }
 
 pub(crate) fn is_ogg_signature(bytes: &[u8]) -> bool {
@@ -885,6 +925,8 @@ mod tests {
         page.push(1);
         page.push(packet.len() as u8);
         page.extend_from_slice(packet);
+        let checksum = page_crc(&page[..27], &page[27..28], packet);
+        page[22..26].copy_from_slice(&checksum.to_le_bytes());
         page
     }
 
@@ -1045,6 +1087,32 @@ mod tests {
             metadata.find("Ogg:Vendor").unwrap().display_value(),
             "Metra"
         );
+    }
+
+    #[test]
+    fn warns_on_invalid_metadata_page_crc_without_failing_read() {
+        let mut packet = b"OpusHead".to_vec();
+        packet.extend_from_slice(&[1, 1]);
+        packet.extend_from_slice(&0_u16.to_le_bytes());
+        packet.extend_from_slice(&48_000_u32.to_le_bytes());
+        packet.extend_from_slice(&0_i16.to_le_bytes());
+        packet.push(0);
+        let mut bytes = page(10, 0, 0x02, &packet);
+        bytes[22] ^= 0xFF;
+
+        let metadata = read_ogg(
+            &mut Cursor::new(bytes.clone()),
+            info(&bytes),
+            ParseLimits::default(),
+        )
+        .expect("CRC mismatch should remain a recoverable warning");
+        assert!(
+            metadata
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "ogg-crc")
+        );
+        assert_eq!(metadata.find("Ogg:Codec").unwrap().display_value(), "Opus");
     }
 
     #[test]
