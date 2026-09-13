@@ -1,6 +1,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, mpsc};
+use std::thread;
 
 use clap::Parser;
 use metra_core::{Metadata, ParseLimits};
@@ -25,6 +28,10 @@ struct Arguments {
     #[arg(short = 'r', long)]
     recursive: bool,
 
+    /// Maximum number of files to inspect concurrently.
+    #[arg(long, default_value_t = 1, value_parser = parse_jobs)]
+    jobs: usize,
+
     /// Files to inspect.
     #[arg(value_name = "FILE", required = true)]
     files: Vec<PathBuf>,
@@ -40,13 +47,7 @@ fn main() -> ExitCode {
         }
     };
 
-    let mut results = Vec::with_capacity(paths.len());
-    for path in paths {
-        results.push((
-            path.clone(),
-            metra::read_with_limits(&path, ParseLimits::default()),
-        ));
-    }
+    let results = inspect_paths(&paths, arguments.jobs);
 
     let failures = results.iter().filter(|(_, result)| result.is_err()).count();
     if arguments.json || arguments.jsonl {
@@ -69,6 +70,68 @@ fn main() -> ExitCode {
     } else {
         ExitCode::from(1)
     }
+}
+
+fn parse_jobs(value: &str) -> std::result::Result<usize, String> {
+    let jobs = value
+        .parse::<usize>()
+        .map_err(|error| format!("invalid jobs value: {error}"))?;
+    if jobs == 0 {
+        Err("jobs must be at least 1".to_owned())
+    } else {
+        Ok(jobs)
+    }
+}
+
+fn inspect_paths(paths: &[PathBuf], jobs: usize) -> Vec<(PathBuf, metra::Result<Metadata>)> {
+    if jobs <= 1 || paths.len() <= 1 {
+        return paths
+            .iter()
+            .map(|path| {
+                (
+                    path.clone(),
+                    metra::read_with_limits(path, ParseLimits::default()),
+                )
+            })
+            .collect();
+    }
+
+    let shared_paths = Arc::new(paths.to_vec());
+    let next_index = Arc::new(AtomicUsize::new(0));
+    let (sender, receiver) = mpsc::channel();
+    let worker_count = jobs.min(paths.len());
+    let mut slots = (0..paths.len())
+        .map(|_| None)
+        .collect::<Vec<Option<(PathBuf, metra::Result<Metadata>)>>>();
+
+    thread::scope(|scope| {
+        for _ in 0..worker_count {
+            let paths = Arc::clone(&shared_paths);
+            let next_index = Arc::clone(&next_index);
+            let sender = sender.clone();
+            scope.spawn(move || {
+                loop {
+                    let index = next_index.fetch_add(1, Ordering::Relaxed);
+                    let Some(path) = paths.get(index).cloned() else {
+                        break;
+                    };
+                    let result = metra::read_with_limits(&path, ParseLimits::default());
+                    if sender.send((index, path, result)).is_err() {
+                        break;
+                    }
+                }
+            });
+        }
+        drop(sender);
+        for (index, path, result) in receiver {
+            slots[index] = Some((path, result));
+        }
+    });
+
+    slots
+        .into_iter()
+        .map(|slot| slot.expect("every scheduled path should produce a result"))
+        .collect()
 }
 
 fn collect_paths(inputs: &[PathBuf], recursive: bool) -> Result<Vec<PathBuf>, String> {

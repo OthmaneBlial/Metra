@@ -116,3 +116,34 @@ fn jsonl_and_human_modes_are_available() {
     assert!(stdout.contains("Format: JPEG"));
     assert!(stdout.contains("EXIF:Make"));
 }
+
+#[test]
+fn jobs_keep_batch_output_in_path_order() {
+    let directory = TemporaryDirectory::new();
+    let first = directory.file("camera-a.jpg", &minimal_exif_jpeg());
+    let second = directory.file("camera-b.jpg", &minimal_exif_jpeg());
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--jsonl",
+            "--jobs",
+            "2",
+            second.to_str().expect("UTF-8 test path"),
+            first.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).expect("JSONL output should be UTF-8");
+    let mut lines = stdout.lines();
+    assert!(
+        lines
+            .next()
+            .is_some_and(|line| line.contains("camera-a.jpg"))
+    );
+    assert!(
+        lines
+            .next()
+            .is_some_and(|line| line.contains("camera-b.jpg"))
+    );
+    assert!(lines.next().is_none());
+}
