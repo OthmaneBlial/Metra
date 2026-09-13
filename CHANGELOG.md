@@ -61,6 +61,8 @@ Initial read-first foundation with narrow validated rewrites:
 - extended `FormatHandler` with a seekable `write_metadata` contract, routing
   supported writers through the same canonical edit validation and rejecting
   formats without a validated writer;
+- added structured `Date`, `Time`, and `DateTime` tag values with strict EXIF
+  and GPS temporal decoding while retaining the original raw bytes;
 - added public `copy_metadata_path` source-first copying for supported string
   and UTF-8 XMP values through the validated target rewrite pipeline;
 - added shared safe XML character-reference handling for SVG and XMP while

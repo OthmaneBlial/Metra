@@ -45,7 +45,9 @@ relative to the correct TIFF payload while source offsets can still be
 reported against the containing file. Classic TIFF and BigTIFF headers use the
 same checked parser with variant-specific entry widths and 64-bit values. EXIF
 `UserComment` ASCII/Unicode prefixes
-are decoded while the original bytes remain available. JPEG, PNG, and WebP delegate structured
+are decoded while the original bytes remain available. Known EXIF date-time
+strings and GPS date/time rationals become structured temporal values only
+after component and range validation. JPEG, PNG, and WebP delegate structured
 XMP to the bounded XML reader; PNG text and `iCCP` chunks use a zlib decoder
 capped by `ParseLimits`; Photoshop resources delegate IPTC IIM parsing,
 and ICC payloads delegate bounded profile-header, typed illuminant, and tag-table inspection; JPEG
@@ -173,8 +175,8 @@ currently supported narrow operations. `FormatHandler::write_metadata` gives
 the same dispatch a stream-oriented contract, while `rewrite_metadata_path` keeps the
 safe writer contract by detecting the input first and delegating to the
 format-specific atomic implementation; `rewrite_metadata_to_vec` provides the
-same dispatch for callers that own the byte buffer. Numeric/binary mutation,
-and `copy_metadata_path` reads the source value before rewriting the target.
+same dispatch for callers that own the byte buffer, and `copy_metadata_path`
+reads the source value before rewriting the target.
 Numeric/binary mutation, new metadata block creation, and deletion semantics
 that require layout changes remain intentionally outside this API.
 
