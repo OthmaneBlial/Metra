@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -59,29 +60,33 @@ fn main() -> ExitCode {
         }
     };
 
-    let results = inspect_paths(&paths, arguments.jobs);
-
-    let failures = results.iter().filter(|(_, result)| result.is_err()).count();
-    if arguments.csv {
-        emit_csv(&results);
-    } else if arguments.toml {
-        emit_toml(&results);
-    } else if arguments.yaml {
-        emit_yaml(&results);
-    } else if arguments.json || arguments.jsonl {
-        emit_json(&results, arguments.jsonl);
-    } else {
-        for (_, result) in &results {
-            if let Ok(metadata) = result {
-                print_human(metadata);
-            }
+    let failures = if arguments.json || arguments.toml || arguments.yaml {
+        let results = inspect_paths(&paths, arguments.jobs);
+        let failures = results.iter().filter(|(_, result)| result.is_err()).count();
+        if arguments.toml {
+            emit_toml(&results);
+        } else if arguments.yaml {
+            emit_yaml(&results);
+        } else {
+            emit_json(&results, false);
         }
-        for (path, result) in &results {
-            if let Err(error) = result {
+        failures
+    } else {
+        if arguments.csv {
+            println!("path,format,namespace,group,id,name,value_type,value");
+        }
+        inspect_paths_streaming(&paths, arguments.jobs, |path, result| {
+            if arguments.csv {
+                emit_csv_record(&path, &result);
+            } else if arguments.jsonl {
+                emit_jsonl_record(&path, &result);
+            } else if let Ok(metadata) = &result {
+                print_human(metadata);
+            } else if let Err(error) = &result {
                 eprintln!("metra: {}: {error}", path.display());
             }
-        }
-    }
+        })
+    };
 
     if failures == 0 {
         ExitCode::SUCCESS
@@ -150,6 +155,71 @@ fn inspect_paths(paths: &[PathBuf], jobs: usize) -> Vec<(PathBuf, metra::Result<
         .into_iter()
         .map(|slot| slot.expect("every scheduled path should produce a result"))
         .collect()
+}
+
+fn inspect_paths_streaming<F>(paths: &[PathBuf], jobs: usize, mut emit: F) -> usize
+where
+    F: FnMut(PathBuf, metra::Result<Metadata>),
+{
+    if jobs <= 1 || paths.len() <= 1 {
+        let mut failures = 0;
+        for path in paths {
+            let result = metra::read_with_limits(path, ParseLimits::default());
+            if result.is_err() {
+                failures += 1;
+            }
+            emit(path.clone(), result);
+        }
+        return failures;
+    }
+
+    let shared_paths = Arc::new(paths.to_vec());
+    let next_index = Arc::new(AtomicUsize::new(0));
+    let (sender, receiver) = mpsc::channel();
+    let worker_count = jobs.min(paths.len());
+    let mut pending = BTreeMap::new();
+    let mut next_to_emit = 0_usize;
+    let mut failures = 0_usize;
+
+    thread::scope(|scope| {
+        for _ in 0..worker_count {
+            let paths = Arc::clone(&shared_paths);
+            let next_index = Arc::clone(&next_index);
+            let sender = sender.clone();
+            scope.spawn(move || {
+                loop {
+                    let index = next_index.fetch_add(1, Ordering::Relaxed);
+                    let Some(path) = paths.get(index).cloned() else {
+                        break;
+                    };
+                    let result = metra::read_with_limits(&path, ParseLimits::default());
+                    if sender.send((index, path, result)).is_err() {
+                        break;
+                    }
+                }
+            });
+        }
+        drop(sender);
+        for (index, path, result) in receiver {
+            pending.insert(index, (path, result));
+            while let Some((path, result)) = pending.remove(&next_to_emit) {
+                if result.is_err() {
+                    failures += 1;
+                }
+                emit(path, result);
+                next_to_emit += 1;
+            }
+        }
+    });
+
+    while let Some((path, result)) = pending.remove(&next_to_emit) {
+        if result.is_err() {
+            failures += 1;
+        }
+        emit(path, result);
+        next_to_emit += 1;
+    }
+    failures
 }
 
 fn collect_paths(inputs: &[PathBuf], recursive: bool) -> Result<Vec<PathBuf>, String> {
@@ -227,42 +297,50 @@ fn emit_json(results: &[(PathBuf, metra::Result<Metadata>)], jsonl: bool) {
     }
 }
 
-fn emit_csv(results: &[(PathBuf, metra::Result<Metadata>)]) {
-    println!("path,format,namespace,group,id,name,value_type,value");
-    for (path, result) in results {
-        let Ok(metadata) = result else {
-            if let Err(error) = result {
-                eprintln!("metra: {}: {error}", path.display());
-            }
-            continue;
-        };
-        if metadata.tags.is_empty() {
-            println!(
-                "{},{},,,,,,",
-                csv_field(&path.display().to_string()),
-                csv_field(&metadata.file_info.format.to_string())
-            );
-            continue;
+fn emit_csv_record(path: &Path, result: &metra::Result<Metadata>) {
+    let Ok(metadata) = result else {
+        if let Err(error) = result {
+            eprintln!("metra: {}: {error}", path.display());
         }
-        for tag in &metadata.tags {
-            let id = tag
-                .id
-                .map(|value| format!("0x{value:08X}"))
-                .unwrap_or_default();
-            let value = serde_json::to_string(&tag.value)
-                .unwrap_or_else(|_| format!("\"{}\"", tag.display_value()));
-            println!(
-                "{},{},{},{},{},{},{},{}",
-                csv_field(&path.display().to_string()),
-                csv_field(&metadata.file_info.format.to_string()),
-                csv_field(&tag.namespace),
-                csv_field(&tag.group),
-                csv_field(&id),
-                csv_field(&tag.name),
-                csv_field(&format!("{:?}", tag.value_type)),
-                csv_field(&value)
-            );
+        return;
+    };
+    if metadata.tags.is_empty() {
+        println!(
+            "{},{},,,,,,",
+            csv_field(&path.display().to_string()),
+            csv_field(&metadata.file_info.format.to_string())
+        );
+        return;
+    }
+    for tag in &metadata.tags {
+        let id = tag
+            .id
+            .map(|value| format!("0x{value:08X}"))
+            .unwrap_or_default();
+        let value = serde_json::to_string(&tag.value)
+            .unwrap_or_else(|_| format!("\"{}\"", tag.display_value()));
+        println!(
+            "{},{},{},{},{},{},{},{}",
+            csv_field(&path.display().to_string()),
+            csv_field(&metadata.file_info.format.to_string()),
+            csv_field(&tag.namespace),
+            csv_field(&tag.group),
+            csv_field(&id),
+            csv_field(&tag.name),
+            csv_field(&format!("{:?}", tag.value_type)),
+            csv_field(&value)
+        );
+    }
+}
+
+fn emit_jsonl_record(path: &Path, result: &metra::Result<Metadata>) {
+    if let Ok(metadata) = result {
+        match serde_json::to_string(metadata) {
+            Ok(line) => println!("{line}"),
+            Err(error) => eprintln!("metra: cannot serialize {}: {error}", path.display()),
         }
+    } else if let Err(error) = result {
+        eprintln!("metra: {}: {error}", path.display());
     }
 }
 
