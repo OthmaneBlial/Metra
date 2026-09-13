@@ -36,8 +36,8 @@ This crate owns magic-byte detection and format-specific readers. Readers are
 separate modules rather than one parser with format-specific branches spread
 through the CLI.
 
-The TIFF reader is the low-level building block for EXIF in JPEG, PNG, and
-WebP. It accepts a bounded random-access region, so embedded offsets remain
+The TIFF reader is the low-level building block for EXIF in JPEG, PNG, WebP,
+and embedded PSD resources. It accepts a bounded random-access region, so embedded offsets remain
 relative to the correct TIFF payload while source offsets can still be
 reported against the containing file. EXIF `UserComment` ASCII/Unicode prefixes
 are decoded while the original bytes remain available. JPEG, PNG, and WebP delegate structured
@@ -54,7 +54,10 @@ proprietary MakerNote tag decoding remains separate. TIFF also derives GPS
 decimal coordinates, signed altitude, image direction, speed
 in meters per second, and seconds since midnight only after validating their
 rational values, units, and ranges.
-The ISO-BMFF
+The PSD reader validates PSD/PSB sections, emits typed header properties, and
+delegates bounded XMP, IPTC, ICC, and embedded EXIF resources to the shared
+readers. Unknown Photoshop resources remain available as bounded byte values;
+layer and pixel data are skipped. The ISO-BMFF
 reader walks bounded boxes and exposes brands, image properties, direct
 XMP/EXIF boxes, and a conservative subset of QuickTime-style `ilst` text items.
 The MP3 reader handles bounded ID3v2 frame tables, ID3v1 fixed fields, and a
@@ -139,6 +142,7 @@ The following changes are deferred until their acceptance tests exist:
   meaningful shared operations;
 - additional manufacturer-specific MakerNote modules beyond the bounded Nikon
   Type 2 reader;
+- PSD/PSB resource writers and layer/pixel metadata modules;
 - deeper HEIF/AVIF and media metadata modules;
 - a generalized lossless block-preservation abstraction across more formats;
 - cancellation and interrupt propagation for long-running batches.

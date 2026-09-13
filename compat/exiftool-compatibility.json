@@ -73,6 +73,14 @@
       "delete": "partial",
       "lossless_rewrite": "partial",
       "streaming": "partial"
+    },
+    "PSD": {
+      "read": "partial",
+      "write": "planned",
+      "create": "planned",
+      "delete": "planned",
+      "lossless_rewrite": "planned",
+      "streaming": "partial"
     }
   },
   "metadata_families": {

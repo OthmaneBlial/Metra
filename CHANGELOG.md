@@ -69,6 +69,9 @@ Initial read-first foundation with narrow validated rewrites:
   other detected vendors remain header-only;
 - catalogued the bounded Nikon MakerNote identifiers centrally and covered the
   EXIF integration path with absolute source-offset assertions;
+- added bounded PSD/PSB inspection for headers, dimensions, common Photoshop
+  image resources, delegated XMP/IPTC/ICC/EXIF metadata, and unknown-resource
+  byte preservation;
 - preserved numeric IPTC-IIM dataset identifiers in parsed tags and stable lookup;
 - decoded EXIF `UserComment` ASCII and Unicode payloads while preserving raw bytes;
 - expanded canonical EXIF names for common image, exposure, color, and lens tags;
