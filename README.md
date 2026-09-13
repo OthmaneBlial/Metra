@@ -18,7 +18,7 @@ bounded container parsing
         ↓
 typed Rust metadata model
         ↓
-human-readable, JSON, or JSON Lines output
+human-readable or structured output
 ```
 
 Implemented today:
@@ -36,7 +36,7 @@ Implemented today:
 | PDF | Header/version, bounded Info dictionaries, PDF string decoding, and embedded XMP packets when directly available |
 | WAV | RIFF/WAVE chunks, `fmt ` audio properties, `LIST/INFO`, Broadcast Wave `bext`, and bounded validation |
 | Output | Human-readable text, JSON, JSON Lines, CSV, TOML, or YAML; schema version `1` is retained in structured output |
-| Batch | Deterministic path ordering with bounded parallel inspection through `--jobs N` |
+| Batch | Deterministic path ordering with bounded parallel inspection through `--jobs N`; human, JSON Lines, and CSV modes stream results with a bounded out-of-order buffer |
 | Safety | Checked offsets, bounded reads, recursion and entry limits, deterministic recursive traversal, and structured warnings |
 
 Writing, creation, deletion, metadata copying, MakerNotes interpretation, and
@@ -144,13 +144,18 @@ boxes, and CLI JSON/human output. Real-world corpus and differential
 compatibility tests are separate follow-up gates; passing these local tests does
 not claim complete ExifTool compatibility.
 
+For batch output, human-readable, JSON Lines, and CSV modes render as results
+arrive while preserving deterministic input-path order. JSON, TOML, and YAML
+need a complete document or collection, so they intentionally retain their
+successful results until serialization.
+
 GitHub Actions automatic push and pull-request triggers are currently disabled;
 the workflow remains available for a deliberate manual run. The commands above
 are the local validation gate.
 
 ## Roadmap
 
-Avancement global vérifié : **51 %**. Ce chiffre est une moyenne indicative des
+Avancement global vérifié : **53 %**. Ce chiffre est une moyenne indicative des
 huit axes ci-dessous, calculée uniquement sur le code et les tests présents ; il
 ne représente pas un pourcentage de compatibilité ExifTool.
 
@@ -160,7 +165,7 @@ ne représente pas un pourcentage de compatibilité ExifTool.
 4. **65 %** — Étendre XMP/IPTC/ICC/ID3 et isoler les espaces MakerNote.
 5. **0 %** — Concevoir l’écriture read-modify-write avec validation et remplacement atomique.
 6. **0 %** — Ajouter `set`/`delete`/`copy` après les tests round-trip.
-7. **45 %** — Ajouter le traitement parallèle contrôlé et les benchmarks sur collections réelles.
+7. **60 %** — Ajouter le traitement parallèle contrôlé, le rendu en flux borné et les benchmarks sur collections réelles.
 8. **100 %** — Étendre les sorties structurées avec CSV, TOML et YAML versionnés.
 
 ## License

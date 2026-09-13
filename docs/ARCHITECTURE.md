@@ -71,8 +71,11 @@ version `1` semantics or increment the version and document the migration.
 For multiple files, `--json` emits an array of successful metadata documents;
 `--jsonl` emits one document per successful file; `--csv` emits one row per tag
 with the typed value serialized as JSON; and `--toml`/`--yaml` serialize the
-same versioned model. Errors are sent to stderr and produce a non-zero exit
-code.
+same versioned model. Human-readable, JSON Lines, and CSV modes render in input
+order as workers finish, retaining only out-of-order results. JSON, TOML, and
+YAML intentionally aggregate successful documents because their output is one
+complete document or collection. Errors are sent to stderr and produce a
+non-zero exit code.
 
 ## Planned seams
 
@@ -84,7 +87,7 @@ The following changes are deferred until their acceptance tests exist:
 - manufacturer-specific MakerNote modules;
 - deeper HEIF/AVIF and media metadata modules;
 - a lossless block-preservation layer for safe rewrites;
-- streaming batch output that avoids retaining every successful document.
+- cancellation and interrupt propagation for long-running batches.
 
 Deferring a seam is not a compatibility claim. The compatibility matrix records
 the actual state for each capability.

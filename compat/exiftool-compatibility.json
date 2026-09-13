@@ -69,6 +69,7 @@
     "toml": "supported",
     "yaml": "supported",
     "parallel_batch": "partial",
+    "streaming_output": "partial",
     "set": "planned",
     "delete": "planned",
     "copy": "planned",

@@ -24,6 +24,8 @@ Initial read-only foundation:
 - added stable tag identifiers, a shared partial definition catalog, and
   numeric `Metadata::find_by_id` lookup;
 - added TOML and YAML output while preserving the versioned metadata schema;
+- added streaming human-readable, JSON Lines, and CSV batch output with
+  deterministic ordering and bounded out-of-order buffering;
 - added human-readable, JSON, and JSON Lines CLI output;
 - added malformed-input, resource-limit, and end-to-end CLI tests;
 - documented the verified surface and remaining compatibility boundaries.
