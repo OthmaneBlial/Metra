@@ -60,3 +60,29 @@ fn public_reader_api_handles_short_signature_reads() {
 
     assert_eq!(metadata.file_info.format, metra::FileFormat::Tiff);
 }
+
+#[test]
+fn public_batch_api_keeps_input_order_and_supports_streaming() {
+    let paths = vec![
+        std::env::temp_dir().join("metra-batch-z-does-not-exist"),
+        std::env::temp_dir().join("metra-batch-a-does-not-exist"),
+        std::env::temp_dir().join("metra-batch-m-does-not-exist"),
+    ];
+    let options = metra::BatchOptions {
+        jobs: 3,
+        limits: metra::ParseLimits::default(),
+    };
+
+    let results = metra::read_many(&paths, options);
+    assert_eq!(
+        results.iter().map(|item| &item.path).collect::<Vec<_>>(),
+        paths.iter().collect::<Vec<_>>()
+    );
+    assert!(results.iter().all(|item| item.result.is_err()));
+
+    let mut streamed_paths = Vec::new();
+    metra::read_many_streaming(&paths, options, |item| {
+        streamed_paths.push(item.path);
+    });
+    assert_eq!(streamed_paths, paths);
+}

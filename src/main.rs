@@ -1,10 +1,6 @@
-use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, mpsc};
-use std::thread;
 
 use clap::Parser;
 use metra_core::{Metadata, ParseLimits};
@@ -1445,48 +1441,9 @@ fn inspect_paths(
     jobs: usize,
     limits: ParseLimits,
 ) -> Vec<(PathBuf, metra::Result<Metadata>)> {
-    if jobs <= 1 || paths.len() <= 1 {
-        return paths
-            .iter()
-            .map(|path| (path.clone(), metra::read_with_limits(path, limits)))
-            .collect();
-    }
-
-    let shared_paths = Arc::new(paths.to_vec());
-    let next_index = Arc::new(AtomicUsize::new(0));
-    let (sender, receiver) = mpsc::channel();
-    let worker_count = jobs.min(paths.len());
-    let mut slots = (0..paths.len())
-        .map(|_| None)
-        .collect::<Vec<Option<(PathBuf, metra::Result<Metadata>)>>>();
-
-    thread::scope(|scope| {
-        for _ in 0..worker_count {
-            let paths = Arc::clone(&shared_paths);
-            let next_index = Arc::clone(&next_index);
-            let sender = sender.clone();
-            scope.spawn(move || {
-                loop {
-                    let index = next_index.fetch_add(1, Ordering::Relaxed);
-                    let Some(path) = paths.get(index).cloned() else {
-                        break;
-                    };
-                    let result = metra::read_with_limits(&path, limits);
-                    if sender.send((index, path, result)).is_err() {
-                        break;
-                    }
-                }
-            });
-        }
-        drop(sender);
-        for (index, path, result) in receiver {
-            slots[index] = Some((path, result));
-        }
-    });
-
-    slots
+    metra::read_many(paths, metra::BatchOptions { jobs, limits })
         .into_iter()
-        .map(|slot| slot.expect("every scheduled path should produce a result"))
+        .map(|item| (item.path, item.result))
         .collect()
 }
 
@@ -1500,64 +1457,14 @@ fn inspect_paths_streaming<F>(
 where
     F: FnMut(PathBuf, metra::Result<Metadata>),
 {
-    if jobs <= 1 || paths.len() <= 1 {
-        let mut failures = 0;
-        for path in paths {
-            let result = metra::read_with_limits(path, limits);
-            if result_is_failure(&result, validate) {
-                failures += 1;
-            }
-            emit(path.clone(), result);
-        }
-        return failures;
-    }
-
-    let shared_paths = Arc::new(paths.to_vec());
-    let next_index = Arc::new(AtomicUsize::new(0));
-    let (sender, receiver) = mpsc::channel();
-    let worker_count = jobs.min(paths.len());
-    let mut pending = BTreeMap::new();
-    let mut next_to_emit = 0_usize;
     let mut failures = 0_usize;
 
-    thread::scope(|scope| {
-        for _ in 0..worker_count {
-            let paths = Arc::clone(&shared_paths);
-            let next_index = Arc::clone(&next_index);
-            let sender = sender.clone();
-            scope.spawn(move || {
-                loop {
-                    let index = next_index.fetch_add(1, Ordering::Relaxed);
-                    let Some(path) = paths.get(index).cloned() else {
-                        break;
-                    };
-                    let result = metra::read_with_limits(&path, limits);
-                    if sender.send((index, path, result)).is_err() {
-                        break;
-                    }
-                }
-            });
-        }
-        drop(sender);
-        for (index, path, result) in receiver {
-            pending.insert(index, (path, result));
-            while let Some((path, result)) = pending.remove(&next_to_emit) {
-                if result_is_failure(&result, validate) {
-                    failures += 1;
-                }
-                emit(path, result);
-                next_to_emit += 1;
-            }
-        }
-    });
-
-    while let Some((path, result)) = pending.remove(&next_to_emit) {
-        if result_is_failure(&result, validate) {
+    metra::read_many_streaming(paths, metra::BatchOptions { jobs, limits }, |item| {
+        if result_is_failure(&item.result, validate) {
             failures += 1;
         }
-        emit(path, result);
-        next_to_emit += 1;
-    }
+        emit(item.path, item.result);
+    });
     failures
 }
 
