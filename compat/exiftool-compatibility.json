@@ -47,6 +47,7 @@
     "WAV": { "read": "partial", "write": "planned", "streaming": "partial" }
   },
   "metadata_families": {
+    "tag_definitions": "partial",
     "EXIF": "partial",
     "GPS": "partial",
     "JFIF": "partial",

@@ -79,6 +79,10 @@ let metadata = metra::read("photo.jpg")?;
 if let Some(make) = metadata.find("EXIF:Make") {
     println!("camera = {}", make.display_value());
 }
+
+if let Some(make) = metadata.find_by_id("EXIF", 0x010F) {
+    println!("stable tag = {}", make.identifier().name);
+}
 ```
 
 The model keeps namespaces explicit (`EXIF`, `GPS`, `PNG`, `WebP`, `JFIF`,
@@ -98,7 +102,9 @@ The JSON schema is versioned at the document level:
 ```
 
 Consumers should use `namespace` plus canonical `name` (for example
-`EXIF:DateTimeOriginal`) rather than relying on human display text.
+`EXIF:DateTimeOriginal`) or `find_by_id` when a format-level numeric identifier
+is available, rather than relying on human display text. The shared tag catalog
+is intentionally partial and will grow through generated definitions.
 
 ## Architecture
 
@@ -142,11 +148,11 @@ are the local validation gate.
 
 ## Roadmap
 
-Avancement global vérifié : **45 %**. Ce chiffre est une moyenne indicative des
+Avancement global vérifié : **46 %**. Ce chiffre est une moyenne indicative des
 huit axes ci-dessous, calculée uniquement sur le code et les tests présents ; il
 ne représente pas un pourcentage de compatibilité ExifTool.
 
-1. **70 %** — Étendre le modèle de lecture et les définitions de tags sans perdre les données brutes.
+1. **80 %** — Étendre le modèle de lecture et les définitions de tags sans perdre les données brutes.
 2. **30 %** — Ajouter des corpus réels et des tests différentiels JPEG/TIFF/PNG/WebP.
 3. **88 %** — Approfondir HEIF/AVIF et les conteneurs média, puis couvrir les lecteurs restants.
 4. **65 %** — Étendre XMP/IPTC/ICC/ID3 et isoler les espaces MakerNote.

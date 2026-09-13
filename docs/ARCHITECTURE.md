@@ -15,6 +15,7 @@ This crate owns stable, format-independent types:
 
 - `Metadata` and `FileInfo`;
 - namespace-aware `Tag` records;
+- stable tag identifiers and a shared partial definition catalog;
 - typed `TagValue` variants, including rationals, arrays, bytes, and unknowns;
 - structured `Warning` values;
 - `MetraError` categories;
@@ -76,7 +77,7 @@ produce a non-zero exit code.
 
 The following changes are deferred until their acceptance tests exist:
 
-- a generated tag-definition database instead of a growing handwritten table;
+- generated and expanded tag definitions migrated across all format readers;
 - a `FormatHandler` capability abstraction once write/create behavior creates
   meaningful shared operations;
 - manufacturer-specific MakerNote modules;
