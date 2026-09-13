@@ -1271,6 +1271,43 @@ mod tests {
     }
 
     #[test]
+    fn discovers_nikon_maker_note_through_exif_ifd() {
+        let mut embedded_tiff = vec![b'I', b'I', 42, 0, 8, 0, 0, 0, 1, 0];
+        embedded_tiff.extend_from_slice(&[2, 0, 3, 0, 1, 0, 0, 0, 100, 0, 0, 0]);
+        embedded_tiff.extend_from_slice(&[0, 0, 0, 0]);
+        let mut maker_note = b"Nikon\0\x02\0\0\0".to_vec();
+        maker_note.extend_from_slice(&embedded_tiff);
+
+        let value_offset = 64_u32;
+        let mut bytes = vec![b'I', b'I', 42, 0, 8, 0, 0, 0, 1, 0];
+        bytes.extend_from_slice(&0x927C_u16.to_le_bytes());
+        bytes.extend_from_slice(&7_u16.to_le_bytes());
+        bytes.extend_from_slice(&(maker_note.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&value_offset.to_le_bytes());
+        bytes.extend_from_slice(&[0, 0, 0, 0]);
+        bytes.resize(value_offset as usize, 0);
+        bytes.extend_from_slice(&maker_note);
+
+        let info = FileInfo::new("nikon.tif".into(), bytes.len() as u64, FileFormat::Tiff);
+        let mut metadata = Metadata::new(info);
+        parse_tiff_from_reader(
+            &mut Cursor::new(bytes),
+            0,
+            metadata.file_info.size,
+            0,
+            &mut metadata,
+            ParseLimits::default(),
+        )
+        .expect("Nikon MakerNote fixture should parse");
+
+        let tag = metadata
+            .find("MakerNotes:Nikon:ISO")
+            .expect("Nikon ISO tag");
+        assert_eq!(tag.value, TagValue::Unsigned(100));
+        assert_eq!(tag.source.offset, Some(u64::from(value_offset) + 10 + 18));
+    }
+
+    #[test]
     fn decodes_ascii_and_unicode_user_comments() {
         let ascii = [b"ASCII\0\0\0".as_slice(), b"reviewed\0".as_slice()].concat();
         assert_eq!(decode_user_comment(&ascii).as_deref(), Some("reviewed"));
