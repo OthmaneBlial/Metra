@@ -80,7 +80,14 @@
       "lossless_rewrite": "partial",
       "streaming": "partial"
     },
-    "WAV": { "read": "partial", "write": "partial", "delete": "partial", "lossless_rewrite": "partial", "streaming": "partial" },
+    "WAV": {
+      "read": "partial",
+      "write": "partial",
+      "create": "partial",
+      "delete": "partial",
+      "lossless_rewrite": "partial",
+      "streaming": "partial"
+    },
     "SVG": {
       "read": "partial",
       "write": "partial",
@@ -193,6 +200,7 @@
     "copy": "partial",
     "create_tiff_seed": "partial",
     "create_png_seed": "partial",
+    "create_wav_seed": "partial",
     "validate": "supported",
     "compare": "supported",
     "exiftool_compatibility_mode": "partial"
