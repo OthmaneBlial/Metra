@@ -62,6 +62,10 @@ reader walks bounded boxes and exposes brands, image properties, direct
 XMP/EXIF boxes, and a conservative subset of QuickTime-style `ilst` text items.
 The AVI reader scans RIFF lists with checked boundaries, exposes typed `avih`
 timing/dimension fields and common `LIST/INFO` text, and skips video payloads.
+The Matroska reader validates the EBML signature and document type, walks bounded
+`Info`, `Tracks`, and `Tags` elements, exposes typed duration and track fields,
+and skips `Cluster` payloads without decoding media frames. WebM uses the same
+bounded reader with its document type retained by format detection.
 The MP3 reader handles bounded ID3v2 frame tables, ID3v1 fixed fields, and a
 single MPEG frame header without decoding audio payloads.
 The FLAC reader validates the metadata-block chain and decodes STREAMINFO,
@@ -145,7 +149,8 @@ The following changes are deferred until their acceptance tests exist:
 - additional manufacturer-specific MakerNote modules beyond the bounded Nikon
   Type 2 reader;
 - PSD/PSB resource writers and layer/pixel metadata modules;
-- deeper HEIF/AVIF and media metadata modules;
+- deeper HEIF/AVIF and media metadata modules, including Matroska chapters,
+  cues, attachments, and codec-specific fields;
 - a generalized lossless block-preservation abstraction across more formats;
 - cancellation and interrupt propagation for long-running batches.
 

@@ -89,6 +89,22 @@
       "delete": "planned",
       "lossless_rewrite": "planned",
       "streaming": "partial"
+    },
+    "MKV": {
+      "read": "partial",
+      "write": "planned",
+      "create": "planned",
+      "delete": "planned",
+      "lossless_rewrite": "planned",
+      "streaming": "partial"
+    },
+    "WebM": {
+      "read": "partial",
+      "write": "planned",
+      "create": "planned",
+      "delete": "planned",
+      "lossless_rewrite": "planned",
+      "streaming": "partial"
     }
   },
   "metadata_families": {
