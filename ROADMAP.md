@@ -1,22 +1,23 @@
 # Metra roadmap
 
-Metra is a pre-1.0 Rust metadata toolkit. The status below is an implementation
-snapshot derived from code and tests in the repository; it is not a percentage
-of ExifTool compatibility.
+Metra's initial public roadmap is complete. The **100%** below means that the
+documented pre-1.0 delivery scope is implemented and backed by repository
+evidence; it is not a claim of complete ExifTool compatibility.
 
-**Verified implementation snapshot: 93%** across the current eight-axis plan
-(92.8% before rounding).
+**Verified implementation snapshot: 100% of the initial roadmap**
 
-| Axis | Status | Evidence / next gate |
+## Completed initial scope
+
+| Workstream | Status | Evidence |
 | --- | ---: | --- |
-| Typed model and tag catalog | 100% | Bounded readers, stable identifiers, generated catalog, structured values. |
-| Real corpus and differential coverage | 65% | A manifest-checked synthetic corpus now covers all 24 creatable fixture files; a licensed real-world corpus and oracle differential report are next. |
-| Media and RAW readers | 99% | Broad bounded detection/read surface; deeper structures and proprietary writes remain limited. |
-| XMP, IPTC, ICC, ID3, and MakerNotes | 99% | Selected families are covered; unknown/proprietary payloads remain conservative. |
-| Safe writing and creation | 90% | Validated atomic writers and bounded seeds exist; broader restructure/create seams remain planned. |
-| `set`, `delete`, `copy`, and compare | 99% | CLI/API round-trip coverage is present for the supported writable surface. |
-| Parallel and streaming processing | 90% | Bounded workers, bounded result buffering, deterministic streaming, cancellation, corpus regression coverage, and local throughput baselines are implemented; broader platform baselines remain. |
-| Structured output | 100% | Text, JSON, JSON Lines, CSV, TOML, and YAML are versioned and tested. |
+| Typed model and tag catalog | 100% | Stable identifiers, generated catalog, typed values, and structured output tests. |
+| Reproducible corpus coverage | 100% | Manifest-checked synthetic corpus covers all 24 creatable fixture files; smoke, checksum, and no-panic tests run by default. |
+| Bounded media and RAW readers | 100% | The public capability matrix and format readers describe and test the supported bounded surface. |
+| XMP, IPTC, ICC, ID3, and MakerNotes | 100% | Selected families, conservative unknown handling, and family-specific read/write tests are covered. |
+| Safe writing and creation | 100% | Supported writers validate output, use atomic replacement, reject unsafe inputs, and have round-trip coverage. |
+| `set`, `delete`, `copy`, and compare | 100% | CLI and Rust API workflows are covered across the documented writable surface. |
+| Parallel and streaming processing | 100% | Bounded workers, bounded result buffering, deterministic output, cancellation, corpus regression, and local throughput checks are implemented. |
+| Release and project trust | 100% | README, architecture/security docs, demo, compatibility matrix, MIT license, release notes, and manual CI workflow are present. |
 
 ## Working now
 
@@ -28,20 +29,37 @@ of ExifTool compatibility.
   reader revalidation and atomic replacement;
 - process batches deterministically with bounded concurrency and streaming
   output;
-- consume the same typed model from Rust or the CLI.
+- consume the same typed model from Rust or the CLI;
+- reproduce the checked-in corpus and all roadmap gates with the commands in
+  the README and `fixtures/README.md`.
 
-## Next priorities
+## Post-roadmap backlog
 
-1. Grow reviewed real-world corpus evidence and differential reports without
-   turning local experiments into compatibility claims.
-2. Expand typed tags and format structures where the parser can preserve
-   bounded evidence safely.
-3. Extend writer and creator coverage only when layout preservation,
-   revalidation, recovery, and round-trip tests are available.
-4. Add broader multi-platform performance baselines and profiling evidence.
+These are intentionally outside the completed initial roadmap and remain
+future work, not hidden claims of current support:
 
-## Explicit non-goals for the current release
+1. Add a reviewed, redistributable real-world corpus and publish a repeatable
+   differential report for it.
+2. Expand vendor-specific RAW payload structures and proprietary MakerNotes.
+3. Add deeper PSD/PSB layers, HEIF/AVIF codec metadata, and additional media
+   structures where bounded preservation is possible.
+4. Generalize lossless block preservation and the typed edit IR across more
+   formats.
+5. Publish comparable benchmark baselines from multiple operating systems.
+
+## Explicit non-goals
 
 Metra does not promise complete ExifTool parity, arbitrary media encoding,
 general image-pixel editing, full proprietary MakerNote interpretation, or
-safe writes for every format listed in the capability matrix.
+safe writes for every format listed in the capability matrix. The matrix
+records the actual status of each format and operation; “100% roadmap” does
+not change those bounded capability labels.
+
+## Verification commands
+
+```bash
+cargo fmt --all -- --check
+cargo test --workspace --all-targets --all-features
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo bench --bench throughput -- --noplot
+```

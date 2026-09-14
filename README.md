@@ -111,12 +111,13 @@ seam, not that every tag or operation is supported.
 - ExifTool compatibility is represented by a versioned bounded matrix, not a
   completeness claim.
 
-### Planned
+### Post-roadmap backlog
 
-Broader real-world corpus coverage, deeper tag/catalog coverage, more complete
-MakerNote interpretation, broader media structures, and additional creation or
-rewrite seams remain on the roadmap. See [`ROADMAP.md`](ROADMAP.md) for the
-verified delivery snapshot and explicit gates.
+The initial public roadmap is complete. Broader real-world corpus coverage,
+deeper tag/catalog coverage, more complete MakerNote interpretation, broader
+media structures, and additional creation or rewrite seams are documented as
+future work in [`ROADMAP.md`](ROADMAP.md). The compatibility matrix remains
+the source of truth for the actual bounded support of each format.
 
 ## Demo
 
