@@ -4,6 +4,10 @@
 
 Initial read-first foundation with narrow validated rewrites:
 
+- added bounded Minolta MRW segment decoding for PRD/WBG/RIF fields and
+  embedded TTW TIFF metadata, with exact raw-value retention, checked
+  metadata-region/segment budgets, generic RAW dispatch, and CLI JSON coverage;
+  MRW image payloads remain untouched and MRW writes remain unsupported;
 - added bounded RAF header and Fuji-directory decoding with firmware, preview
   and directory offsets, selected raw-image/zoom fields, raw-value retention,
   range/entry/resource-limit checks, truncated-structure warnings, generic

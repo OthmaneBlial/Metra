@@ -32,6 +32,9 @@ before allocating or traversing metadata.
 - RAF header offsets, lengths, entry counts, and proprietary directory values
   are range-checked and budgeted before inspection; RAF pixel payloads are never
   loaded by the metadata reader;
+- MRW metadata-region boundaries, segment lengths/counts, PRD/WBG/RIF field
+  reads, and embedded TTW TIFF regions are checked and budgeted before
+  inspection; MRW image payloads are never loaded by the metadata reader;
 - typed EXIF/GPS date and time values are materialized only after calendar,
   clock, denominator, and fractional-range validation;
 - malformed embedded EXIF can be downgraded to a warning at the container

@@ -99,11 +99,13 @@ bounded reader with its document type retained by format detection.
 The RAW reader identifies common TIFF-like camera containers by their verified
 header or path family, delegates DNG/CR2/NEF/ARW/ORF/RW2/PEF EXIF parsing to the
 TIFF reader, delegates CR3 to ISO-BMFF, and decodes the bounded RAF fixed header
-and Fuji directory without touching pixel payloads. Legacy Canon CRW, Minolta
-MRW, and Sigma X3F remain identified as partially decoded containers. RAW
-identity tags keep the container family explicit without claiming proprietary
-sensor-payload support. DNG-specific IFD identifiers are catalogued in the `DNG`
-namespace while their bounded raw values remain attached to the parsed tags.
+and Fuji directory without touching pixel payloads. MRW metadata segments are
+walked under checked boundaries; PRD, WBG, and RIF fields are exposed as typed
+values, while TTW delegates to the bounded TIFF reader. Legacy Canon CRW and
+Sigma X3F remain identified as partially decoded containers. RAW identity tags
+keep the container family explicit without claiming proprietary sensor-payload
+support. DNG-specific IFD identifiers are catalogued in the `DNG` namespace
+while their bounded raw values remain attached to the parsed tags.
 The MP3 reader handles bounded ID3v2 frame tables, ID3v1 fixed fields, and a
 single MPEG frame header without decoding audio payloads.
 The FLAC reader validates the metadata-block chain and decodes STREAMINFO,
