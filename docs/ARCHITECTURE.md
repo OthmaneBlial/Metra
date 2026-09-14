@@ -102,8 +102,8 @@ TIFF reader, delegates CR3 to ISO-BMFF, and decodes the bounded RAF fixed header
 and Fuji directory without touching pixel payloads. MRW metadata segments are
 walked under checked boundaries; PRD, WBG, and RIF fields are exposed as typed
 values, while TTW delegates to the bounded TIFF reader. CRW walks its bounded
-CIFF root directory, decodes common ASCII and dimension entries, and reports
-large preview values as descriptors without loading them. X3F walks its FOVb
+CIFF root and nested directories, decodes common ASCII and dimension entries,
+and reports large preview values as descriptors without loading them. X3F walks its FOVb
 header and final SECd directory, decodes bounded Unicode PROP properties, and
 exposes image-section descriptors without loading image bytes. Legacy Canon CRW
 is therefore partially decoded rather than only identified. RAW identity tags
