@@ -252,7 +252,7 @@ const FORMAT_CAPABILITIES: &[FormatCapabilities] = &[
         read: CapabilityStatus::Partial,
         write: CapabilityStatus::Partial,
         create: CapabilityStatus::Partial,
-        delete: CapabilityStatus::Planned,
+        delete: CapabilityStatus::Partial,
         lossless_rewrite: CapabilityStatus::Partial,
         streaming: CapabilityStatus::Partial,
     },
@@ -1084,6 +1084,10 @@ mod tests {
         );
         assert_eq!(
             format_capabilities(FileFormat::Pdf).create,
+            CapabilityStatus::Partial
+        );
+        assert_eq!(
+            format_capabilities(FileFormat::Pdf).delete,
             CapabilityStatus::Partial
         );
         assert_eq!(
