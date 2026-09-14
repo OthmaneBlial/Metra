@@ -71,10 +71,12 @@ least four bytes long and writes a padded `null` object of the same length.
 Neither operation creates objects or rewrites xref offsets, so the rest of the
 PDF byte layout is copied unchanged and the temporary output is re-read before
 replacement.
-PSD XMP writes are limited to an existing `8BIM` XMP image resource and require
-an equal packet length. Resource headers, section boundaries, image data, and
-unknown resources are copied unchanged; the temporary PSD is re-read before
-atomic replacement.
+PSD XMP writes are limited to an existing `8BIM` XMP image resource. Set
+replacements require an equal packet length; deletion zero-fills only the
+resource payload at that same length, and the reader recognizes the all-zero
+payload as absent. Resource headers, section boundaries, image data, and unknown
+resources are copied unchanged; the temporary PSD is re-read before atomic
+replacement.
 AVI INFO writes are limited to existing known text chunks and bounded payloads;
 the replacement is zero-padded within the original chunk, and deletion clears
 the same payload, so RIFF sizes and media bytes remain unchanged before the

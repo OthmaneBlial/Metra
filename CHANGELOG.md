@@ -67,6 +67,9 @@ Initial read-first foundation with narrow validated rewrites:
 - added bounded PSD XMP resource rewrites with fixed packet-size validation,
   generic and registry API dispatch, atomic replacement, and CLI `--set`/`--copy`
   coverage;
+- added layout-preserving PSD/PSB XMP resource deletion by zero-filling the
+  existing payload, with reader tombstone handling and generic API/CLI
+  `--delete` coverage;
 - added bounded PDF Info rewrites for existing literal and hexadecimal string
   tokens, with fixed-span validation, atomic replacement, generic API dispatch,
   registry support, and CLI `--set`/`--copy` coverage;

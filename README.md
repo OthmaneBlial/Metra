@@ -156,6 +156,7 @@ cargo run -- --set 'PDF:Title=reviewed' document.pdf
 cargo run -- --delete PDF:Title document.pdf
 cargo run -- --copy PDF:Title=source.pdf target.pdf
 cargo run -- --set 'PSD:XMP=<x:xmpmeta>...</x:xmpmeta>' design.psd
+cargo run -- --delete PSD:XMP design.psd
 cargo run -- --copy PSD:XMP=source.psd target.psd
 cargo run -- --set 'AVI:Title=reviewed' video.avi
 cargo run -- --copy AVI:Title=source.avi target.avi
@@ -187,8 +188,10 @@ PDF Info edits target an existing field and preserve the document byte layout;
 the replacement must have the same encoded length as the original value token.
 `--delete` replaces an existing sufficiently sized Info value token with a
 padded `null` object, so the field disappears on read without moving xref data.
-PSD XMP edits target an existing image resource and likewise require an equal
-packet length so Photoshop section boundaries remain unchanged.
+PSD XMP edits target an existing image resource and replacements require an
+equal packet length so Photoshop section boundaries remain unchanged.
+`--delete` zero-fills the existing XMP resource payload at the same length;
+the reader treats that explicit tombstone as absent without touching image data.
 AVI INFO edits target an existing text chunk and preserve the RIFF layout;
 the replacement must fit its existing payload. `--delete` zero-fills the
 selected payload without changing the chunk size.

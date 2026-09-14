@@ -178,6 +178,10 @@ byte span for replacements, so it never creates objects, rewrites xref tables,
 or moves unrelated PDF bytes. Deletion replaces a token at least four bytes
 long with a padded `null` object and the reader omits that field; shorter tokens
 are rejected because they cannot preserve the layout safely.
+The PSD writer accepts only an existing `8BIM` XMP image resource. Replacements
+require an equal packet length; deletion zero-fills the resource payload at the
+same length and the reader omits that explicit tombstone. Resource headers,
+section boundaries, image data, and unknown resources are copied unchanged.
 The AVI writer accepts existing known `LIST/INFO` string chunks, writes only
 within their allocated payloads, preserves a NUL terminator when space exists,
 and never changes RIFF chunk sizes or media data. Delete operations zero-fill
