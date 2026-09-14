@@ -189,6 +189,11 @@ TIFF writer accepts existing GPS latitude/longitude type-5 triplets through
 decimal-degree edit aliases, encodes bounded DMS rationals, updates the matching
 reference field, and zero-fills both slots for deletion; it never creates a GPS
 IFD or changes its allocation. The
+same writer accepts existing GPS altitude, image-direction, and speed type-5
+scalar slots through decimal aliases. Altitude uses signed meters and updates
+its BYTE reference, speed converts m/s into the existing K/M/N unit, direction
+is bounded to 0–360 degrees, and deletion zero-fills only existing scalar and
+reference payloads. The
 JPEG IPTC writer validates dataset names and lengths, rewrites only the target
 dataset in the `0x0404` resource, preserves unrelated Photoshop resources, and
 creates a bounded APP13 resource when needed.

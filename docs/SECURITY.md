@@ -89,6 +89,12 @@ longitude entries and matching type-2 reference fields. Inputs must be finite an
 within coordinate range; DMS seconds use a bounded 1e-6 denominator, and deletion
 zero-fills only existing coordinate/reference payloads. No GPS IFD or value area
 is created.
+GPS altitude, direction, and speed writes are likewise limited to existing
+single-rational type-5 fields. Altitude accepts signed finite meters and only
+updates its existing BYTE reference; direction is bounded to 0–360 degrees; speed
+accepts finite non-negative m/s and converts through a validated existing K/M/N
+reference. Rational numerators and denominators are bounded to u32, and deletion
+zero-fills only existing scalar/reference payloads.
 JPEG EXIF ASCII writes validate the existing TIFF entry, type, count, offset,
 capacity, and patch range; they never create a missing field or resize the APP1
 segment, and the result is re-read before atomic replacement.

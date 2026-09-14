@@ -7,6 +7,9 @@ Initial read-first foundation with narrow validated rewrites:
 - added bounded TIFF GPS latitude/longitude decimal rewrites, reference-field
   updates, zero-fill deletion tombstones, generic API aliases, CLI set/delete/
   copy support, and round-trip coverage for positive and negative coordinates;
+- added bounded GPS altitude, image-direction, and speed rational rewrites with
+  signed altitude references, K/M/N speed conversion, zero-fill deletion, generic
+  API aliases, CLI set/delete/copy support, and round-trip coverage;
 - added fixed-span ISO-BMFF XMP replacement, deletion, and source-to-source
   copying for direct `xml ` packets and the standard Adobe XMP `uuid` user type,
   with root validation, generic API, CLI alias, atomic output validation, and

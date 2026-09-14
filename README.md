@@ -95,6 +95,12 @@ through `GPS:Latitude`/`GPS:Longitude` (and copied between TIFF-like files); the
 writer updates the N/S or E/W reference and keeps the original rational allocation.
 `--delete` zero-fills both the coordinate and reference slots so GPS tombstones are
 omitted on the next read.
+Existing GPS altitude, image direction, and speed rational slots also accept
+bounded decimal edits through `GPS:AltitudeMeters`, `GPS:ImageDirectionDegrees`,
+and `GPS:SpeedMetersPerSecond`; altitude updates `GPSAltitudeRef`, direction is
+limited to 0–360 degrees, and speed is converted from m/s into the existing K/M/N
+GPS unit. These scalar slots are copied or zero-filled without changing the TIFF
+layout.
 Repeated IPTC datasets remain typed arrays when read; `--copy` accepts only a
 single-valued source dataset, while `--set` replaces all target occurrences
 with one bounded dataset.
@@ -286,8 +292,8 @@ and `--delete` zero-fills the selected payload so the field disappears on read.
 The creation API and `--create-mkv`/`--create-webm` commands emit only a
 validated metadata seed with a known-size EBML `Segment`; media tracks and
 clusters remain outside this bounded seam.
-TIFF edits target an existing TIFF/BigTIFF ASCII slot; `--delete` zero-fills
-that slot without changing the IFD layout. DNG, CR2, NEF, ARW, ORF, RW2, and
+TIFF edits target existing TIFF/BigTIFF ASCII or GPS rational slots; `--delete`
+zero-fills those slots without changing the IFD layout. DNG, CR2, NEF, ARW, ORF, RW2, and
 PEF use the same bounded behavior. CR3 edits target existing ISO-BMFF text
 slots through the same bounded rewrite rules, while RAF, CRW, MRW, and X3F
 remain read-only.
