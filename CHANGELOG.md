@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.1 - 2026-09-14
+
+Quality and reproducibility patch release:
+
+- added a checked-in, SHA-256-manifested synthetic corpus covering all 24
+  creatable fixture formats;
+- made the corpus checksum contract portable across Windows, macOS, and Linux;
+- bounded streaming result buffering and added corpus streaming regression
+  coverage;
+- improved semantic differential matching for dates, ASCII byte values, and
+  GPS degree-minute-second values;
+- completed the initial public roadmap and clarified the post-roadmap backlog.
+
 ## 0.1.0 - 2026-09-13
 
 Initial read-first foundation with narrow validated rewrites:

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "project_version": "0.1.0",
+  "project_version": "0.1.1",
   "policy": "Only behavior covered by tests is marked supported.",
   "formats": {
     "JPEG": {

@@ -1,6 +1,6 @@
 [package]
 name = "metra"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.95"
 description = "Rust-native local-first metadata toolkit for safe read, write, create, validate, copy, and compare workflows"
@@ -22,8 +22,8 @@ resolver = "3"
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
 ctrlc = "3.4"
-metra-core = { path = "crates/metra-core", version = "0.1.0" }
-metra-formats = { path = "crates/metra-formats", version = "0.1.0" }
+metra-core = { path = "crates/metra-core", version = "0.1.1" }
+metra-formats = { path = "crates/metra-formats", version = "0.1.1" }
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true
@@ -38,7 +38,7 @@ name = "throughput"
 harness = false
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.95"
 license = "MIT"

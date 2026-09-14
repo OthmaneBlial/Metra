@@ -189,7 +189,7 @@ metra --capabilities --json
 
 ## Download and release status
 
-The current public release is [`v0.1.0`](https://github.com/OthmaneBlial/Metra/releases/tag/v0.1.0),
+The current public release is [`v0.1.1`](https://github.com/OthmaneBlial/Metra/releases/tag/v0.1.1),
 an experimental pre-1.0 source release. It includes the validated library and
 CLI described above.
 
