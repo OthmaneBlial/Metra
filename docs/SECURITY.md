@@ -211,10 +211,12 @@ metadata and value budgets, and writes only after validation. Existing paths
 are refused and temporary output is removed on failure.
 
 WAV creation emits only a fixed 1x1 PCM container and validates each bounded
-`LIST/INFO` key/value against the existing reader and limits. Duplicate,
-unsupported, NUL-containing, and oversized fields are rejected; path creation
-uses a same-directory temporary file, refuses an existing destination, and
-removes the temporary output on failure.
+`LIST/INFO` key/value against the existing reader and limits. Classic RIFF uses
+32-bit sizes; RF64/BW64 creation writes a bounded first `ds64`, keeps the
+`data` chunk sentinel, and records its checked 64-bit data and sample sizes.
+Duplicate, unsupported, NUL-containing, and oversized fields are rejected;
+path creation uses a same-directory temporary file, refuses an existing
+destination, and removes the temporary output on failure.
 
 ICC creation emits only a minimal RGB monitor profile and validates every
 bounded text tag through the existing ICC reader. Names are allowlisted,

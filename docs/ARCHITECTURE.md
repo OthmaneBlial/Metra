@@ -305,13 +305,14 @@ calculates the xref offsets, validates the Info dictionary through the PDF
 reader, and refuses to overwrite an existing destination. Page content and
 graphics remain outside this creation seam.
 
-The WAV creation seam exposes `WavCreateOptions`, `WavBextCreateEntry`,
-`create_wav_to_vec`, `create_wav_path`, and `--create-wav KEY=VALUE`. It emits a
-fixed 1x1 PCM RIFF/WAVE seed with optional bounded `LIST/INFO` fields and a
-validated 602-byte `bext` base for `BWF:Field=VALUE` entries, validates the
-output through the WAV reader, and refuses to overwrite an existing destination.
-Existing RF64/BW64 files are handled by the separate metadata rewrite seam;
-creation still emits the fixed RIFF seed.
+The WAV creation seam exposes `WavCreateKind`, `WavCreateOptions`,
+`WavBextCreateEntry`, `create_wav_to_vec`, `create_wav_path`, and
+`--create-wav KEY=VALUE`. It emits a fixed 1x1 PCM seed with optional bounded
+`LIST/INFO` fields and a validated 602-byte `bext` base for `BWF:Field=VALUE`
+entries. `WavCreateKind::Riff` uses classic 32-bit sizes; `Rf64` and `Bw64`
+emit a first bounded `ds64` chunk and a sentinel-sized `data` chunk with its
+checked 64-bit size. Every variant is validated through the WAV reader and
+path creation refuses to overwrite an existing destination.
 
 Standalone ICC creation exposes `IccCreateOptions`, `create_icc_to_vec`,
 `create_icc_path`, and the CLI `--create-icc KEY=VALUE`. It emits a minimal

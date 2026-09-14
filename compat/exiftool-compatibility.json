@@ -237,6 +237,7 @@
     "create_jpeg_seed": "partial",
     "create_png_seed": "partial",
     "create_wav_seed": "partial",
+    "create_rf64_bw64_wav_seed": "partial",
     "create_icc_profile": "partial",
     "create_flac_seed": "partial",
     "create_gif_seed": "partial",
