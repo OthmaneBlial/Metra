@@ -38,6 +38,7 @@ mod jpeg;
 mod jpeg_create;
 mod makers;
 mod matroska;
+mod matroska_create;
 mod matroska_writer;
 mod ogg;
 mod ogg_create;
@@ -95,6 +96,10 @@ pub use isobmff_writer::{
 pub use jpeg::{JpegEdit, read_jpeg, rewrite_jpeg, rewrite_jpeg_path, rewrite_jpeg_to_vec};
 pub use jpeg_create::{JpegCreateOptions, create_jpeg_path, create_jpeg_to_vec};
 pub use matroska::read_matroska;
+pub use matroska_create::{
+    MatroskaCreateEntry, MatroskaCreateKind, MatroskaCreateOptions, create_matroska_path,
+    create_matroska_to_vec,
+};
 pub use matroska_writer::{
     MatroskaEdit, rewrite_matroska, rewrite_matroska_path, rewrite_matroska_to_vec,
 };
