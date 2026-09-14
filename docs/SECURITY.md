@@ -84,6 +84,11 @@ the resulting document remains valid XML.
 TIFF and JPEG EXIF date/time rewrites remain limited to existing type-2 ASCII
 entries and their original allocations; the parser revalidates the typed value
 after the fixed-span write.
+GPS coordinate writes are limited to existing type-5 three-rational latitude or
+longitude entries and matching type-2 reference fields. Inputs must be finite and
+within coordinate range; DMS seconds use a bounded 1e-6 denominator, and deletion
+zero-fills only existing coordinate/reference payloads. No GPS IFD or value area
+is created.
 JPEG EXIF ASCII writes validate the existing TIFF entry, type, count, offset,
 capacity, and patch range; they never create a missing field or resize the APP1
 segment, and the result is re-read before atomic replacement.

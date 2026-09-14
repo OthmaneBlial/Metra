@@ -90,6 +90,11 @@ has enough storage; the JPEG segment size and image bytes remain unchanged.
 Typed EXIF date/time values backed by ASCII TIFF slots, including
 `EXIF:DateTimeOriginal`, retain their typed read representation after a fixed-size
 rewrite.
+Existing TIFF GPS latitude and longitude triplets can be set from decimal degrees
+through `GPS:Latitude`/`GPS:Longitude` (and copied between TIFF-like files); the
+writer updates the N/S or E/W reference and keeps the original rational allocation.
+`--delete` zero-fills both the coordinate and reference slots so GPS tombstones are
+omitted on the next read.
 Repeated IPTC datasets remain typed arrays when read; `--copy` accepts only a
 single-valued source dataset, while `--set` replaces all target occurrences
 with one bounded dataset.

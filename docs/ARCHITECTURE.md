@@ -185,6 +185,10 @@ PNG writers validate replacement packets with the bounded XMP parser. The
 TIFF and JPEG EXIF writers also permit typed date/time values when their original
 entry remains TIFF ASCII, so a `DateTimeOriginal` round-trip preserves the typed
 read representation without changing the entry or value allocation. The
+TIFF writer accepts existing GPS latitude/longitude type-5 triplets through
+decimal-degree edit aliases, encodes bounded DMS rationals, updates the matching
+reference field, and zero-fills both slots for deletion; it never creates a GPS
+IFD or changes its allocation. The
 JPEG IPTC writer validates dataset names and lengths, rewrites only the target
 dataset in the `0x0404` resource, preserves unrelated Photoshop resources, and
 creates a bounded APP13 resource when needed.
