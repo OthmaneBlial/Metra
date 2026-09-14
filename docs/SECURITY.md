@@ -138,5 +138,11 @@ Comment values reject NUL bytes and are checked against the configured value
 budget; sub-block framing, the LZW seed, and the trailer are fixed, and the
 result is re-read before an atomic no-overwrite path create.
 
+MP3 creation emits only a bounded ID3v2.4 tag with allowlisted text frames or
+one English comment, followed by a fixed zeroed MPEG Layer III seed frame. Text
+payloads, frame counts, tag size, and the total output are checked before
+allocation; the result is re-read before an atomic no-overwrite path create.
+This seed is metadata-oriented and does not claim to encode playable audio.
+
 Security reports should include the smallest reproducible input and the exact
 Metra version. Do not include private media or secrets in an issue.
