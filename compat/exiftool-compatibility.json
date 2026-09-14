@@ -203,6 +203,7 @@
     "VorbisComments": "partial",
     "BWF": "partial",
     "WAV_iXML": "partial",
+    "WAV_ID3": "partial",
     "SVGDocument": "partial",
     "RAW": "partial",
     "MatroskaChapters": "partial",

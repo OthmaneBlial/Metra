@@ -129,8 +129,8 @@ OpusHead, OpusTags, Ogg-FLAC mapping headers, and Ogg-FLAC Vorbis Comments
 without touching coded audio frames.
 The PDF reader scans bounded head/tail windows for Info dictionaries and direct
 XMP packets; the WAV reader walks RIFF/RF64/BW64 chunks, resolves RF64 `ds64`
-64-bit sizes, and decodes `fmt `, `LIST/INFO`, Broadcast Wave `bext`, and
-bounded iXML fields without loading audio data. BWF date/time is
+64-bit sizes, and decodes `fmt `, `LIST/INFO`, Broadcast Wave `bext`, bounded
+iXML fields, and embedded ID3v2 chunks without loading audio data. BWF date/time is
 represented as a validated typed value, while fixed-width text and UMID fields
 retain their bounded raw bytes for future lossless writers. The SVG reader
 parses a bounded XML document without rendering it, decodes only safe XML
@@ -169,9 +169,9 @@ XMP packets, and known IPTC-IIM datasets inside Photoshop APP13 resources, PNG
 and existing standalone XMP packets,
 and existing standalone ICC `desc`/`text` payloads,
 SVG title/description/comment nodes, WAV `LIST/INFO` fields and existing
-Broadcast Wave `bext` fixed fields and existing iXML packets on RIFF/RF64/BW64
-containers, FLAC Vorbis
-Comment key/value pairs, Ogg Vorbis/Opus comment packets, common ID3v2 text/comment frames,
+Broadcast Wave `bext` fixed fields, existing iXML packets, and embedded ID3v2
+chunks on RIFF/RF64/BW64 containers, FLAC Vorbis Comment key/value pairs, Ogg
+Vorbis/Opus comment packets, common ID3v2 text/comment frames,
 and existing PDF Info literal or hexadecimal string tokens, existing Matroska/WebM
 `Info` title/app strings and `SimpleTag` string values, and existing TIFF/BigTIFF ASCII slots in TIFF-like
 RAW containers. Set and delete operations only replace or zero-fill those
@@ -242,12 +242,14 @@ The AVI writer accepts existing known `LIST/INFO` string chunks, writes only
 within their allocated payloads, preserves a NUL terminator when space exists,
 and never changes RIFF chunk sizes or media data. Delete operations zero-fill
 the selected payload so the reader no longer exposes that field.
-The WAV writer accepts existing `LIST/INFO` and Broadcast Wave `bext` fields on
-RIFF, RF64, and BW64 containers. For RF64/BW64 it requires the bounded `ds64`
+The WAV writer accepts existing `LIST/INFO`, Broadcast Wave `bext`, iXML, and
+embedded ID3v2 fields on RIFF, RF64, and BW64 containers. For RF64/BW64 it requires the bounded `ds64`
 chunk, preserves sentinel-sized `data` chunks and their audio bytes, and updates
 only `ds64.RIFFSize64` after the metadata rewrite. iXML replacements require
 safe XML and the existing packet size; deletion removes the chunk and updates
-the container size. The Matroska/WebM writer accepts existing `Info` title/app strings and
+the container size. Embedded ID3 edits reuse the bounded ID3 writer inside an
+existing `id3 ` chunk, preserve unrelated chunks and audio bytes, and reject
+unsupported ID3 flags or sentinel-sized embedded chunks. The Matroska/WebM writer accepts existing `Info` title/app strings and
 `SimpleTag` string values, writes only within their allocated EBML payloads, and
 never changes element widths, tag names, or media payloads. Set operations replace
 text in place; delete operations zero-fill the selected payload so the reader no
@@ -271,8 +273,8 @@ with replace and write-through flags. The public facade also exposes determinist
 backpressure-bounded `read_many_streaming` helpers, plus cancellation-aware
 variants; the CLI uses these same batch APIs before rendering. The CLI exposes
 `--set`/`--delete`/`--copy` for
-`JPEG:Comment`, `JPEG:EXIF:<ASCII tag>`, `IPTC:<dataset>`, `PNG:XMP`, `PNG:Text:<keyword>`, `SVG:Title`/`Description`/`Comment`, `WAV:<INFO field>`, `WAV:<bext field>`, and `WAV:iXML:Packet`,
-`FLAC:<Vorbis field>`, `ID3:<text field>`, `ISOBMFF:<text field>` plus
+`JPEG:Comment`, `JPEG:EXIF:<ASCII tag>`, `IPTC:<dataset>`, `PNG:XMP`, `PNG:Text:<keyword>`, `SVG:Title`/`Description`/`Comment`, `WAV:<INFO field>`, `WAV:<bext field>`, `WAV:iXML:Packet`, and `ID3:<text/comment field>` for both standalone MP3 and existing WAV `id3 ` chunks,
+`FLAC:<Vorbis field>`, `ISOBMFF:<text field>` plus
 `ISOBMFF:XMP`/`ISOBMFF:UUID:XMP`, `PDF:<Info field>`, `GIF:Comment`, `WebP:XMP`,
 `Matroska:Title`/`MuxingApp`/`WritingApp`, `Matroska:Tag:<name>`,
 `TIFF:EXIF:<ASCII tag>` in TIFF-like RAW files, and existing

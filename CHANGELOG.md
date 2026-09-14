@@ -4,6 +4,9 @@
 
 Initial read-first foundation with narrow validated rewrites:
 
+- added bounded set/delete/copy support for common ID3v2 text and comment
+  frames embedded in existing WAV `id3 ` chunks, reusing the ID3 writer while
+  preserving surrounding chunks and audio bytes;
 - added bounded WAV iXML packet set/delete/copy support through the Rust API and
   CLI; replacements require safe XML and stay within the existing packet size,
   while deletions remove the chunk without touching audio bytes and recalculate
