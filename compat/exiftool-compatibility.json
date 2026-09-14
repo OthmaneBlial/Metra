@@ -91,7 +91,7 @@
     "SVG": {
       "read": "partial",
       "write": "partial",
-      "create": "planned",
+      "create": "partial",
       "delete": "partial",
       "lossless_rewrite": "partial",
       "streaming": "partial"
@@ -206,6 +206,7 @@
     "create_gif_seed": "partial",
     "create_mp3_seed": "partial",
     "create_ogg_opus_seed": "partial",
+    "create_svg_seed": "partial",
     "validate": "supported",
     "compare": "supported",
     "exiftool_compatibility_mode": "partial"
