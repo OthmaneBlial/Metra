@@ -7,7 +7,7 @@ use metra_core::{FileFormat, FileInfo, MetraError, ParseLimits, Result};
 
 use crate::atomic::atomic_replace;
 use crate::wav::read_wav;
-use crate::wav_writer::info_kind;
+use crate::wav_writer::{bext_fixed_field, encode_bext_value, info_kind};
 
 /// One bounded `LIST/INFO` value for a new WAV file.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,10 +26,28 @@ impl WavCreateEntry {
     }
 }
 
+/// One bounded Broadcast Wave `bext` value for a new WAV file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WavBextCreateEntry {
+    pub name: String,
+    pub value: String,
+}
+
+impl WavBextCreateEntry {
+    /// Create one named BWF field. The value is validated during creation.
+    pub fn new(name: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            value: value.into(),
+        }
+    }
+}
+
 /// Options for creating a minimal PCM WAV with bounded INFO metadata.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct WavCreateOptions {
     pub info: Vec<WavCreateEntry>,
+    pub bext: Vec<WavBextCreateEntry>,
 }
 
 impl WavCreateOptions {
@@ -47,6 +65,17 @@ impl WavCreateOptions {
     /// Add one INFO field in place.
     pub fn push_info(&mut self, name: impl Into<String>, value: impl Into<String>) {
         self.info.push(WavCreateEntry::info(name, value));
+    }
+
+    /// Add one Broadcast Wave `bext` field in place.
+    pub fn push_bext(&mut self, name: impl Into<String>, value: impl Into<String>) {
+        self.bext.push(WavBextCreateEntry::new(name, value));
+    }
+
+    /// Add one Broadcast Wave `bext` field and return the updated options.
+    pub fn with_bext(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        self.push_bext(name, value);
+        self
     }
 }
 
@@ -82,6 +111,49 @@ pub fn create_wav_to_vec(options: &WavCreateOptions, limits: ParseLimits) -> Res
         info_entries.push((kind, entry.name.clone(), entry.value.clone()));
     }
 
+    let mut bext = None;
+    if !options.bext.is_empty() {
+        let mut data = vec![0_u8; 602];
+        for entry in &options.bext {
+            if options
+                .bext
+                .iter()
+                .filter(|existing| existing.name == entry.name)
+                .count()
+                != 1
+            {
+                return Err(MetraError::InvalidTag {
+                    context: "WAV BWF creation".to_owned(),
+                    message: format!("duplicate bext field {}", entry.name),
+                });
+            }
+            let encoded = encode_bext_value(&entry.name, &entry.value, limits)?;
+            if entry.name == "CodingHistory" {
+                data.extend_from_slice(&encoded);
+            } else {
+                let (start, width) =
+                    bext_fixed_field(&entry.name).ok_or_else(|| MetraError::InvalidTag {
+                        context: "WAV BWF creation".to_owned(),
+                        message: format!("unsupported bext field {}", entry.name),
+                    })?;
+                if encoded.len() != width {
+                    return Err(MetraError::InvalidTag {
+                        context: format!("WAV BWF creation {}", entry.name),
+                        message: "encoded value has the wrong fixed width".to_owned(),
+                    });
+                }
+                data[start..start + width].copy_from_slice(&encoded);
+            }
+        }
+        if data.len() > limits.max_metadata_bytes {
+            return Err(MetraError::ResourceLimitExceeded {
+                resource: "WAV BWF creation metadata".to_owned(),
+                limit: limits.max_metadata_bytes,
+            });
+        }
+        bext = Some(data);
+    }
+
     let mut info = b"INFO".to_vec();
     for (kind, _, value) in &info_entries {
         let length =
@@ -114,6 +186,9 @@ pub fn create_wav_to_vec(options: &WavCreateOptions, limits: ParseLimits) -> Res
     fmt.extend_from_slice(&8_u16.to_le_bytes()); // bits per sample
     let mut body = Vec::new();
     write_chunk(&mut body, b"fmt ", &fmt)?;
+    if let Some(bext) = bext {
+        write_chunk(&mut body, b"bext", &bext)?;
+    }
     write_chunk(&mut body, b"LIST", &info)?;
     write_chunk(&mut body, b"data", &[0])?;
 
@@ -261,6 +336,48 @@ mod tests {
     }
 
     #[test]
+    fn creates_readable_broadcast_wave_seed() {
+        let options = WavCreateOptions::new()
+            .with_bext("Description", "Metra take")
+            .with_bext("DateTimeOriginal", "2026:09:14 12:34:56")
+            .with_bext("TimeReference", "17")
+            .with_bext("BWFVersion", "2")
+            .with_bext("BWF_UMID", "AB".repeat(32))
+            .with_bext("CodingHistory", "A=PCM,F=48000,W=8,M=mono");
+        let bytes = create_wav_to_vec(&options, ParseLimits::default())
+            .expect("BWF WAV creation should succeed");
+        let metadata = read_wav(
+            &mut std::io::Cursor::new(bytes.clone()),
+            FileInfo::new(
+                "created-bwf.wav".into(),
+                bytes.len() as u64,
+                FileFormat::Wav,
+            ),
+            ParseLimits::default(),
+        )
+        .expect("created BWF should remain readable");
+        assert_eq!(
+            metadata.find("WAV:Description").unwrap().display_value(),
+            "Metra take"
+        );
+        assert_eq!(
+            metadata
+                .find("WAV:DateTimeOriginal")
+                .unwrap()
+                .display_value(),
+            "2026:09:14 12:34:56"
+        );
+        assert_eq!(
+            metadata.find("WAV:BWF_UMID").unwrap().display_value(),
+            "AB".repeat(32)
+        );
+        assert_eq!(
+            metadata.find("WAV:CodingHistory").unwrap().display_value(),
+            "A=PCM,F=48000,W=8,M=mono"
+        );
+    }
+
+    #[test]
     fn rejects_invalid_duplicate_and_oversized_info() {
         let invalid = WavCreateOptions::new().with_info("Unknown", "value");
         assert!(matches!(
@@ -283,6 +400,17 @@ mod tests {
             create_wav_to_vec(&oversized, limits),
             Err(MetraError::ResourceLimitExceeded { .. })
         ));
+
+        let duplicate_bext = WavCreateOptions::new()
+            .with_bext("Description", "one")
+            .with_bext("Description", "two");
+        assert!(matches!(
+            create_wav_to_vec(&duplicate_bext, ParseLimits::default()),
+            Err(MetraError::InvalidTag { .. })
+        ));
+
+        let invalid_bext = WavCreateOptions::new().with_bext("TimeReference", "not-a-number");
+        assert!(create_wav_to_vec(&invalid_bext, ParseLimits::default()).is_err());
     }
 
     #[test]

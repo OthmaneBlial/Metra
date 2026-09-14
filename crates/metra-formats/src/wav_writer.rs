@@ -349,7 +349,13 @@ fn bext_actions(edits: &[WavEdit], limits: ParseLimits) -> Result<Vec<BextAction
         .collect()
 }
 
-fn encode_bext_value(name: &str, value: &str, limits: ParseLimits) -> Result<Vec<u8>> {
+pub(crate) fn encode_bext_value(name: &str, value: &str, limits: ParseLimits) -> Result<Vec<u8>> {
+    if value.len() > limits.max_value_bytes {
+        return Err(MetraError::ResourceLimitExceeded {
+            resource: format!("WAV bext {name} value"),
+            limit: limits.max_value_bytes,
+        });
+    }
     match name {
         "Description" => encode_bext_text(name, value, 256),
         "Originator" => encode_bext_text(name, value, 32),
@@ -485,7 +491,7 @@ fn invalid_bext_value(name: &str, message: &str) -> MetraError {
     }
 }
 
-fn bext_fixed_field(name: &str) -> Option<(usize, usize)> {
+pub(crate) fn bext_fixed_field(name: &str) -> Option<(usize, usize)> {
     Some(match name {
         "Description" => (0, 256),
         "Originator" => (256, 32),

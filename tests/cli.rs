@@ -1738,6 +1738,12 @@ fn cli_can_create_minimal_wav_seed_without_overwrite() {
             "Title=Metra",
             "--create-wav",
             "Artist=Othmane",
+            "--create-wav",
+            "BWF:Description=Metra take",
+            "--create-wav",
+            "BWF:DateTimeOriginal=2026:09:14 12:34:56",
+            "--create-wav",
+            "BWF:CodingHistory=A=PCM,F=48000,W=8,M=mono",
             path.to_str().expect("UTF-8 test path"),
         ])
         .output()
@@ -1750,6 +1756,21 @@ fn cli_can_create_minimal_wav_seed_without_overwrite() {
     assert_eq!(
         metadata.find("WAV:Artist").unwrap().display_value(),
         "Othmane"
+    );
+    assert_eq!(
+        metadata.find("WAV:Description").unwrap().display_value(),
+        "Metra take"
+    );
+    assert_eq!(
+        metadata
+            .find("WAV:DateTimeOriginal")
+            .unwrap()
+            .display_value(),
+        "2026:09:14 12:34:56"
+    );
+    assert_eq!(
+        metadata.find("WAV:CodingHistory").unwrap().display_value(),
+        "A=PCM,F=48000,W=8,M=mono"
     );
 
     let second = Command::new(env!("CARGO_BIN_EXE_metra"))

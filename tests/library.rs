@@ -1372,6 +1372,36 @@ fn public_generic_edit_api_rewrites_broadcast_wave_fields() {
 }
 
 #[test]
+fn public_wav_creation_api_supports_broadcast_wave_seed() {
+    let options = metra::WavCreateOptions::new()
+        .with_bext("Description", "Metra take")
+        .with_bext("DateTimeOriginal", "2026:09:14 12:34:56")
+        .with_bext("CodingHistory", "A=PCM,F=48000,W=8,M=mono");
+    let bytes = metra::create_wav_to_vec(&options, metra::ParseLimits::default())
+        .expect("public BWF creation API should emit a seed");
+    let metadata = metra::read_from(
+        &mut Cursor::new(bytes.clone()),
+        metra::FileInfo::new(
+            "public-bwf.wav".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Wav,
+        ),
+    )
+    .expect("public BWF seed should remain readable");
+    assert_eq!(
+        metadata
+            .find("WAV:DateTimeOriginal")
+            .unwrap()
+            .display_value(),
+        "2026:09:14 12:34:56"
+    );
+    assert_eq!(
+        metadata.find("WAV:CodingHistory").unwrap().display_value(),
+        "A=PCM,F=48000,W=8,M=mono"
+    );
+}
+
+#[test]
 fn public_batch_api_keeps_input_order_and_supports_streaming() {
     let paths = vec![
         std::env::temp_dir().join("metra-batch-z-does-not-exist"),

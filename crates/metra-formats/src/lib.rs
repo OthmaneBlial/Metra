@@ -144,7 +144,9 @@ pub use tiff_create::{
 };
 pub use tiff_writer::{TiffEdit, rewrite_tiff, rewrite_tiff_path, rewrite_tiff_to_vec};
 pub use wav::read_wav;
-pub use wav_create::{WavCreateEntry, WavCreateOptions, create_wav_path, create_wav_to_vec};
+pub use wav_create::{
+    WavBextCreateEntry, WavCreateEntry, WavCreateOptions, create_wav_path, create_wav_to_vec,
+};
 pub use wav_writer::{WavEdit, rewrite_wav, rewrite_wav_path, rewrite_wav_to_vec};
 pub use webp::read_webp;
 pub use webp_create::{WebpCreateOptions, create_webp_path, create_webp_to_vec};

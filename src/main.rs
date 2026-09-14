@@ -528,7 +528,8 @@ struct Arguments {
     )]
     create_xmp: Option<String>,
 
-    /// Create a new minimal PCM WAV with one or more LIST/INFO fields.
+    /// Create a new minimal PCM WAV with LIST/INFO and optional Broadcast Wave
+    /// `bext` fields (`BWF:Field=VALUE`).
     #[arg(
         long = "create-wav",
         value_name = "KEY=VALUE",
@@ -1879,7 +1880,18 @@ fn parse_wav_create(entries: &[String]) -> Result<metra::WavCreateOptions, Strin
         if key.is_empty() {
             return Err("--create-wav requires a non-empty KEY".to_owned());
         }
-        options.push_info(key, value);
+        let key = key.strip_prefix("WAV:").unwrap_or(key);
+        if let Some(name) = key
+            .strip_prefix("BWF:")
+            .or_else(|| key.strip_prefix("bext:"))
+        {
+            if name.is_empty() {
+                return Err("--create-wav BWF fields require a non-empty name".to_owned());
+            }
+            options.push_bext(name, value);
+        } else {
+            options.push_info(key, value);
+        }
     }
     Ok(options)
 }
