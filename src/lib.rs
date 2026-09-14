@@ -23,7 +23,7 @@ pub use metra_formats::{
     Mp3CreateOptions, Mp3Edit, OggCreateEntry, OggCreateOptions, OggEdit, PdfCreateEntry,
     PdfCreateOptions, PdfEdit, PngCreateEntry, PngCreateOptions, PngEdit, PsdEdit, ReadSeek,
     SvgCreateOptions, SvgEdit, TiffCreateEntry, TiffCreateOptions, TiffEdit, WavCreateEntry,
-    WavCreateOptions, WavEdit, WebpCreateOptions, WebpEdit, WriteSeek, copy_metadata_path,
+    WavCreateOptions, WavEdit, WebpCreateOptions, WebpEdit, WriteSeek, XmpEdit, copy_metadata_path,
     create_flac_path, create_flac_to_vec, create_gif_path, create_gif_to_vec, create_icc_path,
     create_icc_to_vec, create_jpeg_path, create_jpeg_to_vec, create_mp3_path, create_mp3_to_vec,
     create_ogg_path, create_ogg_to_vec, create_path, create_pdf_path, create_pdf_to_vec,
@@ -42,7 +42,8 @@ pub use metra_formats::{
     rewrite_raw_cr3_path, rewrite_raw_cr3_to_vec, rewrite_raw_tiff, rewrite_raw_tiff_path,
     rewrite_raw_tiff_to_vec, rewrite_svg, rewrite_svg_path, rewrite_svg_to_vec, rewrite_tiff,
     rewrite_tiff_path, rewrite_tiff_to_vec, rewrite_wav, rewrite_wav_path, rewrite_wav_to_vec,
-    rewrite_webp, rewrite_webp_path, rewrite_webp_to_vec,
+    rewrite_webp, rewrite_webp_path, rewrite_webp_to_vec, rewrite_xmp, rewrite_xmp_path,
+    rewrite_xmp_to_vec,
 };
 
 /// Read metadata from a path using the default defensive parser limits.

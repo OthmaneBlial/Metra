@@ -1234,6 +1234,7 @@ enum EditRequest {
     DirectGif(Vec<metra::GifEdit>),
     DirectWebp(Vec<metra::WebpEdit>),
     DirectSvg(Vec<metra::SvgEdit>),
+    DirectXmp(Vec<metra::XmpEdit>),
     Copy { key: CopyKey, source: PathBuf },
 }
 
@@ -1260,6 +1261,7 @@ enum CopyKey {
     GifComment,
     WebpXmp,
     SvgText(SvgTextKey),
+    XmpPacket,
 }
 
 #[derive(Debug)]
@@ -1307,6 +1309,11 @@ fn parse_edits(
                 return Ok(Some(EditRequest::DirectPsd(vec![metra::PsdEdit::SetXmp(
                     value.to_owned(),
                 )])));
+            }
+            if key == "XMP:Packet" {
+                return Ok(Some(EditRequest::DirectXmp(vec![
+                    metra::XmpEdit::SetPacket(value.to_owned()),
+                ])));
             }
             if let Some(name) = avi_info_name(key) {
                 return Ok(Some(EditRequest::DirectAvi(vec![
@@ -1562,6 +1569,8 @@ fn parse_edits(
             CopyKey::TiffAscii(tiff_key.to_owned())
         } else if let Some(name) = pdf_info_name(key) {
             CopyKey::PdfInfo(name.to_owned())
+        } else if key == "XMP:Packet" {
+            CopyKey::XmpPacket
         } else if psd_xmp_key(key) {
             CopyKey::PsdXmp
         } else if let Some(name) = avi_info_name(key) {
@@ -1637,7 +1646,7 @@ fn pdf_info_name(key: &str) -> Option<&str> {
 }
 
 fn psd_xmp_key(key: &str) -> bool {
-    matches!(key, "PSD:XMP" | "PSD:ImageResources:XMP" | "XMP:Packet")
+    matches!(key, "PSD:XMP" | "PSD:ImageResources:XMP")
 }
 
 fn avi_info_name(key: &str) -> Option<&str> {
@@ -1900,6 +1909,7 @@ fn apply_request(paths: &[PathBuf], request: EditRequest, limits: ParseLimits) -
         EditRequest::DirectGif(edits) => apply_gif_edits(paths, &edits, limits),
         EditRequest::DirectWebp(edits) => apply_webp_edits(paths, &edits, limits),
         EditRequest::DirectSvg(edits) => apply_svg_edits(paths, &edits, limits),
+        EditRequest::DirectXmp(edits) => apply_xmp_edits(paths, &edits, limits),
         EditRequest::Copy { key, source } => apply_copy(paths, key, &source, limits),
     }
 }
@@ -2107,6 +2117,39 @@ fn apply_pdf_edits(paths: &[PathBuf], edits: &[metra::PdfEdit], limits: ParseLim
             Ok(metadata) => {
                 eprintln!(
                     "metra: {}: {} edits are supported only for PDF files",
+                    path.display(),
+                    metadata.file_info.format
+                );
+                failures += 1;
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", path.display());
+                failures += 1;
+            }
+        }
+    }
+    if failures == 0 {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
+fn apply_xmp_edits(paths: &[PathBuf], edits: &[metra::XmpEdit], limits: ParseLimits) -> ExitCode {
+    let mut failures = 0_usize;
+    for path in paths {
+        match metra::read_with_limits(path, limits) {
+            Ok(metadata) if metadata.file_info.format == metra::FileFormat::Xmp => {
+                if let Err(error) = metra::rewrite_xmp_path(path, limits, edits) {
+                    eprintln!("metra: {}: {error}", path.display());
+                    failures += 1;
+                } else {
+                    println!("updated: {}", path.display());
+                }
+            }
+            Ok(metadata) => {
+                eprintln!(
+                    "metra: {}: XMP packet edits are supported only for standalone XMP files, not {}",
                     path.display(),
                     metadata.file_info.format
                 );
@@ -2391,6 +2434,33 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path, limits: ParseLimit
                 value: value.clone(),
             }];
             apply_pdf_edits(paths, &edits, limits)
+        }
+        CopyKey::XmpPacket => {
+            if source_metadata.file_info.format != metra::FileFormat::Xmp {
+                eprintln!(
+                    "metra: {}: source format {} is not standalone XMP",
+                    source.display(),
+                    source_metadata.file_info.format
+                );
+                return ExitCode::from(1);
+            }
+            let Some(packet) = source_metadata.find("XMP:Packet") else {
+                eprintln!(
+                    "metra: {}: source does not contain an XMP packet",
+                    source.display()
+                );
+                return ExitCode::from(1);
+            };
+            let metra::TagValue::Bytes(packet) = &packet.value else {
+                eprintln!("metra: {}: XMP:Packet is not raw bytes", source.display());
+                return ExitCode::from(1);
+            };
+            let Ok(packet) = String::from_utf8(packet.clone()) else {
+                eprintln!("metra: {}: XMP:Packet is not valid UTF-8", source.display());
+                return ExitCode::from(1);
+            };
+            let edits = [metra::XmpEdit::SetPacket(packet)];
+            apply_xmp_edits(paths, &edits, limits)
         }
         CopyKey::PsdXmp => {
             if source_metadata.file_info.format != metra::FileFormat::Psd {

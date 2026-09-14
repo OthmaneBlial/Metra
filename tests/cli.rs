@@ -1402,6 +1402,51 @@ fn cli_can_create_standalone_xmp_without_overwrite() {
 }
 
 #[test]
+fn cli_can_set_and_copy_standalone_xmp_packet() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.file("source.xmp", &xmp_packet("source").into_bytes());
+    let target = directory.file("target.xmp", &xmp_packet("target").into_bytes());
+    let replacement = xmp_packet("edited");
+
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            &format!("XMP:Packet={replacement}"),
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("XMP:dc:format")
+            .unwrap()
+            .display_value(),
+        "edited"
+    );
+
+    let copy_assignment = format!("XMP:Packet={}", source.to_str().expect("UTF-8 test path"));
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            &copy_assignment,
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("XMP:dc:format")
+            .unwrap()
+            .display_value(),
+        "source"
+    );
+}
+
+#[test]
 fn cli_can_edit_existing_tiff_ascii_in_place() {
     let directory = TemporaryDirectory::new();
     let path = directory.file("editable.tif", &minimal_raw_tiff());

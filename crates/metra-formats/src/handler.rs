@@ -218,6 +218,11 @@ writer_adapter!(
     super::svg_writer::rewrite_svg,
     super::edit::collect_svg
 );
+writer_adapter!(
+    write_xmp,
+    super::xmp_writer::rewrite_xmp,
+    super::edit::collect_xmp
+);
 
 fn write_raw(
     mut reader: &mut dyn ReadSeek,
@@ -338,7 +343,7 @@ static FORMAT_HANDLERS: &[RegisteredFormatHandler] = &[
     RegisteredFormatHandler {
         format: FileFormat::Xmp,
         reader: read_xmp,
-        writer: None,
+        writer: Some(write_xmp),
     },
     RegisteredFormatHandler {
         format: FileFormat::Mkv,
@@ -538,6 +543,44 @@ mod tests {
             ),
         )
         .expect("registered PSD writer output should remain readable");
+        assert_eq!(
+            metadata.find("XMP:dc:format").unwrap().display_value(),
+            "new"
+        );
+    }
+
+    #[test]
+    fn registered_xmp_writer_dispatches_canonical_edits() {
+        let packet = |format: &str| {
+            format!(
+                "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF><rdf:Description xmlns:dc=\"urn:dc\" dc:format=\"{format}\"/></rdf:RDF></x:xmpmeta>"
+            )
+        };
+        let bytes = packet("old").into_bytes();
+        let replacement = packet("new");
+        let handler = handler_for_format(FileFormat::Xmp).expect("XMP handler should exist");
+        let mut reader = std::io::Cursor::new(bytes.clone());
+        let mut writer = std::io::Cursor::new(Vec::new());
+        handler
+            .write_metadata(
+                &mut reader,
+                &mut writer,
+                FileInfo::new("handler.xmp".into(), bytes.len() as u64, FileFormat::Xmp),
+                ParseLimits::default(),
+                &[MetadataEdit::set("XMP:Packet", replacement)],
+            )
+            .expect("registered XMP writer should accept canonical edits");
+
+        let output = writer.into_inner();
+        let metadata = crate::read_reader(
+            &mut std::io::Cursor::new(output.clone()),
+            FileInfo::new(
+                "handler.xmp".into(),
+                output.len() as u64,
+                FileFormat::Unknown,
+            ),
+        )
+        .expect("registered XMP writer output should remain readable");
         assert_eq!(
             metadata.find("XMP:dc:format").unwrap().display_value(),
             "new"

@@ -82,6 +82,7 @@ pub fn rewrite_metadata_path(
         FileFormat::Mkv | FileFormat::Webm => {
             crate::rewrite_matroska_path(path, limits, &collect_matroska(edits, format)?)
         }
+        FileFormat::Xmp => crate::rewrite_xmp_path(path, limits, &collect_xmp(edits, format)?),
         _ => Err(unsupported_format(format)),
     }
 }
@@ -174,6 +175,9 @@ pub fn rewrite_metadata_to_vec(
             limits,
             &collect_matroska(edits, detected)?,
         ),
+        FileFormat::Xmp => {
+            crate::rewrite_xmp_to_vec(bytes, file_info, limits, &collect_xmp(edits, detected)?)
+        }
         _ => Err(unsupported_format(detected)),
     }
 }
@@ -230,7 +234,12 @@ fn is_cr3_metadata(metadata: &metra_core::Metadata) -> bool {
 fn source_lookup_key(key: &str) -> &str {
     if let Some(key) = key.strip_prefix("TIFF:") {
         key
-    } else if jpeg_xmp_key(key) || png_xmp_key(key) || webp_xmp_key(key) || psd_xmp_key(key) {
+    } else if jpeg_xmp_key(key)
+        || png_xmp_key(key)
+        || webp_xmp_key(key)
+        || psd_xmp_key(key)
+        || xmp_packet_key(key)
+    {
         "XMP:Packet"
     } else if let Some(key) = jpeg_exif_ascii_key(key) {
         key
@@ -500,6 +509,21 @@ pub(crate) fn collect_psd(
         .collect()
 }
 
+pub(crate) fn collect_xmp(
+    edits: &[MetadataEdit],
+    format: FileFormat,
+) -> Result<Vec<crate::XmpEdit>> {
+    edits
+        .iter()
+        .map(|edit| match edit {
+            MetadataEdit::Set { key, value } if xmp_packet_key(key) => {
+                Ok(crate::XmpEdit::SetPacket(value.clone()))
+            }
+            _ => Err(unsupported_edit(format, edit.key())),
+        })
+        .collect()
+}
+
 pub(crate) fn collect_avi(
     edits: &[MetadataEdit],
     format: FileFormat,
@@ -635,7 +659,11 @@ fn webp_xmp_key(key: &str) -> bool {
 }
 
 fn psd_xmp_key(key: &str) -> bool {
-    matches!(key, "PSD:XMP" | "PSD:ImageResources:XMP" | "XMP:Packet")
+    matches!(key, "PSD:XMP" | "PSD:ImageResources:XMP")
+}
+
+fn xmp_packet_key(key: &str) -> bool {
+    key == "XMP:Packet"
 }
 
 fn avi_info_name(key: &str) -> Option<&str> {

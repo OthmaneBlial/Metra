@@ -66,6 +66,7 @@ mod webp_writer;
 mod xml;
 mod xmp;
 mod xmp_create;
+mod xmp_writer;
 
 pub use avi::read_avi;
 pub use avi_writer::{AviEdit, rewrite_avi, rewrite_avi_path, rewrite_avi_to_vec};
@@ -121,6 +122,7 @@ pub use webp_create::{WebpCreateOptions, create_webp_path, create_webp_to_vec};
 pub use webp_writer::{WebpEdit, rewrite_webp, rewrite_webp_path, rewrite_webp_to_vec};
 pub use xmp::read_xmp;
 pub use xmp_create::{create_xmp_path, create_xmp_to_vec};
+pub use xmp_writer::{XmpEdit, rewrite_xmp, rewrite_xmp_path, rewrite_xmp_to_vec};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DetectedFormat {

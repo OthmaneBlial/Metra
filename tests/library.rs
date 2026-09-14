@@ -132,6 +132,13 @@ fn minimal_cr3_with_title(title: &str) -> Vec<u8> {
     [ftyp, moov].concat()
 }
 
+fn minimal_xmp_packet(format: &str) -> Vec<u8> {
+    format!(
+        "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF><rdf:Description xmlns:dc=\"urn:dc\" dc:format=\"{format}\"/></rdf:RDF></x:xmpmeta>"
+    )
+    .into_bytes()
+}
+
 fn minimal_dng_with_make(make: &str) -> Vec<u8> {
     let mut bytes = vec![
         b'I',
@@ -369,6 +376,38 @@ fn public_generic_edit_api_deletes_and_revalidates_psd_xmp() {
     .expect("deleted PSD should remain readable");
     assert!(metadata.find("XMP:Packet").is_none());
     assert!(metadata.warnings.is_empty());
+}
+
+#[test]
+fn public_generic_edit_api_rewrites_and_revalidates_standalone_xmp() {
+    let bytes = minimal_xmp_packet("old");
+    let replacement = String::from_utf8(minimal_xmp_packet("new")).expect("XMP should be UTF-8");
+    let output = metra::rewrite_metadata_to_vec(
+        &bytes,
+        metra::FileInfo::new(
+            "memory.xmp".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::set("XMP:Packet", replacement)],
+    )
+    .expect("generic standalone XMP edit should validate its rewritten bytes");
+
+    assert_eq!(output.len(), bytes.len());
+    let metadata = metra::read_from(
+        &mut std::io::Cursor::new(output),
+        metra::FileInfo::new(
+            "memory.xmp".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+    )
+    .expect("rewritten standalone XMP should remain readable");
+    assert_eq!(
+        metadata.find("XMP:dc:format").unwrap().display_value(),
+        "new"
+    );
 }
 
 #[test]
@@ -658,6 +697,34 @@ fn public_generic_copy_api_reads_source_before_atomic_target_rewrite() {
     assert_eq!(
         metadata.find("JPEG:Comment").unwrap().display_value(),
         "from source"
+    );
+    fs::remove_file(source).expect("source fixture should be removable");
+    fs::remove_file(target).expect("target fixture should be removable");
+}
+
+#[test]
+fn public_generic_copy_api_rewrites_standalone_xmp() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock should be after the Unix epoch")
+        .as_nanos();
+    let source = std::env::temp_dir().join(format!("metra-copy-source-{nonce}.xmp"));
+    let target = std::env::temp_dir().join(format!("metra-copy-target-{nonce}.xmp"));
+    fs::write(&source, minimal_xmp_packet("source")).expect("source fixture should be writable");
+    fs::write(&target, minimal_xmp_packet("target")).expect("target fixture should be writable");
+
+    metra::copy_metadata_path(
+        &source,
+        &target,
+        metra::ParseLimits::default(),
+        "XMP:Packet",
+    )
+    .expect("generic standalone XMP copy should rewrite the target");
+
+    let metadata = metra::read(&target).expect("copied XMP should remain readable");
+    assert_eq!(
+        metadata.find("XMP:dc:format").unwrap().display_value(),
+        "source"
     );
     fs::remove_file(source).expect("source fixture should be removable");
     fs::remove_file(target).expect("target fixture should be removable");
