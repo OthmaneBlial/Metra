@@ -106,6 +106,13 @@ enforces metadata/value limits, emits a fixed 1x1 seed image, and validates the
 result through the TIFF reader before returning it. Its path helper refuses an
 existing destination and removes its temporary file on failure.
 
+JPEG creation emits only a bounded SOI/metadata/EOI container. Comment and XMP
+segments are size-checked, NUL-containing comments and unsafe XMP packets are
+rejected, the result is re-read through the JPEG parser, and path creation uses
+a same-directory temporary file with atomic no-overwrite semantics. The
+container is intentionally metadata-oriented and does not claim to encode
+image pixels.
+
 The PNG creation API applies the same output budget and no-overwrite rule. It
 accepts only printable ASCII `tEXt` keywords, rejects NUL bytes and duplicate
 keywords, compresses one fixed scanline, validates chunk CRCs through the PNG
