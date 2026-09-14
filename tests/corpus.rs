@@ -432,7 +432,8 @@ fn oracle_value_matches(value: &metra::TagValue, oracle: &Value) -> bool {
         metra::TagValue::Float(value) => oracle_number_matches(*value, oracle),
         metra::TagValue::Date { .. }
         | metra::TagValue::Time { .. }
-        | metra::TagValue::DateTime { .. } => oracle.as_str() == Some(&value.to_display_string()),
+        | metra::TagValue::DateTime { .. } => oracle_temporal_matches(value, oracle),
+        metra::TagValue::Bytes(bytes) => oracle_ascii_bytes_match(bytes, oracle),
         metra::TagValue::Rational {
             numerator,
             denominator,
@@ -448,14 +449,15 @@ fn oracle_value_matches(value: &metra::TagValue, oracle: &Value) -> bool {
                     .zip(items)
                     .all(|(value, item)| oracle_value_matches(value, item))
         }),
-        metra::TagValue::Bytes(_)
-        | metra::TagValue::Structure(_)
-        | metra::TagValue::Unknown { .. } => false,
+        metra::TagValue::Structure(_) | metra::TagValue::Unknown { .. } => false,
     }
 }
 
 fn oracle_tag_matches(tag: &metra::Tag, oracle: &Value) -> bool {
     oracle_value_matches(&tag.value, oracle)
+        || (tag.namespace == "GPS"
+            && matches!(tag.name.as_str(), "GPSLatitude" | "GPSLongitude")
+            && oracle_dms_matches(&tag.value, oracle))
         || (tag.namespace == "PNG"
             && tag.group == "IHDR"
             && matches!(tag.value, metra::TagValue::String(_))
@@ -463,6 +465,75 @@ fn oracle_tag_matches(tag: &metra::Tag, oracle: &Value) -> bool {
                 .raw_value
                 .as_deref()
                 .is_some_and(|raw| raw.len() == 1 && oracle.as_u64() == Some(u64::from(raw[0]))))
+}
+
+fn oracle_temporal_matches(value: &metra::TagValue, oracle: &Value) -> bool {
+    let Some(oracle_text) = oracle.as_str() else {
+        return false;
+    };
+    let display = value.to_display_string();
+    display == oracle_text || display == normalize_oracle_date(oracle_text)
+}
+
+fn normalize_oracle_date(value: &str) -> String {
+    let bytes = value.as_bytes();
+    if bytes.len() >= 10 && bytes[4] == b':' && bytes[7] == b':' {
+        let mut normalized = value.to_owned().into_bytes();
+        normalized[4] = b'-';
+        normalized[7] = b'-';
+        String::from_utf8(normalized).expect("oracle date should remain UTF-8")
+    } else {
+        value.to_owned()
+    }
+}
+
+fn oracle_ascii_bytes_match(bytes: &[u8], oracle: &Value) -> bool {
+    let Some(text) = oracle.as_str() else {
+        return false;
+    };
+    let trimmed = bytes.strip_suffix(&[0]).unwrap_or(bytes);
+    !trimmed.is_empty()
+        && trimmed
+            .iter()
+            .all(|byte| byte.is_ascii_graphic() || byte.is_ascii_whitespace())
+        && std::str::from_utf8(trimmed).is_ok_and(|value| value == text)
+}
+
+fn oracle_dms_matches(value: &metra::TagValue, oracle: &Value) -> bool {
+    if !oracle.is_number() {
+        return false;
+    }
+    let metra::TagValue::Array(values) = value else {
+        return false;
+    };
+    if values.len() != 3 {
+        return false;
+    }
+    let Some(values) = values
+        .iter()
+        .map(rational_value)
+        .collect::<Option<Vec<_>>>()
+    else {
+        return false;
+    };
+    let Ok([degrees, minutes, seconds]) = <Vec<f64> as TryInto<[f64; 3]>>::try_into(values) else {
+        return false;
+    };
+    oracle_number_matches(degrees + minutes / 60.0 + seconds / 3600.0, oracle)
+}
+
+fn rational_value(value: &metra::TagValue) -> Option<f64> {
+    match value {
+        metra::TagValue::Rational {
+            numerator,
+            denominator,
+        } if *denominator != 0 => Some(*numerator as f64 / *denominator as f64),
+        metra::TagValue::UnsignedRational {
+            numerator,
+            denominator,
+        } if *denominator != 0 => Some(*numerator as f64 / *denominator as f64),
+        _ => None,
+    }
 }
 
 fn oracle_number_matches(value: f64, oracle: &Value) -> bool {
@@ -551,6 +622,59 @@ mod tests {
         };
         assert!(oracle_tag_matches(&tag, &serde_json::json!(6)));
         assert!(!oracle_tag_matches(&tag, &serde_json::json!(2)));
+    }
+
+    #[test]
+    fn temporal_and_ascii_values_match_oracle_spellings() {
+        assert!(oracle_value_matches(
+            &metra::TagValue::Date {
+                year: 2026,
+                month: 9,
+                day: 14,
+            },
+            &serde_json::json!("2026:09:14")
+        ));
+        assert!(oracle_value_matches(
+            &metra::TagValue::Bytes(b"0221\0".to_vec()),
+            &serde_json::json!("0221")
+        ));
+        assert!(!oracle_value_matches(
+            &metra::TagValue::Bytes(vec![0, 255, 1]),
+            &serde_json::json!("binary")
+        ));
+    }
+
+    #[test]
+    fn positive_gps_dms_arrays_match_oracle_decimal_values() {
+        let value = metra::TagValue::Array(vec![
+            metra::TagValue::UnsignedRational {
+                numerator: 53,
+                denominator: 1,
+            },
+            metra::TagValue::UnsignedRational {
+                numerator: 22,
+                denominator: 1,
+            },
+            metra::TagValue::UnsignedRational {
+                numerator: 5825,
+                denominator: 100,
+            },
+        ]);
+        assert!(oracle_tag_matches(
+            &metra::Tag {
+                namespace: "GPS".into(),
+                group: "GPS".into(),
+                id: Some(2),
+                name: "GPSLatitude".into(),
+                description: None,
+                value,
+                raw_value: None,
+                value_type: metra::ValueType::Array,
+                source: metra::Source::default(),
+                writable: false,
+            },
+            &serde_json::json!(53.3828472222222)
+        ));
     }
 
     #[test]
