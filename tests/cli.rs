@@ -279,6 +279,25 @@ fn minimal_dng_with_make(make: &str) -> Vec<u8> {
     bytes
 }
 
+fn minimal_raf() -> Vec<u8> {
+    let directory_offset = 0x120_u32;
+    let mut bytes = vec![0_u8; directory_offset as usize + 20];
+    bytes[..16].copy_from_slice(b"FUJIFILMCCD-RAW ");
+    bytes[0x3c..0x40].copy_from_slice(b"0201");
+    bytes[0x5c..0x60].copy_from_slice(&directory_offset.to_be_bytes());
+    bytes[0x60..0x64].copy_from_slice(&20_u32.to_be_bytes());
+    let start = directory_offset as usize;
+    bytes[start..start + 4].copy_from_slice(&2_u32.to_be_bytes());
+    bytes[start + 4..start + 6].copy_from_slice(&0x0100_u16.to_be_bytes());
+    bytes[start + 6..start + 8].copy_from_slice(&4_u16.to_be_bytes());
+    bytes[start + 8..start + 10].copy_from_slice(&4000_u16.to_be_bytes());
+    bytes[start + 10..start + 12].copy_from_slice(&3000_u16.to_be_bytes());
+    bytes[start + 12..start + 14].copy_from_slice(&0x0117_u16.to_be_bytes());
+    bytes[start + 14..start + 16].copy_from_slice(&4_u16.to_be_bytes());
+    bytes[start + 16..start + 20].copy_from_slice(&1_u32.to_be_bytes());
+    bytes
+}
+
 fn minimal_svg_document(title: &str, description: &str, comment: &str) -> Vec<u8> {
     format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\"><!-- {comment} --><title>{title}</title><desc>{description}</desc><rect width=\"2\" height=\"2\"/></svg>"
@@ -912,6 +931,37 @@ fn dng_path_uses_raw_identity_and_tiff_metadata() {
     assert!(
         tags.iter()
             .any(|tag| tag["name"] == "Make" && tag["namespace"] == "EXIF")
+    );
+}
+
+#[test]
+fn raf_json_output_exposes_bounded_header_and_directory_metadata() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.file("capture.raf", &minimal_raf());
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args(["--json", path.to_str().expect("UTF-8 test path")])
+        .output()
+        .expect("Metra CLI should start");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let document: Value = serde_json::from_slice(&output.stdout).expect("JSON output should parse");
+    assert_eq!(document["file_info"]["format"], "RAW");
+    let tags = document["tags"]
+        .as_array()
+        .expect("tags should be an array");
+    assert!(
+        tags.iter()
+            .any(|tag| tag["name"] == "FirmwareVersion" && tag["value"]["string"] == "0201")
+    );
+    assert!(
+        tags.iter()
+            .any(|tag| tag["name"] == "RawZoomActive" && tag["value"]["unsigned"] == 1)
+    );
+    assert!(
+        document["warnings"]
+            .as_array()
+            .expect("warnings should be an array")
+            .is_empty()
     );
 }
 
