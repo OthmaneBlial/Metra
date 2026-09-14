@@ -105,6 +105,9 @@ Existing `GPS:GPSTimeStamp` slots accept seconds since midnight through
 `GPS:TimeOfDaySeconds`; the writer emits bounded H/M/S rationals and rejects
 values outside one day. Deletion zero-fills the timestamp payload and the typed
 time and derived seconds are omitted on the next read.
+Existing GPSDateStamp slots accept the GPS:Date alias with strict
+YYYY:MM:DD validation; the reader retains its typed date and deletion uses the
+same fixed ASCII slot.
 Repeated IPTC datasets remain typed arrays when read; `--copy` accepts only a
 single-valued source dataset, while `--set` replaces all target occurrences
 with one bounded dataset.

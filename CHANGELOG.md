@@ -13,6 +13,9 @@ Initial read-first foundation with narrow validated rewrites:
 - added bounded GPS time-of-day rewrites from seconds since midnight into existing
   H/M/S rational slots, typed read-back, zero-fill deletion, generic API aliases,
   CLI set/delete/copy support, and one-day range validation;
+- added strict GPS:Date alias rewrites for existing GPSDateStamp ASCII slots,
+  typed calendar read-back, generic API/CLI copy and deletion coverage, and
+  invalid-calendar rejection;
 - added fixed-span ISO-BMFF XMP replacement, deletion, and source-to-source
   copying for direct `xml ` packets and the standard Adobe XMP `uuid` user type,
   with root validation, generic API, CLI alias, atomic output validation, and

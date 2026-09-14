@@ -99,6 +99,8 @@ GPS time writes are limited to existing three-rational `GPSTimeStamp` fields;
 seconds since midnight must be finite, non-negative, and strictly below 86,400,
 then are rounded to a bounded microsecond denominator. Deletion zero-fills only
 the existing timestamp payload.
+GPS date writes are limited to existing type-2 GPSDateStamp slots and valid
+four-digit-year calendar values; deletion only clears that existing allocation.
 JPEG EXIF ASCII writes validate the existing TIFF entry, type, count, offset,
 capacity, and patch range; they never create a missing field or resize the APP1
 segment, and the result is re-read before atomic replacement.
