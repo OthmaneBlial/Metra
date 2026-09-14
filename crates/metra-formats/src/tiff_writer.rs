@@ -217,6 +217,9 @@ fn collect_patches<R: Read + Seek>(
                 message: format!("TIFF ASCII value for {key} cannot contain NUL"),
             });
         }
+        if key == "GPS:GPSDateStamp" && !value.is_empty() {
+            validate_gps_date(value)?;
+        }
         if value.len() >= limits.max_value_bytes {
             return Err(MetraError::ResourceLimitExceeded {
                 resource: "TIFF ASCII value".to_owned(),
@@ -1166,6 +1169,45 @@ fn encode_gps_time(value: f64, key: &str) -> Result<[(u32, u32); 3]> {
     ])
 }
 
+fn validate_gps_date(value: &str) -> Result<()> {
+    let mut parts = value.split(':');
+    let year = parts
+        .next()
+        .filter(|part| part.len() == 4)
+        .and_then(|part| part.parse::<u16>().ok());
+    let month = parts
+        .next()
+        .filter(|part| part.len() == 2)
+        .and_then(|part| part.parse::<u8>().ok());
+    let day = parts
+        .next()
+        .filter(|part| part.len() == 2)
+        .and_then(|part| part.parse::<u8>().ok());
+    let valid = parts.next().is_none()
+        && year.is_some()
+        && month.is_some_and(|month| (1..=12).contains(&month))
+        && day.is_some_and(|day| {
+            let year = year.expect("year was checked above");
+            let month = month.expect("month was checked above");
+            let leap =
+                year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400));
+            let days = match month {
+                2 if leap => 29,
+                2 => 28,
+                4 | 6 | 9 | 11 => 30,
+                _ => 31,
+            };
+            (1..=days).contains(&day)
+        });
+    if valid {
+        Ok(())
+    } else {
+        Err(MetraError::WriteFailure {
+            message: format!("TIFF GPS date {value:?} must use a valid YYYY:MM:DD value"),
+        })
+    }
+}
+
 fn read_variant<R: Read + Seek>(reader: &mut R, file_length: u64, path: &Path) -> Result<Variant> {
     let header = read_at(reader, 0, 8, file_length, path, "TIFF header")?;
     let endian = match &header[..2] {
@@ -1514,6 +1556,20 @@ mod tests {
             bytes.extend_from_slice(&denominator.to_le_bytes());
         }
         assert_eq!(bytes.len(), 68);
+        bytes
+    }
+
+    fn tiff_with_gps_date() -> Vec<u8> {
+        let mut bytes = vec![
+            b'I', b'I', 42, 0, 8, 0, 0, 0, 1, 0, // one IFD0 entry
+            0x25, 0x88, 4, 0, 1, 0, 0, 0, 26, 0, 0, 0, // GPS IFD -> offset 26
+            0, 0, 0, 0, // no next IFD
+            1, 0, // one GPS IFD entry
+            0x1D, 0, 2, 0, 11, 0, 0, 0, 44, 0, 0, 0, // GPSDateStamp -> offset 44
+            0, 0, 0, 0, // no next IFD
+        ];
+        bytes.extend_from_slice(b"2026:09:14\0");
+        assert_eq!(bytes.len(), 55);
         bytes
     }
 
@@ -1934,6 +1990,43 @@ mod tests {
             }],
         );
         assert!(matches!(result, Err(MetraError::WriteFailure { .. })));
+    }
+
+    #[test]
+    fn rewrites_and_validates_gps_date_in_existing_ascii_slot() {
+        let bytes = tiff_with_gps_date();
+        let output = rewrite_tiff_to_vec(
+            &bytes,
+            info(&bytes),
+            ParseLimits::default(),
+            &[TiffEdit::SetAscii {
+                key: "GPS:GPSDateStamp".to_owned(),
+                value: "2027:10:14".to_owned(),
+            }],
+        )
+        .expect("GPS date rewrite should succeed");
+        assert_eq!(output.len(), bytes.len());
+        let metadata = read_tiff(
+            &mut Cursor::new(output),
+            info(&bytes),
+            ParseLimits::default(),
+        )
+        .expect("edited GPS date should remain readable");
+        assert_eq!(
+            metadata.find("GPS:GPSDateStamp").unwrap().display_value(),
+            "2027-10-14"
+        );
+
+        let invalid = rewrite_tiff_to_vec(
+            &bytes,
+            info(&bytes),
+            ParseLimits::default(),
+            &[TiffEdit::SetAscii {
+                key: "GPS:GPSDateStamp".to_owned(),
+                value: "2027:02:29".to_owned(),
+            }],
+        );
+        assert!(matches!(invalid, Err(MetraError::WriteFailure { .. })));
     }
 
     #[test]

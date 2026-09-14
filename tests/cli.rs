@@ -785,6 +785,20 @@ fn minimal_tiff_with_gps_time() -> Vec<u8> {
     bytes
 }
 
+fn minimal_tiff_with_gps_date() -> Vec<u8> {
+    let mut bytes = vec![
+        b'I', b'I', 42, 0, 8, 0, 0, 0, 1, 0, // one IFD0 entry
+        0x25, 0x88, 4, 0, 1, 0, 0, 0, 26, 0, 0, 0, // GPS IFD -> offset 26
+        0, 0, 0, 0, // no next IFD
+        1, 0, // one GPS IFD entry
+        0x1D, 0, 2, 0, 11, 0, 0, 0, 44, 0, 0, 0, // GPSDateStamp -> offset 44
+        0, 0, 0, 0, // no next IFD
+    ];
+    bytes.extend_from_slice(b"2026:09:14\0");
+    assert_eq!(bytes.len(), 55);
+    bytes
+}
+
 fn run(args: &[&Path]) -> std::process::Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_metra"));
     for path in args {
@@ -2750,6 +2764,66 @@ fn cli_can_set_copy_and_delete_gps_time_of_day() {
         metra::read(&target)
             .unwrap()
             .find("GPS:TimeOfDaySeconds")
+            .is_none()
+    );
+}
+
+#[test]
+fn cli_can_set_copy_and_delete_gps_date_alias() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.file("source.tif", &minimal_tiff_with_gps_date());
+    let target = directory.file("target.tif", &minimal_tiff_with_gps_date());
+
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "GPS:Date=2027:10:14",
+            source.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+    assert_eq!(
+        metra::read(&source)
+            .unwrap()
+            .find("GPS:GPSDateStamp")
+            .unwrap()
+            .display_value(),
+        "2027-10-14"
+    );
+
+    let copy_assignment = format!("GPS:Date={}", source.to_str().expect("UTF-8 test path"));
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            copy_assignment.as_str(),
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("GPS:GPSDateStamp")
+            .unwrap()
+            .display_value(),
+        "2027-10-14"
+    );
+
+    let delete = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--delete",
+            "TIFF:GPS:Date",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(delete.status.success(), "stderr: {:?}", delete.stderr);
+    assert!(
+        metra::read(&target)
+            .unwrap()
+            .find("GPS:GPSDateStamp")
             .is_none()
     );
 }

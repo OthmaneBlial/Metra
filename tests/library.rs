@@ -267,6 +267,20 @@ fn minimal_tiff_with_gps_time() -> Vec<u8> {
     bytes
 }
 
+fn minimal_tiff_with_gps_date() -> Vec<u8> {
+    let mut bytes = vec![
+        b'I', b'I', 42, 0, 8, 0, 0, 0, 1, 0, // one IFD0 entry
+        0x25, 0x88, 4, 0, 1, 0, 0, 0, 26, 0, 0, 0, // GPS IFD -> offset 26
+        0, 0, 0, 0, // no next IFD
+        1, 0, // one GPS IFD entry
+        0x1D, 0, 2, 0, 11, 0, 0, 0, 44, 0, 0, 0, // GPSDateStamp -> offset 44
+        0, 0, 0, 0, // no next IFD
+    ];
+    bytes.extend_from_slice(b"2026:09:14\0");
+    assert_eq!(bytes.len(), 55);
+    bytes
+}
+
 #[test]
 fn public_reader_api_detects_and_dispatches_in_memory_tiff() {
     let bytes = b"II*\0\0\0\0\0";
@@ -994,6 +1008,36 @@ fn public_generic_edit_api_rewrites_gps_time_of_day() {
     assert_eq!(
         metadata.find("GPS:GPSTimeStamp").unwrap().display_value(),
         "12:34:56.125"
+    );
+}
+
+#[test]
+fn public_generic_edit_api_rewrites_gps_date_alias() {
+    let bytes = minimal_tiff_with_gps_date();
+    let output = metra::rewrite_metadata_to_vec(
+        &bytes,
+        metra::FileInfo::new(
+            "memory.tif".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::set("GPS:Date", "2027:10:14")],
+    )
+    .expect("generic GPS date edit should validate its rewritten bytes");
+    assert_eq!(output.len(), bytes.len());
+    let metadata = metra::read_from(
+        &mut std::io::Cursor::new(output),
+        metra::FileInfo::new(
+            "memory.tif".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+    )
+    .expect("rewritten GPS date should remain readable");
+    assert_eq!(
+        metadata.find("GPS:GPSDateStamp").unwrap().display_value(),
+        "2027-10-14"
     );
 }
 

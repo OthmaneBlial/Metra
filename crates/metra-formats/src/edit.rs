@@ -227,6 +227,11 @@ pub fn copy_metadata_path(
         {
             value.to_string()
         }
+        (metra_core::TagValue::Date { year, month, day }, false)
+            if lookup_key == "GPS:GPSDateStamp" =>
+        {
+            format!("{year:04}:{month:02}:{day:02}")
+        }
         _ => {
             return Err(MetraError::InvalidTag {
                 context: "metadata copy".to_owned(),
@@ -265,6 +270,8 @@ fn source_lookup_key(key: &str) -> &str {
         }
     } else if gps_time_key(key).is_some() {
         "GPS:TimeOfDaySeconds"
+    } else if gps_date_key(key).is_some() {
+        "GPS:GPSDateStamp"
     } else if let Some(key) = key.strip_prefix("TIFF:") {
         key
     } else if jpeg_xmp_key(key)
@@ -352,6 +359,11 @@ pub(crate) fn collect_tiff(
                         key: key.to_owned(),
                         value: value.clone(),
                     })
+                } else if let Some(key) = gps_date_key(key) {
+                    Ok(crate::TiffEdit::SetAscii {
+                        key: key.to_owned(),
+                        value: value.clone(),
+                    })
                 } else {
                     tiff_ascii_key(key)
                         .map(|key| crate::TiffEdit::SetAscii {
@@ -372,6 +384,10 @@ pub(crate) fn collect_tiff(
                     })
                 } else if let Some(key) = gps_time_key(key) {
                     Ok(crate::TiffEdit::DeleteGpsTime {
+                        key: key.to_owned(),
+                    })
+                } else if let Some(key) = gps_date_key(key) {
+                    Ok(crate::TiffEdit::DeleteAscii {
                         key: key.to_owned(),
                     })
                 } else {
@@ -768,6 +784,11 @@ fn gps_scalar_key(key: &str) -> Option<&'static str> {
 fn gps_time_key(key: &str) -> Option<&'static str> {
     let key = key.strip_prefix("TIFF:").unwrap_or(key);
     matches!(key, "GPS:TimeOfDaySeconds" | "GPS:GPSTimeStamp").then_some("GPS:GPSTimeStamp")
+}
+
+fn gps_date_key(key: &str) -> Option<&'static str> {
+    let key = key.strip_prefix("TIFF:").unwrap_or(key);
+    matches!(key, "GPS:Date" | "GPS:GPSDateStamp").then_some("GPS:GPSDateStamp")
 }
 
 fn png_xmp_key(key: &str) -> bool {
