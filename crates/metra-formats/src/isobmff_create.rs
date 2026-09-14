@@ -11,6 +11,8 @@ use crate::isobmff::read_isobmff;
 const MP4_COMPATIBLE_BRANDS: &[[u8; 4]] = &[*b"isom", *b"iso2", *b"mp41"];
 const MOV_COMPATIBLE_BRANDS: &[[u8; 4]] = &[*b"qt  "];
 const M4A_COMPATIBLE_BRANDS: &[[u8; 4]] = &[*b"M4A ", *b"isom", *b"mp42"];
+const HEIF_COMPATIBLE_BRANDS: &[[u8; 4]] = &[*b"mif1", *b"heic"];
+const AVIF_COMPATIBLE_BRANDS: &[[u8; 4]] = &[*b"avif", *b"mif1"];
 
 /// ISO-BMFF brand emitted by the bounded metadata-seed creator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -18,6 +20,8 @@ pub enum IsobmffCreateKind {
     Mp4,
     Mov,
     M4a,
+    Heif,
+    Avif,
 }
 
 impl IsobmffCreateKind {
@@ -26,6 +30,8 @@ impl IsobmffCreateKind {
             Self::Mp4 => FileFormat::Mp4,
             Self::Mov => FileFormat::Mov,
             Self::M4a => FileFormat::M4a,
+            Self::Heif => FileFormat::Heif,
+            Self::Avif => FileFormat::Avif,
         }
     }
 
@@ -34,6 +40,8 @@ impl IsobmffCreateKind {
             Self::Mp4 => b"isom",
             Self::Mov => b"qt  ",
             Self::M4a => b"M4A ",
+            Self::Heif => b"mif1",
+            Self::Avif => b"avif",
         }
     }
 
@@ -42,6 +50,8 @@ impl IsobmffCreateKind {
             Self::Mp4 => MP4_COMPATIBLE_BRANDS,
             Self::Mov => MOV_COMPATIBLE_BRANDS,
             Self::M4a => M4A_COMPATIBLE_BRANDS,
+            Self::Heif => HEIF_COMPATIBLE_BRANDS,
+            Self::Avif => AVIF_COMPATIBLE_BRANDS,
         }
     }
 }
@@ -68,6 +78,8 @@ impl IsobmffCreateEntry {
 pub struct IsobmffCreateOptions {
     pub kind: IsobmffCreateKind,
     pub entries: Vec<IsobmffCreateEntry>,
+    pub width: u32,
+    pub height: u32,
 }
 
 impl Default for IsobmffCreateOptions {
@@ -82,6 +94,8 @@ impl IsobmffCreateOptions {
         Self {
             kind,
             entries: Vec::new(),
+            width: 1,
+            height: 1,
         }
     }
 
@@ -95,6 +109,13 @@ impl IsobmffCreateOptions {
     pub fn push_text(&mut self, key: impl Into<String>, value: impl Into<String>) {
         self.entries.push(IsobmffCreateEntry::text(key, value));
     }
+
+    /// Set bounded image dimensions for a HEIF or AVIF metadata seed.
+    pub fn with_dimensions(mut self, width: u32, height: u32) -> Self {
+        self.width = width;
+        self.height = height;
+        self
+    }
 }
 
 /// Create a bounded metadata-only ISO-BMFF seed without media tracks or samples.
@@ -106,6 +127,22 @@ pub fn create_isobmff_to_vec(
         return Err(MetraError::ResourceLimitExceeded {
             resource: "ISO-BMFF creation metadata entries".to_owned(),
             limit: limits.max_ifd_entries,
+        });
+    }
+    let image_kind = matches!(
+        options.kind,
+        IsobmffCreateKind::Heif | IsobmffCreateKind::Avif
+    );
+    if options.width == 0 || options.height == 0 {
+        return Err(MetraError::InvalidTag {
+            context: "ISO-BMFF creation".to_owned(),
+            message: "image dimensions must be non-zero".to_owned(),
+        });
+    }
+    if image_kind && !options.entries.is_empty() {
+        return Err(MetraError::InvalidTag {
+            context: "ISO-BMFF creation".to_owned(),
+            message: "HEIF/AVIF seeds do not accept QuickTime text items".to_owned(),
         });
     }
     let mut items = Vec::with_capacity(options.entries.len());
@@ -144,12 +181,16 @@ pub fn create_isobmff_to_vec(
         items.extend_from_slice(&box_with_kind(&kind, &data_box)?);
     }
 
-    let ilst = box_with_kind(b"ilst", &items)?;
-    let udta = box_with_kind(b"udta", &ilst)?;
-    let mut mvhd_data = vec![0_u8; 100];
-    mvhd_data[12..16].copy_from_slice(&1_000_u32.to_be_bytes());
-    let mvhd = box_with_kind(b"mvhd", &mvhd_data)?;
-    let moov = box_with_kind(b"moov", &[mvhd, udta].concat())?;
+    let container = if image_kind {
+        image_meta(options.width, options.height)?
+    } else {
+        let ilst = box_with_kind(b"ilst", &items)?;
+        let udta = box_with_kind(b"udta", &ilst)?;
+        let mut mvhd_data = vec![0_u8; 100];
+        mvhd_data[12..16].copy_from_slice(&1_000_u32.to_be_bytes());
+        let mvhd = box_with_kind(b"mvhd", &mvhd_data)?;
+        box_with_kind(b"moov", &[mvhd, udta].concat())?
+    };
 
     let mut ftyp_data = Vec::with_capacity(8 + options.kind.compatible_brands().len() * 4);
     ftyp_data.extend_from_slice(options.kind.major_brand());
@@ -157,7 +198,7 @@ pub fn create_isobmff_to_vec(
     for brand in options.kind.compatible_brands() {
         ftyp_data.extend_from_slice(brand);
     }
-    let output = [box_with_kind(b"ftyp", &ftyp_data)?, moov].concat();
+    let output = [box_with_kind(b"ftyp", &ftyp_data)?, container].concat();
     if output.len() > limits.max_metadata_bytes || output.len() > limits.max_value_bytes {
         return Err(MetraError::ResourceLimitExceeded {
             resource: "ISO-BMFF creation output".to_owned(),
@@ -166,6 +207,31 @@ pub fn create_isobmff_to_vec(
     }
     validate_created_isobmff(&output, options.kind, limits)?;
     Ok(output)
+}
+
+fn image_meta(width: u32, height: u32) -> Result<Vec<u8>> {
+    let mut hdlr_data = vec![0_u8; 12];
+    hdlr_data[8..12].copy_from_slice(b"pict");
+    let hdlr = box_with_kind(b"hdlr", &hdlr_data)?;
+    let pitm = box_with_kind(b"pitm", &[0, 0, 0, 0, 0, 1])?;
+    let ispe_data = [
+        [0_u8; 4].as_slice(),
+        width.to_be_bytes().as_slice(),
+        height.to_be_bytes().as_slice(),
+    ]
+    .concat();
+    let ispe = box_with_kind(b"ispe", &ispe_data)?;
+    let pixi = box_with_kind(b"pixi", &[0, 0, 0, 0, 3, 8, 8, 8])?;
+    let ipco = box_with_kind(b"ipco", &[ispe, pixi].concat())?;
+    let iprp = box_with_kind(b"iprp", &ipco)?;
+    let meta_data = [
+        [0_u8; 4].as_slice(),
+        hdlr.as_slice(),
+        pitm.as_slice(),
+        iprp.as_slice(),
+    ]
+    .concat();
+    box_with_kind(b"meta", &meta_data)
 }
 
 /// Create a new ISO-BMFF path without overwriting an existing destination.
@@ -318,6 +384,35 @@ mod tests {
                 create_isobmff_to_vec(&IsobmffCreateOptions::new(kind), ParseLimits::default())
                     .unwrap();
             assert_eq!(crate::detect_format(&bytes).unwrap().format, expected);
+        }
+    }
+
+    #[test]
+    fn creates_heif_and_avif_metadata_seeds_with_dimensions() {
+        for (kind, expected) in [
+            (IsobmffCreateKind::Heif, FileFormat::Heif),
+            (IsobmffCreateKind::Avif, FileFormat::Avif),
+        ] {
+            let options = IsobmffCreateOptions::new(kind).with_dimensions(640, 480);
+            let bytes = create_isobmff_to_vec(&options, ParseLimits::default()).unwrap();
+            let metadata = read_isobmff(
+                &mut std::io::Cursor::new(bytes.clone()),
+                FileInfo::new("created.image".into(), bytes.len() as u64, expected),
+                ParseLimits::default(),
+            )
+            .unwrap();
+            assert_eq!(crate::detect_format(&bytes).unwrap().format, expected);
+            assert_eq!(
+                metadata.find("ISOBMFF:ImageWidth").unwrap().display_value(),
+                "640"
+            );
+            assert_eq!(
+                metadata
+                    .find("ISOBMFF:ImageHeight")
+                    .unwrap()
+                    .display_value(),
+                "480"
+            );
         }
     }
 }

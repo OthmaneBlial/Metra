@@ -1562,6 +1562,41 @@ fn cli_can_create_mp4_mov_and_m4a_metadata_seeds() {
 }
 
 #[test]
+fn cli_can_create_heif_and_avif_metadata_seeds() {
+    let directory = TemporaryDirectory::new();
+    for (flag, name, format) in [
+        ("--create-heif", "created.heic", metra::FileFormat::Heif),
+        ("--create-avif", "created.avif", metra::FileFormat::Avif),
+    ] {
+        let path = directory.path.join(name);
+        let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+            .args([
+                flag,
+                "ISOBMFF:ImageWidth=640",
+                flag,
+                "ImageHeight=480",
+                path.to_str().unwrap(),
+            ])
+            .output()
+            .expect("Metra CLI should start");
+        assert!(output.status.success(), "stderr: {:?}", output.stderr);
+        let metadata = metra::read(&path).expect("created image seed should remain readable");
+        assert_eq!(metadata.file_info.format, format);
+        assert_eq!(
+            metadata.find("ISOBMFF:ImageWidth").unwrap().display_value(),
+            "640"
+        );
+        assert_eq!(
+            metadata
+                .find("ISOBMFF:ImageHeight")
+                .unwrap()
+                .display_value(),
+            "480"
+        );
+    }
+}
+
+#[test]
 fn cli_can_set_and_copy_standalone_xmp_packet() {
     let directory = TemporaryDirectory::new();
     let source = directory.file("source.xmp", &xmp_packet("source").into_bytes());

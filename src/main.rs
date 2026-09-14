@@ -261,6 +261,36 @@ struct Arguments {
     )]
     create_m4a: Vec<String>,
 
+    /// Create a metadata-only HEIF seed with bounded image dimensions.
+    #[arg(
+        long = "create-heif",
+        value_name = "KEY=VALUE",
+        action = clap::ArgAction::Append,
+        conflicts_with_all = [
+            "set", "delete", "copy", "create_tiff", "create_jpeg", "create_pdf", "create_psd",
+            "create_avi", "create_mkv", "create_webm", "create_png", "create_xmp", "create_wav",
+            "create_flac", "create_gif", "create_icc", "create_mp3", "create_ogg", "create_svg",
+            "create_webp_xmp", "create_mp4", "create_mov", "create_m4a", "create_avif", "json",
+            "jsonl", "csv", "toml", "yaml", "tag", "validate", "compare"
+        ]
+    )]
+    create_heif: Vec<String>,
+
+    /// Create a metadata-only AVIF seed with bounded image dimensions.
+    #[arg(
+        long = "create-avif",
+        value_name = "KEY=VALUE",
+        action = clap::ArgAction::Append,
+        conflicts_with_all = [
+            "set", "delete", "copy", "create_tiff", "create_jpeg", "create_pdf", "create_psd",
+            "create_avi", "create_mkv", "create_webm", "create_png", "create_xmp", "create_wav",
+            "create_flac", "create_gif", "create_icc", "create_mp3", "create_ogg", "create_svg",
+            "create_webp_xmp", "create_mp4", "create_mov", "create_m4a", "create_heif", "json",
+            "jsonl", "csv", "toml", "yaml", "tag", "validate", "compare"
+        ]
+    )]
+    create_avif: Vec<String>,
+
     /// Create a new minimal 1x1 AVI seed with one or more INFO fields.
     #[arg(
         long = "create-avi",
@@ -803,6 +833,22 @@ fn main() -> ExitCode {
             limits,
         );
     }
+    if !arguments.create_heif.is_empty() {
+        return run_isobmff_create(
+            &arguments.files,
+            &arguments.create_heif,
+            metra::IsobmffCreateKind::Heif,
+            limits,
+        );
+    }
+    if !arguments.create_avif.is_empty() {
+        return run_isobmff_create(
+            &arguments.files,
+            &arguments.create_avif,
+            metra::IsobmffCreateKind::Avif,
+            limits,
+        );
+    }
     if !arguments.create_avi.is_empty() {
         if arguments.files.len() != 1 {
             eprintln!("metra: --create-avi requires exactly one destination path");
@@ -1281,6 +1327,8 @@ fn run_isobmff_create(
         metra::IsobmffCreateKind::Mp4 => "--create-mp4",
         metra::IsobmffCreateKind::Mov => "--create-mov",
         metra::IsobmffCreateKind::M4a => "--create-m4a",
+        metra::IsobmffCreateKind::Heif => "--create-heif",
+        metra::IsobmffCreateKind::Avif => "--create-avif",
     };
     if files.len() != 1 {
         eprintln!("metra: {option_name} requires exactly one destination path");
@@ -1313,13 +1361,45 @@ fn parse_isobmff_create(
         metra::IsobmffCreateKind::Mp4 => "--create-mp4",
         metra::IsobmffCreateKind::Mov => "--create-mov",
         metra::IsobmffCreateKind::M4a => "--create-m4a",
+        metra::IsobmffCreateKind::Heif => "--create-heif",
+        metra::IsobmffCreateKind::Avif => "--create-avif",
     };
     let mut options = metra::IsobmffCreateOptions::new(kind);
+    let image_kind = matches!(
+        kind,
+        metra::IsobmffCreateKind::Heif | metra::IsobmffCreateKind::Avif
+    );
+    let mut seen_width = false;
+    let mut seen_height = false;
     for assignment in entries {
         let (raw_key, value) = assignment
             .split_once('=')
             .ok_or_else(|| format!("{option_name} expects KEY=VALUE"))?;
         let key = raw_key.strip_prefix("ISOBMFF:").unwrap_or(raw_key);
+        if image_kind {
+            match key {
+                "Width" | "ImageWidth" => {
+                    if seen_width {
+                        return Err(format!("{option_name} accepts only one width field"));
+                    }
+                    options.width = value
+                        .parse()
+                        .map_err(|_| format!("{option_name} width must be an unsigned integer"))?;
+                    seen_width = true;
+                }
+                "Height" | "ImageHeight" => {
+                    if seen_height {
+                        return Err(format!("{option_name} accepts only one height field"));
+                    }
+                    options.height = value
+                        .parse()
+                        .map_err(|_| format!("{option_name} height must be an unsigned integer"))?;
+                    seen_height = true;
+                }
+                _ => return Err(format!("unsupported {option_name} field {raw_key}")),
+            }
+            continue;
+        }
         if !matches!(
             key,
             "Title"
