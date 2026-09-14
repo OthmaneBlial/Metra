@@ -165,7 +165,8 @@ ASCII value slots, existing ISO-BMFF QuickTime text item values and direct or
 Adobe XMP `uuid` packet payloads, existing JPEG APP1
 EXIF ASCII value slots, JPEG COM segments, APP1
 XMP packets, and known IPTC-IIM datasets inside Photoshop APP13 resources, PNG
-`tEXt` chunks and uncompressed `iTXt` XMP chunks, GIF comment extensions, WebP `XMP ` chunks,
+`tEXt` chunks, uncompressed `iTXt` XMP chunks, and existing `tIME`
+modification-time chunks, GIF comment extensions, WebP `XMP ` chunks,
 and existing standalone XMP packets,
 and existing standalone ICC `desc`/`text` payloads,
 SVG title/description/comment nodes, WAV `LIST/INFO` fields and existing
@@ -174,7 +175,7 @@ chunks on RIFF/RF64/BW64 containers, FLAC Vorbis Comment key/value pairs, Ogg
 Vorbis/Opus comment packets, common ID3v2 text/comment frames,
 and existing PDF Info literal or hexadecimal string tokens, existing Matroska/WebM
 `Info` title/app strings and `SimpleTag` string values, and existing TIFF/BigTIFF ASCII slots in TIFF-like
-RAW containers. Set and delete operations only replace or zero-fill those
+RAW containers. Set and delete operations only replace, remove, or insert those
 existing value spans; Ogg
 rewrites preserve the existing packet size and page layout, recompute page CRCs, and refuse
 growth that cannot fit in the original packet; deletions use bounded Vorbis padding when
@@ -186,7 +187,11 @@ values can be copied from a validated TIFF-like source into an existing target
 slot when the target field has enough storage. JPEG EXIF ASCII rewrites use the
 existing TIFF entry type/count/offset, require a replacement that fits the
 original slot, and preserve the APP1 segment size. The WebP and
-PNG writers validate replacement packets with the bounded XMP parser. The
+PNG writers validate replacement packets with the bounded XMP parser. PNG `tIME`
+rewrites accept strict `YYYY-MM-DD HH:MM:SS` (or the equivalent colon-separated
+date) text, encode the seven-byte PNG timestamp, regenerate its CRC, and insert
+the chunk before `IEND` when absent; deletion removes all existing `tIME` chunks.
+The
 TIFF and JPEG EXIF writers also permit typed date/time values when their original
 entry remains TIFF ASCII, so a `DateTimeOriginal` round-trip preserves the typed
 read representation without changing the entry or value allocation. The
@@ -273,7 +278,7 @@ with replace and write-through flags. The public facade also exposes determinist
 backpressure-bounded `read_many_streaming` helpers, plus cancellation-aware
 variants; the CLI uses these same batch APIs before rendering. The CLI exposes
 `--set`/`--delete`/`--copy` for
-`JPEG:Comment`, `JPEG:EXIF:<ASCII tag>`, `IPTC:<dataset>`, `PNG:XMP`, `PNG:Text:<keyword>`, `SVG:Title`/`Description`/`Comment`, `WAV:<INFO field>`, `WAV:<bext field>`, `WAV:iXML:Packet`, and `ID3:<text/comment field>` for both standalone MP3 and existing WAV `id3 ` chunks,
+`JPEG:Comment`, `JPEG:EXIF:<ASCII tag>`, `IPTC:<dataset>`, `PNG:XMP`, `PNG:Text:<keyword>`, `PNG:ModificationTime`, `SVG:Title`/`Description`/`Comment`, `WAV:<INFO field>`, `WAV:<bext field>`, `WAV:iXML:Packet`, and `ID3:<text/comment field>` for both standalone MP3 and existing WAV `id3 ` chunks,
 `FLAC:<Vorbis field>`, `ISOBMFF:<text field>` plus
 `ISOBMFF:XMP`/`ISOBMFF:UUID:XMP`, `PDF:<Info field>`, `GIF:Comment`, `WebP:XMP`,
 `Matroska:Title`/`MuxingApp`/`WritingApp`, `Matroska:Tag:<name>`,

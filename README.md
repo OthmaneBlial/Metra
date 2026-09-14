@@ -28,7 +28,7 @@ Implemented today:
 | --- | --- |
 | JPEG | Magic-byte detection, segment walking, JFIF properties, JPEG comments, EXIF APP1, structured XMP, reassembled typed ICC profiles with common table values, IPTC resources from Photoshop blocks, bounded GoPro APP6 `DEVC`/`STRM` fields, and minimal metadata-container seed creation |
 | TIFF/EXIF | Little- and big-endian classic TIFF and BigTIFF headers, 64-bit IFD counts/offsets, nested EXIF/GPS/Interop directories, bounded multiple `SubIFD` offsets, chained IFD0/IFD1/IFD2 thumbnail directories, common image/exposure/lens tag names, rational values, typed EXIF date-time and GPS date/time values, ASCII/Unicode `UserComment`, common MakerNote container detection with bounded Nikon Type 1/2, Canon, Fujifilm, Panasonic, Olympus, legacy Sony, and Apple IFD fields, bounded Apple runtime binary-plist structures, Samsung STMN header/preview fields and DJI IFD fields, GoPro family detection, retained unknown MakerNote values, unknown tags, thumbnail range checks, and validated decimal GPS latitude/longitude, altitude, direction, time, and speed helpers, safe bounded ASCII deletion, and minimal 1×1 classic TIFF and BigTIFF creation with EXIF ASCII seeds; both TIFF seed variants may also include a validated GPS coordinate and scalar/time/date set |
-| PNG | Chunk walking, IHDR dimensions and encoding parameters, CRC warnings, tEXt/zTXt/iTXt including bounded zlib text, eXIf, tIME, pHYs, structured XMP, bounded ICC profile headers from `iCCP`, and minimal 1×1 RGBA creation with bounded `tEXt` seeds |
+| PNG | Chunk walking, IHDR dimensions and encoding parameters, CRC warnings, tEXt/zTXt/iTXt including bounded zlib text, eXIf, tIME, pHYs, structured XMP, bounded ICC profile headers from `iCCP`, lossless validated `tIME` set/delete/copy, and minimal 1×1 RGBA creation with bounded `tEXt` seeds |
 | WebP | RIFF chunk walking, VP8X/VP8/VP8L dimensions, EXIF, structured XMP, typed ICC profiles, and minimal 1x1 lossless seed creation with bounded XMP |
 | GIF | GIF87a/GIF89a headers, logical-screen dimensions, comments, bounded extension validation, and minimal 1x1 creation with comment extensions |
 | ISO-BMFF | HEIF/AVIF/MP4/MOV/M4A brand detection, bounded box walking, `mvhd` movie timing, `tkhd` track IDs/durations/dimensions, `ispe` dimensions, `pixi` channels, `irot`/`imir` orientation, `pasp` aspect ratio, `colr` nclx values, `auxC` auxiliary type, direct and Adobe-UUID XMP/EXIF metadata, QuickTime-style `ilst` text metadata, and validated in-place edits for existing text and XMP payloads |
@@ -70,7 +70,8 @@ and `ModelDescription` text tags can be rewritten or cleared within their
 allocated profile payloads.
 The library now supports validated, lossless
 JPEG comment, existing APP1 EXIF ASCII fields, bounded APP1 XMP, and selected IPTC-IIM datasets in Photoshop
-APP13 resources, PNG `tEXt` and uncompressed `iTXt` XMP, GIF comments, WebP XMP, SVG
+APP13 resources, PNG `tEXt`, uncompressed `iTXt` XMP, and existing `tIME`
+modification-time chunks, GIF comments, WebP XMP, SVG
 title/description/comments, WAV `LIST/INFO`, FLAC Vorbis Comment, bounded Ogg
 Vorbis/Opus/Ogg-FLAC comment rewrites (including mapping packets), and common ID3v2 text/comment frames, plus existing TIFF/BigTIFF ASCII and ISO-BMFF
 QuickTime text values, existing PDF Info string tokens, and existing PSD XMP
@@ -295,6 +296,9 @@ cargo run -- --delete IPTC:Keywords photo.jpg
 cargo run -- --copy IPTC:CaptionAbstract=source.jpg target.jpg
 cargo run -- --set 'PNG:Text:Comment=reviewed' image.png
 cargo run -- --set 'PNG:XMP=<x:xmpmeta>...</x:xmpmeta>' image.png
+cargo run -- --set 'PNG:ModificationTime=2026-09-15 01:02:03' image.png
+cargo run -- --delete PNG:ModificationTime image.png
+cargo run -- --copy PNG:ModificationTime=source.png target.png
 cargo run -- --set 'WAV:Title=reviewed' audio.wav
 cargo run -- --copy WAV:DateTimeOriginal=source.wav target.wav
 cargo run -- --set 'WAV:iXML:Packet=<BWFXML><PROJECT>reviewed</PROJECT></BWFXML>' audio.wav

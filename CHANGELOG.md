@@ -4,6 +4,9 @@
 
 Initial read-first foundation with narrow validated rewrites:
 
+- added lossless PNG `tIME` modification-time set/delete/copy support through
+  the Rust API and CLI, with strict calendar validation, CRC regeneration,
+  insertion before `IEND`, and round-trip coverage;
 - extended WAV seed creation with an XML-validated iXML packet option through
   the Rust API and `--create-wav iXML:Packet=...`;
 - extended WAV seed creation with optional bounded ID3v2 text/comment metadata
