@@ -4,6 +4,9 @@
 
 Initial read-first foundation with narrow validated rewrites:
 
+- added lossless PNG `pHYs` resolution set/delete/copy support through the Rust
+  API and CLI, with bounded unsigned values, legal unit validation, CRC
+  regeneration, insertion, and round-trip coverage;
 - added lossless PNG `tIME` modification-time set/delete/copy support through
   the Rust API and CLI, with strict calendar validation, CRC regeneration,
   insertion before `IEND`, and round-trip coverage;

@@ -165,8 +165,8 @@ ASCII value slots, existing ISO-BMFF QuickTime text item values and direct or
 Adobe XMP `uuid` packet payloads, existing JPEG APP1
 EXIF ASCII value slots, JPEG COM segments, APP1
 XMP packets, and known IPTC-IIM datasets inside Photoshop APP13 resources, PNG
-`tEXt` chunks, uncompressed `iTXt` XMP chunks, and existing `tIME`
-modification-time chunks, GIF comment extensions, WebP `XMP ` chunks,
+`tEXt` chunks, uncompressed `iTXt` XMP chunks, existing `tIME`
+modification-time and `pHYs` resolution chunks, GIF comment extensions, WebP `XMP ` chunks,
 and existing standalone XMP packets,
 and existing standalone ICC `desc`/`text` payloads,
 SVG title/description/comment nodes, WAV `LIST/INFO` fields and existing
@@ -191,7 +191,10 @@ PNG writers validate replacement packets with the bounded XMP parser. PNG `tIME`
 rewrites accept strict `YYYY-MM-DD HH:MM:SS` (or the equivalent colon-separated
 date) text, encode the seven-byte PNG timestamp, regenerate its CRC, and insert
 the chunk before `IEND` when absent; deletion removes all existing `tIME` chunks.
-The
+The PNG `pHYs` writer accepts bounded unsigned X/Y pixels-per-unit values and
+the `meter`/`unknown` unit, preserves unspecified fields, inserts a fixed
+9-byte chunk when absent, regenerates its CRC, and removes the complete chunk
+for `--delete PNG:pHYs`. The
 TIFF and JPEG EXIF writers also permit typed date/time values when their original
 entry remains TIFF ASCII, so a `DateTimeOriginal` round-trip preserves the typed
 read representation without changing the entry or value allocation. The
@@ -278,7 +281,7 @@ with replace and write-through flags. The public facade also exposes determinist
 backpressure-bounded `read_many_streaming` helpers, plus cancellation-aware
 variants; the CLI uses these same batch APIs before rendering. The CLI exposes
 `--set`/`--delete`/`--copy` for
-`JPEG:Comment`, `JPEG:EXIF:<ASCII tag>`, `IPTC:<dataset>`, `PNG:XMP`, `PNG:Text:<keyword>`, `PNG:ModificationTime`, `SVG:Title`/`Description`/`Comment`, `WAV:<INFO field>`, `WAV:<bext field>`, `WAV:iXML:Packet`, and `ID3:<text/comment field>` for both standalone MP3 and existing WAV `id3 ` chunks,
+`JPEG:Comment`, `JPEG:EXIF:<ASCII tag>`, `IPTC:<dataset>`, `PNG:XMP`, `PNG:Text:<keyword>`, `PNG:ModificationTime`, `PNG:PixelsPerUnitX`, `PNG:PixelsPerUnitY`, `PNG:Unit`, `SVG:Title`/`Description`/`Comment`, `WAV:<INFO field>`, `WAV:<bext field>`, `WAV:iXML:Packet`, and `ID3:<text/comment field>` for both standalone MP3 and existing WAV `id3 ` chunks,
 `FLAC:<Vorbis field>`, `ISOBMFF:<text field>` plus
 `ISOBMFF:XMP`/`ISOBMFF:UUID:XMP`, `PDF:<Info field>`, `GIF:Comment`, `WebP:XMP`,
 `Matroska:Title`/`MuxingApp`/`WritingApp`, `Matroska:Tag:<name>`,

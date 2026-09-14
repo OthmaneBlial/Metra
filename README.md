@@ -70,8 +70,8 @@ and `ModelDescription` text tags can be rewritten or cleared within their
 allocated profile payloads.
 The library now supports validated, lossless
 JPEG comment, existing APP1 EXIF ASCII fields, bounded APP1 XMP, and selected IPTC-IIM datasets in Photoshop
-APP13 resources, PNG `tEXt`, uncompressed `iTXt` XMP, and existing `tIME`
-modification-time chunks, GIF comments, WebP XMP, SVG
+APP13 resources, PNG `tEXt`, uncompressed `iTXt` XMP, existing `tIME`
+modification-time chunks, and fixed `pHYs` resolution chunks, GIF comments, WebP XMP, SVG
 title/description/comments, WAV `LIST/INFO`, FLAC Vorbis Comment, bounded Ogg
 Vorbis/Opus/Ogg-FLAC comment rewrites (including mapping packets), and common ID3v2 text/comment frames, plus existing TIFF/BigTIFF ASCII and ISO-BMFF
 QuickTime text values, existing PDF Info string tokens, and existing PSD XMP
@@ -546,6 +546,8 @@ avec offsets 32 bits pour le premier et 64 bits pour le second ;
 l’encodage vidéo général, les tracks/samples/item
 locations/clusters, les calques/PSB et la création arbitraire de chunks restent
 planifiés.
+Le writer PNG couvre maintenant aussi les champs fixes `tIME` et `pHYs` avec
+validation, CRC régénéré, insertion/suppression bornée et copie des chunks image.
 6. **99 %** — Ajouter `set`/`delete`/`copy` et comparer après les tests round-trip ; les opérations couvrent maintenant JPEG `Comment`/EXIF ASCII existant/`XMP` et datasets IPTC-IIM connus, PNG `tEXt`/`XMP`, GIF `Comment`, WebP `XMP`, paquets XMP autonomes `XMP:Packet` avec effacement borné de leurs propriétés, tags texte ICC autonomes, SVG `Title`/`Description`/`Comment`, WAV `LIST/INFO`, Broadcast Wave `bext`, paquets iXML à taille fixe et chunks ID3v2 embarqués avec copie des champs date/entiers typés, FLAC et Ogg Vorbis/Opus/Ogg-FLAC Comments, ID3v2 texte/commentaire, les champs texte ISO-BMFF existants y compris CR3 avec effacement borné, les champs Info PDF existants avec suppression de tokens Info existants, les ressources XMP PSD existantes, les chaînes AVI `LIST/INFO` avec effacement borné, les chaînes `Info` et `SimpleTag` Matroska/WebM avec effacement borné, les slots TIFF ASCII des RAW TIFF-like avec effacement borné et la copie de champs ASCII TIFF existants via API et CLI, avec comparaison déterministe des valeurs ; l’API publique ajoute aussi des opérations canoniques `MetadataEdit` qui dispatchent vers ces writers validés.
 7. **82 %** — Ajouter le traitement parallèle contrôlé et le rendu en flux borné ; le scheduler est partagé par l’API Rust et le CLI, conserve l’ordre déterministe, borne les workers et la fenêtre de résultats hors ordre, applique une contre-pression au flux parallèle et gère l’annulation coopérative Ctrl+C avec le code 130. Le benchmark réel du corpus mesure environ 20,6 MiB/s en séquentiel, 106 MiB/s avec quatre workers et 89 MiB/s en streaming borné sur cette machine ; les baselines multi-plateformes et le profiling restent à faire.
 8. **100 %** — Étendre les sorties structurées avec CSV, TOML et YAML versionnés.

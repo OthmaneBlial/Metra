@@ -70,7 +70,7 @@ expansion and nesting limits before being enabled.
 ## Current rewrite safety
 
 Only JPEG comment, existing APP1 EXIF ASCII slots, bounded APP1 XMP, and known IPTC-IIM datasets in Photoshop
-APP13 resources, PNG `tEXt`, uncompressed `iTXt` XMP, and existing `tIME` chunks, GIF comments, WebP XMP, SVG
+APP13 resources, PNG `tEXt`, uncompressed `iTXt` XMP, and existing `tIME`/`pHYs` chunks, GIF comments, WebP XMP, SVG
 title/description/comments, WAV `LIST/INFO`, Broadcast Wave `bext`, and
 existing iXML packet fields and embedded ID3v2 fields on RIFF/RF64/BW64
 containers, FLAC Vorbis Comment,
@@ -159,6 +159,9 @@ incomplete descriptors fail before replacement.
 PNG `tIME` writes accept only a fixed seven-byte timestamp after strict calendar
 and clock validation, regenerate the chunk CRC, and remove or replace only the
 targeted chunk; unrelated image and metadata chunks are copied unchanged.
+PNG `pHYs` edits parse only unsigned 32-bit X/Y values and the two legal unit
+states, preserve non-targeted fields, and use a fixed 9-byte replacement or
+bounded chunk removal; invalid or oversized inputs fail before replacement.
 WAV iXML replacements are parsed with the bounded XML reader, reject NUL bytes
 and DOCTYPE declarations, and must keep the existing packet byte length;
 deletion removes only the existing iXML chunk while preserving the audio data.
