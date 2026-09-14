@@ -13,6 +13,7 @@ use metra_core::{FileFormat, FileInfo, Metadata, MetraError, ParseLimits, Result
 mod atomic;
 mod avi;
 mod avi_writer;
+mod create;
 mod edit;
 mod flac;
 mod flac_create;
@@ -68,6 +69,7 @@ mod xmp_create;
 
 pub use avi::read_avi;
 pub use avi_writer::{AviEdit, rewrite_avi, rewrite_avi_path, rewrite_avi_to_vec};
+pub use create::{CreateRequest, create_path, create_to_vec};
 pub use edit::{MetadataEdit, copy_metadata_path, rewrite_metadata_path, rewrite_metadata_to_vec};
 pub use flac::read_flac;
 pub use flac_create::{FlacCreateEntry, FlacCreateOptions, create_flac_path, create_flac_to_vec};
