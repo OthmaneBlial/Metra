@@ -381,6 +381,36 @@ struct Arguments {
     )]
     create_svg: Vec<String>,
 
+    /// Create a new minimal 1x1 lossless WebP with an optional XMP packet.
+    #[arg(
+        long = "create-webp-xmp",
+        value_name = "PACKET",
+        conflicts_with_all = [
+            "set",
+            "delete",
+            "copy",
+            "create_tiff",
+            "create_png",
+            "create_xmp",
+            "create_wav",
+            "create_flac",
+            "create_gif",
+            "create_icc",
+            "create_mp3",
+            "create_ogg",
+            "create_svg",
+            "json",
+            "jsonl",
+            "csv",
+            "toml",
+            "yaml",
+            "tag",
+            "validate",
+            "compare"
+        ]
+    )]
+    create_webp_xmp: Option<String>,
+
     /// Validate inputs and return a failure when any warning is produced.
     #[arg(long, conflicts_with_all = ["set", "delete", "copy"])]
     validate: bool,
@@ -640,6 +670,23 @@ fn main() -> ExitCode {
             }
         };
         return match metra::create_svg_path(&arguments.files[0], &options, limits) {
+            Ok(()) => {
+                println!("created: {}", arguments.files[0].display());
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", arguments.files[0].display());
+                ExitCode::from(1)
+            }
+        };
+    }
+    if let Some(packet) = arguments.create_webp_xmp.as_deref() {
+        if arguments.files.len() != 1 {
+            eprintln!("metra: --create-webp-xmp requires exactly one destination path");
+            return ExitCode::from(2);
+        }
+        let options = metra::WebpCreateOptions::new().with_xmp(packet);
+        return match metra::create_webp_path(&arguments.files[0], &options, limits) {
             Ok(()) => {
                 println!("created: {}", arguments.files[0].display());
                 ExitCode::SUCCESS

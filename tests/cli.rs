@@ -1262,6 +1262,41 @@ fn cli_can_create_minimal_svg_seed_without_overwrite() {
 }
 
 #[test]
+fn cli_can_create_minimal_webp_seed_without_overwrite() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.path.join("created.webp");
+    let packet = xmp_packet("created");
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .arg("--create-webp-xmp")
+        .arg(&packet)
+        .arg(path.to_str().expect("UTF-8 test path"))
+        .output()
+        .expect("Metra CLI should start");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let metadata = metra::read(&path).expect("created WebP should remain readable");
+    assert_eq!(metadata.file_info.format, metra::FileFormat::Webp);
+    assert_eq!(
+        metadata.find("WebP:ImageWidth").unwrap().display_value(),
+        "1"
+    );
+    assert_eq!(
+        metadata.find("WebP:ImageHeight").unwrap().display_value(),
+        "1"
+    );
+    assert!(metadata.find("XMP:Packet").is_some());
+
+    let second = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .arg("--create-webp-xmp")
+        .arg(&packet)
+        .arg(path.to_str().expect("UTF-8 test path"))
+        .output()
+        .expect("Metra CLI should start");
+    assert!(!second.status.success());
+    assert!(String::from_utf8_lossy(&second.stderr).contains("refusing to overwrite"));
+}
+
+#[test]
 fn cli_can_create_standalone_xmp_without_overwrite() {
     let directory = TemporaryDirectory::new();
     let path = directory.path.join("created.xmp");
