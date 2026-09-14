@@ -198,6 +198,10 @@ midnight, encode H/M/S rationals, and zero-fill the fixed timestamp payload on
 deletion. The
 existing GPS date stamp remains an ASCII slot with strict calendar validation
 and a canonical GPS:Date alias; its typed date read-back is preserved.
+The public edit boundary also accepts the bounded `GPS:*` deletion. The TIFF
+writer expands it only to existing complete supported coordinate, scalar, time,
+and date groups, so unknown GPS entries and unsupported layouts are not
+silently removed.
 JPEG IPTC writer validates dataset names and lengths, rewrites only the target
 dataset in the `0x0404` resource, preserves unrelated Photoshop resources, and
 creates a bounded APP13 resource when needed.

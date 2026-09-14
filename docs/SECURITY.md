@@ -101,6 +101,9 @@ then are rounded to a bounded microsecond denominator. Deletion zero-fills only
 the existing timestamp payload.
 GPS date writes are limited to existing type-2 GPSDateStamp slots and valid
 four-digit-year calendar values; deletion only clears that existing allocation.
+The `GPS:*` wildcard is expanded to those same bounded operations only when a
+complete supported group exists; unknown or incomplete GPS structures are
+preserved, and a wildcard with no supported target fails before any write.
 JPEG EXIF ASCII writes validate the existing TIFF entry, type, count, offset,
 capacity, and patch range; they never create a missing field or resize the APP1
 segment, and the result is re-read before atomic replacement.

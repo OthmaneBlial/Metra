@@ -13,6 +13,8 @@ Initial read-first foundation with narrow validated rewrites:
   `--capabilities` CLI output, without requiring an input file;
 - expanded the bounded legacy query compatibility layer with GPS reference,
   direction, speed, timestamp, and date aliases;
+- added bounded `GPS:*` deletion through the public edit API and CLI, preserving
+  unknown or incomplete GPS structures and refusing empty wildcard targets;
 - added bounded TIFF GPS latitude/longitude decimal rewrites, reference-field
   updates, zero-fill deletion tombstones, generic API aliases, CLI set/delete/
   copy support, and round-trip coverage for positive and negative coordinates;

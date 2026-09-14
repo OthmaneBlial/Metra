@@ -111,6 +111,10 @@ time and derived seconds are omitted on the next read.
 Existing GPSDateStamp slots accept the GPS:Date alias with strict
 YYYY:MM:DD validation; the reader retains its typed date and deletion uses the
 same fixed ASCII slot.
+`--delete GPS:*` clears every existing supported GPS coordinate, scalar, time,
+and date group in one bounded rewrite. Unknown GPS tags and incomplete
+unsupported groups remain untouched; the command fails when no supported GPS
+value is present.
 Repeated IPTC datasets remain typed arrays when read; `--copy` accepts only a
 single-valued source dataset, while `--set` replaces all target occurrences
 with one bounded dataset.
@@ -308,7 +312,8 @@ The creation API and `--create-mkv`/`--create-webm` commands emit only a
 validated metadata seed with a known-size EBML `Segment`; media tracks and
 clusters remain outside this bounded seam.
 TIFF edits target existing TIFF/BigTIFF ASCII or GPS rational slots; `--delete`
-zero-fills those slots without changing the IFD layout. DNG, CR2, NEF, ARW, ORF, RW2, and
+zero-fills those slots without changing the IFD layout; `--delete GPS:*` applies
+the same rule to all complete supported GPS groups. DNG, CR2, NEF, ARW, ORF, RW2, and
 PEF use the same bounded behavior. CR3 edits target existing ISO-BMFF text
 slots through the same bounded rewrite rules, while RAF, CRW, MRW, and X3F
 remain read-only.
