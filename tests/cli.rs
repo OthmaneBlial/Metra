@@ -1821,6 +1821,29 @@ fn cli_can_create_rf64_and_bw64_wav_seeds() {
 }
 
 #[test]
+fn cli_rejects_duplicate_wav_container_fields() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.path.join("duplicate-container.wav");
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--create-wav",
+            "Container=RIFF",
+            "--create-wav",
+            "Container=RF64",
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("--create-wav accepts only one Container field")
+    );
+    assert!(!path.exists());
+}
+
+#[test]
 fn cli_can_create_minimal_flac_seed_without_overwrite() {
     let directory = TemporaryDirectory::new();
     let path = directory.path.join("created.flac");

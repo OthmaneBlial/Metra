@@ -1874,6 +1874,7 @@ fn parse_png_create(entries: &[String]) -> Result<metra::PngCreateOptions, Strin
 
 fn parse_wav_create(entries: &[String]) -> Result<metra::WavCreateOptions, String> {
     let mut options = metra::WavCreateOptions::new();
+    let mut seen_container = false;
     for assignment in entries {
         let (key, value) = assignment
             .split_once('=')
@@ -1883,6 +1884,9 @@ fn parse_wav_create(entries: &[String]) -> Result<metra::WavCreateOptions, Strin
         }
         let key = key.strip_prefix("WAV:").unwrap_or(key);
         if key.eq_ignore_ascii_case("Container") {
+            if seen_container {
+                return Err("--create-wav accepts only one Container field".to_owned());
+            }
             options.kind = match value.to_ascii_lowercase().as_str() {
                 "riff" => metra::WavCreateKind::Riff,
                 "rf64" => metra::WavCreateKind::Rf64,
@@ -1893,6 +1897,7 @@ fn parse_wav_create(entries: &[String]) -> Result<metra::WavCreateOptions, Strin
                     );
                 }
             };
+            seen_container = true;
             continue;
         }
         if let Some(name) = key
