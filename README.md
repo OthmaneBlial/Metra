@@ -106,7 +106,8 @@ seam, not that every tag or operation is supported.
   values rather than guessing;
 - proprietary RAW families such as RAF, MRW, CRW, and X3F are read-only;
 - many writers require existing storage, equal packet length, or a fixed field;
-- the differential corpus harness is opt-in and no corpus is distributed;
+- the differential corpus harness is opt-in; the checked-in corpus is synthetic
+  and does not stand in for licensed real-world media;
 - ExifTool compatibility is represented by a versioned bounded matrix, not a
   completeness claim.
 
