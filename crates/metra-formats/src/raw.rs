@@ -54,12 +54,7 @@ pub fn read_raw<R: Read + Seek>(
         metadata.sort_tags();
         Ok(metadata)
     } else if prefix.starts_with(RAF_SIGNATURE) {
-        Ok(read_partial_container(
-            file_info,
-            "RAF",
-            "raw-raf-partial",
-            "RAF container identified; Fuji-specific metadata and image payload are not decoded",
-        ))
+        crate::raf::read_raf(reader, file_info, limits)
     } else if prefix.starts_with(CRW_SIGNATURE) {
         Ok(read_partial_container(
             file_info,
@@ -154,7 +149,7 @@ fn read_partial_container(
     metadata
 }
 
-fn add_identity(metadata: &mut Metadata, variant: &str) {
+pub(crate) fn add_identity(metadata: &mut Metadata, variant: &str) {
     add_tag(
         metadata,
         "Container",
