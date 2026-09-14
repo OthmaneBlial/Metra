@@ -216,6 +216,12 @@ The CLI also exposes `--create-tiff KEY=VALUE` for the bounded TIFF creation
 seam. It accepts repeated EXIF ASCII assignments and exactly one destination;
 the destination must not already exist.
 
+JPEG creation exposes `JpegCreateOptions`, `create_jpeg_to_vec`,
+`create_jpeg_path`, and the CLI `--create-jpeg KEY=VALUE`. It emits a minimal
+SOI/metadata/EOI container with optional bounded Comment and XMP segments,
+validates it through the JPEG reader, and refuses to overwrite an existing
+destination. It is a metadata seed, not an image encoder.
+
 The parallel PNG seam exposes `PngCreateOptions` and `--create-png KEY=VALUE`.
 It emits a 1x1 RGBA image with CRC-checked `tEXt` chunks, validates the PNG by
 reading it back, and applies the same no-overwrite destination rule.
@@ -289,7 +295,8 @@ seams are intentionally format-specific: `TiffCreateOptions` can build a
 minimal classic 1x1 TIFF with bounded EXIF ASCII seed fields, while
 `Mp3CreateOptions` and `OggCreateOptions` can build minimal audio metadata
 seeds, `SvgCreateOptions` can build a minimal XML metadata seed, and
-`WebpCreateOptions` can build a minimal lossless image metadata seed; all
+`WebpCreateOptions` can build a minimal lossless image metadata seed, while
+`JpegCreateOptions` can build a minimal JPEG metadata container seed; all
 validate their output by reading it back and create a new path without
 overwriting an existing file.
 
