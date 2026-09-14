@@ -114,13 +114,28 @@ struct Arguments {
     )]
     create_tiff: Vec<String>,
 
+    /// Create a bounded 1x1 BigTIFF seed with EXIF ASCII fields.
+    #[arg(
+        long = "create-bigtiff",
+        value_name = "KEY=VALUE",
+        action = clap::ArgAction::Append,
+        conflicts_with_all = [
+            "set", "delete", "copy", "create_tiff", "create_dng", "create_jpeg", "create_pdf",
+            "create_psd", "create_avi", "create_mkv", "create_webm", "create_mp4", "create_mov",
+            "create_m4a", "create_heif", "create_avif", "create_png", "create_xmp", "create_wav",
+            "create_flac", "create_gif", "create_icc", "create_mp3", "create_ogg", "create_svg",
+            "create_webp_xmp", "json", "jsonl", "csv", "toml", "yaml", "tag", "validate", "compare"
+        ]
+    )]
+    create_bigtiff: Vec<String>,
+
     /// Create a bounded 1x1 DNG/TIFF-like RAW seed with EXIF ASCII fields.
     #[arg(
         long = "create-dng",
         value_name = "KEY=VALUE",
         action = clap::ArgAction::Append,
         conflicts_with_all = [
-            "set", "delete", "copy", "create_tiff", "create_jpeg", "create_pdf", "create_psd",
+            "set", "delete", "copy", "create_tiff", "create_bigtiff", "create_jpeg", "create_pdf", "create_psd",
             "create_avi", "create_mkv", "create_webm", "create_mp4", "create_mov", "create_m4a",
             "create_heif", "create_avif", "create_png", "create_xmp", "create_wav", "create_flac",
             "create_gif", "create_icc", "create_mp3", "create_ogg", "create_svg", "create_webp_xmp",
@@ -939,6 +954,29 @@ fn main() -> ExitCode {
             }
         };
         return match metra::create_tiff_path(&arguments.files[0], &options, limits) {
+            Ok(()) => {
+                println!("created: {}", arguments.files[0].display());
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", arguments.files[0].display());
+                ExitCode::from(1)
+            }
+        };
+    }
+    if !arguments.create_bigtiff.is_empty() {
+        if arguments.files.len() != 1 {
+            eprintln!("metra: --create-bigtiff requires exactly one destination path");
+            return ExitCode::from(2);
+        }
+        let options = match parse_tiff_create(&arguments.create_bigtiff) {
+            Ok(options) => options,
+            Err(message) => {
+                eprintln!("metra: {message}");
+                return ExitCode::from(2);
+            }
+        };
+        return match metra::create_bigtiff_path(&arguments.files[0], &options, limits) {
             Ok(()) => {
                 println!("created: {}", arguments.files[0].display());
                 ExitCode::SUCCESS

@@ -952,6 +952,42 @@ fn cli_can_create_minimal_tiff_seed_without_overwrite() {
 }
 
 #[test]
+fn cli_can_create_minimal_bigtiff_seed_without_overwrite() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.path.join("created.btf");
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--create-bigtiff",
+            "EXIF:Make=Metra",
+            "--create-bigtiff",
+            "Software=BigTIFF",
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let metadata = metra::read(&path).expect("created BigTIFF should remain readable");
+    assert_eq!(metadata.file_info.format, metra::FileFormat::Tiff);
+    assert_eq!(metadata.find("EXIF:Make").unwrap().display_value(), "Metra");
+    assert_eq!(
+        metadata.find("EXIF:Software").unwrap().display_value(),
+        "BigTIFF"
+    );
+
+    let second = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--create-bigtiff",
+            "EXIF:Make=Other",
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(!second.status.success());
+    assert!(String::from_utf8_lossy(&second.stderr).contains("refusing to overwrite"));
+}
+
+#[test]
 fn cli_can_create_minimal_dng_seed_without_overwrite() {
     let directory = TemporaryDirectory::new();
     let path = directory.path.join("created.dng");
