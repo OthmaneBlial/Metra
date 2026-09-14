@@ -952,6 +952,43 @@ fn cli_can_create_minimal_tiff_seed_without_overwrite() {
 }
 
 #[test]
+fn cli_can_create_minimal_jpeg_seed_without_overwrite() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.path.join("created.jpg");
+    let packet = xmp_packet("created");
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--create-jpeg",
+            "JPEG:Comment=Metra",
+            "--create-jpeg",
+            &format!("JPEG:XMP={packet}"),
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let metadata = metra::read(&path).expect("created JPEG should remain readable");
+    assert_eq!(metadata.file_info.format, metra::FileFormat::Jpeg);
+    assert_eq!(
+        metadata.find("JPEG:Comment").unwrap().display_value(),
+        "Metra"
+    );
+    assert!(metadata.find("XMP:Packet").is_some());
+
+    let second = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--create-jpeg",
+            "Comment=Other",
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(!second.status.success());
+    assert!(String::from_utf8_lossy(&second.stderr).contains("refusing to overwrite"));
+}
+
+#[test]
 fn cli_can_create_minimal_png_seed_without_overwrite() {
     let directory = TemporaryDirectory::new();
     let path = directory.path.join("created.png");

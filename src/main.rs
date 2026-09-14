@@ -114,6 +114,38 @@ struct Arguments {
     )]
     create_tiff: Vec<String>,
 
+    /// Create a new minimal JPEG metadata container with Comment/XMP fields.
+    #[arg(
+        long = "create-jpeg",
+        value_name = "KEY=VALUE",
+        action = clap::ArgAction::Append,
+        conflicts_with_all = [
+            "set",
+            "delete",
+            "copy",
+            "create_tiff",
+            "create_png",
+            "create_xmp",
+            "create_flac",
+            "create_gif",
+            "create_wav",
+            "create_icc",
+            "create_mp3",
+            "create_ogg",
+            "create_svg",
+            "create_webp_xmp",
+            "json",
+            "jsonl",
+            "csv",
+            "toml",
+            "yaml",
+            "tag",
+            "validate",
+            "compare"
+        ]
+    )]
+    create_jpeg: Vec<String>,
+
     /// Create a new minimal PNG with one or more tEXt metadata fields.
     #[arg(
         long = "create-png",
@@ -457,6 +489,29 @@ struct Arguments {
 fn main() -> ExitCode {
     let arguments = Arguments::parse_from(normalize_legacy_args(env::args_os()));
     let limits = parse_limits(arguments.max_metadata_bytes, arguments.max_value_bytes);
+    if !arguments.create_jpeg.is_empty() {
+        if arguments.files.len() != 1 {
+            eprintln!("metra: --create-jpeg requires exactly one destination path");
+            return ExitCode::from(2);
+        }
+        let options = match parse_jpeg_create(&arguments.create_jpeg) {
+            Ok(options) => options,
+            Err(message) => {
+                eprintln!("metra: {message}");
+                return ExitCode::from(2);
+            }
+        };
+        return match metra::create_jpeg_path(&arguments.files[0], &options, limits) {
+            Ok(()) => {
+                println!("created: {}", arguments.files[0].display());
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", arguments.files[0].display());
+                ExitCode::from(1)
+            }
+        };
+    }
     if !arguments.create_tiff.is_empty() {
         if arguments.files.len() != 1 {
             eprintln!("metra: --create-tiff requires exactly one destination path");
@@ -863,6 +918,32 @@ fn parse_tiff_create(entries: &[String]) -> Result<metra::TiffCreateOptions, Str
             return Err("--create-tiff requires a non-empty KEY".to_owned());
         }
         options.push_ascii(key, value);
+    }
+    Ok(options)
+}
+
+fn parse_jpeg_create(entries: &[String]) -> Result<metra::JpegCreateOptions, String> {
+    let mut options = metra::JpegCreateOptions::new();
+    for assignment in entries {
+        let (key, value) = assignment
+            .split_once('=')
+            .ok_or_else(|| "--create-jpeg expects KEY=VALUE".to_owned())?;
+        let key = key.strip_prefix("JPEG:").unwrap_or(key);
+        match key {
+            "Comment" => {
+                if options.comment.is_some() {
+                    return Err("--create-jpeg accepts only one Comment field".to_owned());
+                }
+                options.set_comment(value);
+            }
+            "XMP" => {
+                if options.xmp.is_some() {
+                    return Err("--create-jpeg accepts only one XMP field".to_owned());
+                }
+                options.set_xmp(value);
+            }
+            _ => return Err(format!("unsupported --create-jpeg field {key}")),
+        }
     }
     Ok(options)
 }
