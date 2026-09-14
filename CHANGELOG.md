@@ -4,6 +4,10 @@
 
 Initial read-first foundation with narrow validated rewrites:
 
+- added bounded classic TIFF and BigTIFF 1x1 seed creation with EXIF ASCII
+  fields, BigTIFF inline/offset value handling, output revalidation,
+  no-overwrite atomic path creation, generic registry dispatch, and CLI
+  `--create-bigtiff KEY=VALUE` coverage;
 - added bounded DNG/TIFF-like RAW seed creation with a DNGVersion IFD,
   optional EXIF ASCII fields, output revalidation, no-overwrite atomic path
   creation, generic registry dispatch, and CLI `--create-dng KEY=VALUE`

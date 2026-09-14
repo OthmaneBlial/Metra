@@ -233,8 +233,9 @@ variants; the CLI uses these same batch APIs before rendering. The CLI exposes
 tag mutation and other format writers remain deferred until their round-trip
 acceptance tests exist.
 
-The CLI also exposes `--create-tiff KEY=VALUE` for the bounded TIFF creation
-seam. It accepts repeated EXIF ASCII assignments and exactly one destination;
+The CLI also exposes `--create-tiff KEY=VALUE` and
+`--create-bigtiff KEY=VALUE` for the bounded classic TIFF and BigTIFF creation
+seams. Both accept repeated EXIF ASCII assignments and exactly one destination;
 the destination must not already exist.
 
 JPEG creation exposes `JpegCreateOptions`, `create_jpeg_to_vec`,
@@ -325,9 +326,10 @@ reads the source value before rewriting the target.
 Numeric/binary mutation, new metadata block creation, and deletion semantics
 that require layout changes remain intentionally outside this API. Creation
 seams are intentionally format-specific: `TiffCreateOptions` can build a
-minimal classic 1x1 TIFF with bounded EXIF ASCII seed fields, while
-`Mp3CreateOptions` and `OggCreateOptions` can build minimal audio metadata
-seeds, `SvgCreateOptions` can build a minimal XML metadata seed, and
+minimal classic 1x1 TIFF, while `create_bigtiff_to_vec` and
+`create_bigtiff_path` build the corresponding BigTIFF seed; both accept bounded
+EXIF ASCII fields. `Mp3CreateOptions` and `OggCreateOptions` can build minimal
+audio metadata seeds, `SvgCreateOptions` can build a minimal XML metadata seed, and
 `WebpCreateOptions` can build a minimal lossless image metadata seed, while
 `JpegCreateOptions` can build a minimal JPEG metadata container seed; all
 validate their output by reading it back and create a new path without

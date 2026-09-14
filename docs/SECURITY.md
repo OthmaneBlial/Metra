@@ -119,6 +119,10 @@ enforces metadata/value limits, emits a fixed 1x1 seed image, and validates the
 result through the TIFF reader before returning it. Its path helper refuses an
 existing destination and removes its temporary file on failure.
 
+The BigTIFF creation API applies the same allowlist, duplicate/NUL checks,
+resource limits, reader revalidation, temporary-file cleanup, and no-overwrite
+atomic path rule while emitting 8-byte IFD counts, offsets, and value slots.
+
 JPEG creation emits only a bounded SOI/metadata/EOI container. Comment and XMP
 segments are size-checked, NUL-containing comments and unsafe XMP packets are
 rejected, the result is re-read through the JPEG parser, and path creation uses
