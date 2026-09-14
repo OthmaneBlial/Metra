@@ -329,18 +329,123 @@ fn encode_text_payload(
             replacement[8..].fill(0);
             replacement[8..8 + value.len()].copy_from_slice(value);
         }
-        Some(b"mluc") => {
-            return Err(MetraError::WriteFailure {
-                message: format!(
-                    "ICC profile tag {name} uses mluc storage; only desc/text replacement is supported"
-                ),
-            });
-        }
+        Some(b"mluc") => return encode_mluc_payload(current, value, name, limits),
         _ => {
             return Err(MetraError::WriteFailure {
                 message: format!("ICC profile tag {name} does not use writable text storage"),
             });
         }
+    }
+    Ok(replacement)
+}
+
+fn encode_mluc_payload(
+    current: &[u8],
+    value: &[u8],
+    name: &str,
+    limits: ParseLimits,
+) -> Result<Vec<u8>> {
+    let value = std::str::from_utf8(value).map_err(|_| MetraError::WriteFailure {
+        message: format!("ICC profile tag {name} requires valid UTF-8 text"),
+    })?;
+    if value.contains('\0') {
+        return Err(MetraError::WriteFailure {
+            message: format!("ICC profile tag {name} cannot contain NUL"),
+        });
+    }
+    let encoded_length =
+        value
+            .encode_utf16()
+            .count()
+            .checked_mul(2)
+            .ok_or(MetraError::ResourceLimitExceeded {
+                resource: format!("ICC profile tag {name}"),
+                limit: limits.max_value_bytes,
+            })?;
+    if encoded_length == 0 || encoded_length > limits.max_value_bytes {
+        return Err(MetraError::ResourceLimitExceeded {
+            resource: format!("ICC profile tag {name}"),
+            limit: limits.max_value_bytes,
+        });
+    }
+    if current.len() < 28 {
+        return Err(MetraError::WriteFailure {
+            message: format!("ICC profile tag {name} has an invalid mluc payload"),
+        });
+    }
+    let count = usize::try_from(u32::from_be_bytes(
+        current[8..12].try_into().expect("ICC mluc count"),
+    ))
+    .map_err(|_| MetraError::ResourceLimitExceeded {
+        resource: format!("ICC profile tag {name} records"),
+        limit: limits.max_ifd_entries,
+    })?;
+    let record_size = usize::try_from(u32::from_be_bytes(
+        current[12..16].try_into().expect("ICC mluc record size"),
+    ))
+    .map_err(|_| MetraError::ResourceLimitExceeded {
+        resource: format!("ICC profile tag {name} records"),
+        limit: limits.max_value_bytes,
+    })?;
+    if count == 0 || record_size < 12 || count > limits.max_ifd_entries {
+        return Err(MetraError::WriteFailure {
+            message: format!("ICC profile tag {name} has invalid mluc records"),
+        });
+    }
+    let table_end = 16_usize
+        .checked_add(
+            count
+                .checked_mul(record_size)
+                .ok_or(MetraError::InvalidOffset {
+                    context: "ICC mluc record table".to_owned(),
+                    offset: count as u64,
+                })?,
+        )
+        .ok_or(MetraError::InvalidOffset {
+            context: "ICC mluc record table".to_owned(),
+            offset: count as u64,
+        })?;
+    if table_end > current.len() {
+        return Err(MetraError::WriteFailure {
+            message: format!("ICC profile tag {name} has a truncated mluc table"),
+        });
+    }
+    let old_length = usize::try_from(u32::from_be_bytes(
+        current[20..24].try_into().expect("ICC mluc length"),
+    ))
+    .map_err(|_| MetraError::ResourceLimitExceeded {
+        resource: format!("ICC profile tag {name}"),
+        limit: limits.max_value_bytes,
+    })?;
+    let offset = usize::try_from(u32::from_be_bytes(
+        current[24..28].try_into().expect("ICC mluc offset"),
+    ))
+    .map_err(|_| MetraError::ResourceLimitExceeded {
+        resource: format!("ICC profile tag {name}"),
+        limit: limits.max_value_bytes,
+    })?;
+    let end = offset
+        .checked_add(old_length)
+        .ok_or(MetraError::InvalidOffset {
+            context: "ICC mluc string".to_owned(),
+            offset: offset as u64,
+        })?;
+    if old_length % 2 != 0 || offset < table_end || end > current.len() {
+        return Err(MetraError::WriteFailure {
+            message: format!("ICC profile tag {name} has an invalid mluc string range"),
+        });
+    }
+    if encoded_length > old_length {
+        return Err(MetraError::WriteFailure {
+            message: format!("ICC profile tag {name} replacement does not fit its mluc payload"),
+        });
+    }
+    let mut replacement = current.to_vec();
+    replacement[20..24].copy_from_slice(&(encoded_length as u32).to_be_bytes());
+    replacement[offset..end].fill(0);
+    for (index, unit) in value.encode_utf16().enumerate() {
+        let start = offset + index * 2;
+        replacement[start..start + 2].copy_from_slice(&unit.to_be_bytes());
     }
     Ok(replacement)
 }
@@ -459,5 +564,62 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.to_string().contains("does not fit"));
+    }
+
+    #[test]
+    fn rewrites_first_mluc_locale_without_changing_profile_size() {
+        let value = "old";
+        let encoded = value
+            .encode_utf16()
+            .flat_map(u16::to_be_bytes)
+            .collect::<Vec<_>>();
+        let offset = 28_u32;
+        let mut payload = b"mluc".to_vec();
+        payload.extend_from_slice(&[0; 4]);
+        payload.extend_from_slice(&1_u32.to_be_bytes());
+        payload.extend_from_slice(&12_u32.to_be_bytes());
+        payload.extend_from_slice(b"enUS");
+        payload.extend_from_slice(&(encoded.len() as u32).to_be_bytes());
+        payload.extend_from_slice(&offset.to_be_bytes());
+        payload.extend_from_slice(&encoded);
+
+        let tag_offset = 144_u32;
+        let mut bytes = vec![0_u8; tag_offset as usize];
+        bytes[8] = 4;
+        bytes[9] = 0x30;
+        bytes[12..16].copy_from_slice(b"mntr");
+        bytes[16..20].copy_from_slice(b"RGB ");
+        bytes[20..24].copy_from_slice(b"XYZ ");
+        bytes[24..36].copy_from_slice(&[0x07, 0xEA, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0]);
+        bytes[36..40].copy_from_slice(b"acsp");
+        bytes[128..132].copy_from_slice(&1_u32.to_be_bytes());
+        bytes[132..136].copy_from_slice(b"desc");
+        bytes[136..140].copy_from_slice(&tag_offset.to_be_bytes());
+        bytes[140..144].copy_from_slice(&(payload.len() as u32).to_be_bytes());
+        bytes.extend_from_slice(&payload);
+        let profile_size = bytes.len() as u32;
+        bytes[0..4].copy_from_slice(&profile_size.to_be_bytes());
+
+        let output = rewrite_icc_to_vec(
+            &bytes,
+            info(&bytes),
+            ParseLimits::default(),
+            &[IccEdit::SetText {
+                name: "Description".to_owned(),
+                value: "new".to_owned(),
+            }],
+        )
+        .unwrap();
+        assert_eq!(output.len(), bytes.len());
+        let metadata = read_icc(
+            &mut Cursor::new(output),
+            info(&bytes),
+            ParseLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            metadata.find("ICC:Description").unwrap().display_value(),
+            "new"
+        );
     }
 }
