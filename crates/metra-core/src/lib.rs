@@ -197,7 +197,7 @@ const FORMAT_CAPABILITIES: &[FormatCapabilities] = &[
         format: FileFormat::Webp,
         read: CapabilityStatus::Partial,
         write: CapabilityStatus::Partial,
-        create: CapabilityStatus::Planned,
+        create: CapabilityStatus::Partial,
         delete: CapabilityStatus::Partial,
         lossless_rewrite: CapabilityStatus::Partial,
         streaming: CapabilityStatus::Partial,
@@ -1072,6 +1072,10 @@ mod tests {
         );
         assert_eq!(
             format_capabilities(FileFormat::Svg).create,
+            CapabilityStatus::Partial
+        );
+        assert_eq!(
+            format_capabilities(FileFormat::Webp).create,
             CapabilityStatus::Partial
         );
         assert_eq!(
