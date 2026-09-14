@@ -4,6 +4,11 @@
 
 Initial read-first foundation with narrow validated rewrites:
 
+- added bounded ISO-BMFF `uuid` handling for the standard Adobe XMP user type
+  and identifiable direct TIFF/`Exif\0\0` payloads, with shared XMP/EXIF
+  delegation, absolute source offsets, unknown-UUID warnings, and payload-limit
+  regression coverage; direct TIFF envelope detection no longer mistakes the
+  first four TIFF bytes for an Exif item offset;
 - added bounded Minolta MRW segment decoding for PRD/WBG/RIF fields and
   embedded TTW TIFF metadata, with exact raw-value retention, checked
   metadata-region/segment budgets, generic RAW dispatch, and CLI JSON coverage;

@@ -84,7 +84,11 @@ layer and pixel data are skipped. The ISO-BMFF reader walks bounded boxes and
 exposes brands, `mvhd` movie timing, `tkhd` track identifiers/durations/fixed-
 point dimensions, image dimensions, channel depths, orientation, pixel aspect
 ratio, nclx color properties, auxiliary item types, direct XMP/EXIF boxes, and
-a conservative subset of QuickTime-style `ilst` text items. HEIF/AVIF property
+a conservative subset of QuickTime-style `ilst` text items. Adobe XMP `uuid`
+boxes are recognized by their standard 16-byte user type and delegate their
+bounded payload to the shared XMP reader; UUID payloads that begin with a direct
+TIFF or `Exif\0\0` envelope are delegated to the bounded EXIF reader as well.
+Unknown UUID payloads remain warning-only and are never materialized. HEIF/AVIF property
 containers (`iprp`/`ipco`) are traversed with the same recursion and payload
 budgets as top-level boxes.
 The WebP reader extracts dimensions from the extended `VP8X` canvas and the

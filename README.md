@@ -31,7 +31,7 @@ Implemented today:
 | PNG | Chunk walking, IHDR dimensions and encoding parameters, CRC warnings, tEXt/zTXt/iTXt including bounded zlib text, eXIf, tIME, pHYs, structured XMP, bounded ICC profile headers from `iCCP`, and minimal 1×1 RGBA creation with bounded `tEXt` seeds |
 | WebP | RIFF chunk walking, VP8X/VP8/VP8L dimensions, EXIF, structured XMP, typed ICC profiles, and minimal 1x1 lossless seed creation with bounded XMP |
 | GIF | GIF87a/GIF89a headers, logical-screen dimensions, comments, bounded extension validation, and minimal 1x1 creation with comment extensions |
-| ISO-BMFF | HEIF/AVIF/MP4/MOV/M4A brand detection, bounded box walking, `mvhd` movie timing, `tkhd` track IDs/durations/dimensions, `ispe` dimensions, `pixi` channels, `irot`/`imir` orientation, `pasp` aspect ratio, `colr` nclx values, `auxC` auxiliary type, direct XMP/EXIF, QuickTime-style `ilst` text metadata, and validated in-place edits for existing text values |
+| ISO-BMFF | HEIF/AVIF/MP4/MOV/M4A brand detection, bounded box walking, `mvhd` movie timing, `tkhd` track IDs/durations/dimensions, `ispe` dimensions, `pixi` channels, `irot`/`imir` orientation, `pasp` aspect ratio, `colr` nclx values, `auxC` auxiliary type, direct and Adobe-UUID XMP/EXIF metadata, QuickTime-style `ilst` text metadata, and validated in-place edits for existing text values |
 | MP3 | ID3v2.2/v2.3/v2.4 text, comments, lyrics, attached-picture metadata, ID3v1 fallback, first MPEG frame properties, and minimal ID3v2.4 seed creation |
 | FLAC | `STREAMINFO`, bounded `SEEKTABLE` seek-point and `CUESHEET` track/index structures, Vorbis comments, embedded-picture properties/data, bounded metadata-block validation, and minimal metadata-only creation with Vorbis comments |
 | Ogg/Vorbis/Opus | Bounded Ogg page walking with metadata-page CRC warnings, Vorbis and Opus stream headers, Vorbis Comments/OpusTags, Ogg-FLAC comments, typed FLAC-in-Ogg `STREAMINFO` fields, and minimal Opus seed creation with bounded comments |
@@ -393,8 +393,10 @@ cargo bench --bench throughput --no-run
 The tests generate small synthetic files at runtime, covering signatures,
 little-endian nested EXIF, malformed offsets, JPEG segments, structured XMP,
 IPTC/ICC resources, PNG CRC behavior, WebP dimensions, GIF extensions, ISO-BMFF
-boxes, PSD/PSB headers and image resources, RAW container delegation, AVI RIFF lists, Matroska/WebM EBML
-elements, Ogg pages and Vorbis/Opus comments, bounded PNG zlib expansion, legacy RAW signatures, and CLI JSON/human output. Real-world corpus and differential
+boxes and bounded UUID XMP/EXIF payloads, PSD/PSB headers and image resources,
+RAW container delegation, AVI RIFF lists, Matroska/WebM EBML elements, Ogg pages
+and Vorbis/Opus comments, bounded PNG zlib expansion, legacy RAW signatures, and
+CLI JSON/human output. Real-world corpus and differential
 compatibility tests are separate follow-up gates; passing these local tests does
 not claim complete ExifTool compatibility.
 
