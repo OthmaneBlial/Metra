@@ -32,6 +32,7 @@ mod iptc_writer;
 mod isobmff;
 mod isobmff_writer;
 mod jpeg;
+mod jpeg_create;
 mod makers;
 mod matroska;
 mod matroska_writer;
@@ -84,6 +85,7 @@ pub use isobmff_writer::{
     IsobmffEdit, rewrite_isobmff, rewrite_isobmff_path, rewrite_isobmff_to_vec,
 };
 pub use jpeg::{JpegEdit, read_jpeg, rewrite_jpeg, rewrite_jpeg_path, rewrite_jpeg_to_vec};
+pub use jpeg_create::{JpegCreateOptions, create_jpeg_path, create_jpeg_to_vec};
 pub use matroska::read_matroska;
 pub use matroska_writer::{
     MatroskaEdit, rewrite_matroska, rewrite_matroska_path, rewrite_matroska_to_vec,
