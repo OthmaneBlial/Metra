@@ -1501,6 +1501,44 @@ fn cli_can_create_standalone_xmp_without_overwrite() {
 }
 
 #[test]
+fn cli_can_create_minimal_psd_with_xmp_without_overwrite() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.path.join("created.psd");
+    let packet = xmp_packet("created");
+    let assignment = format!("PSD:XMP={packet}");
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--create-psd",
+            assignment.as_str(),
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let metadata = metra::read(&path).expect("created PSD should remain readable");
+    assert_eq!(metadata.file_info.format, metra::FileFormat::Psd);
+    assert_eq!(
+        metadata.find("PSD:ImageWidth").unwrap().display_value(),
+        "1"
+    );
+    assert_eq!(
+        metadata.find("PSD:ImageHeight").unwrap().display_value(),
+        "1"
+    );
+    assert_eq!(
+        metadata.find("XMP:dc:format").unwrap().display_value(),
+        "created"
+    );
+
+    let second = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args(["--create-psd", assignment.as_str(), path.to_str().unwrap()])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(!second.status.success());
+    assert!(String::from_utf8_lossy(&second.stderr).contains("refusing to overwrite"));
+}
+
+#[test]
 fn cli_can_set_and_copy_standalone_xmp_packet() {
     let directory = TemporaryDirectory::new();
     let source = directory.file("source.xmp", &xmp_packet("source").into_bytes());

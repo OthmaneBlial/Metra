@@ -173,4 +173,14 @@ mod tests {
             metra_core::FileFormat::Mkv
         );
     }
+
+    #[test]
+    fn generic_dispatch_creates_psd_seed() {
+        let request = CreateRequest::Psd(PsdCreateOptions::default());
+        let bytes = create_to_vec(&request, ParseLimits::default()).unwrap();
+        assert_eq!(
+            crate::detect_format(&bytes).unwrap().format,
+            metra_core::FileFormat::Psd
+        );
+    }
 }

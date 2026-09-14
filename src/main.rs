@@ -179,6 +179,43 @@ struct Arguments {
     )]
     create_pdf: Vec<String>,
 
+    /// Create a minimal 1x1 RGB PSD with an optional XMP image resource.
+    #[arg(
+        long = "create-psd",
+        value_name = "XMP=PACKET",
+        action = clap::ArgAction::Append,
+        conflicts_with_all = [
+            "set",
+            "delete",
+            "copy",
+            "create_tiff",
+            "create_jpeg",
+            "create_pdf",
+            "create_avi",
+            "create_mkv",
+            "create_webm",
+            "create_png",
+            "create_xmp",
+            "create_wav",
+            "create_flac",
+            "create_gif",
+            "create_icc",
+            "create_mp3",
+            "create_ogg",
+            "create_svg",
+            "create_webp_xmp",
+            "json",
+            "jsonl",
+            "csv",
+            "toml",
+            "yaml",
+            "tag",
+            "validate",
+            "compare"
+        ]
+    )]
+    create_psd: Vec<String>,
+
     /// Create a new minimal 1x1 AVI seed with one or more INFO fields.
     #[arg(
         long = "create-avi",
@@ -664,6 +701,29 @@ fn main() -> ExitCode {
             }
         };
         return match metra::create_pdf_path(&arguments.files[0], &options, limits) {
+            Ok(()) => {
+                println!("created: {}", arguments.files[0].display());
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", arguments.files[0].display());
+                ExitCode::from(1)
+            }
+        };
+    }
+    if !arguments.create_psd.is_empty() {
+        if arguments.files.len() != 1 {
+            eprintln!("metra: --create-psd requires exactly one destination path");
+            return ExitCode::from(2);
+        }
+        let options = match parse_psd_create(&arguments.create_psd) {
+            Ok(options) => options,
+            Err(message) => {
+                eprintln!("metra: {message}");
+                return ExitCode::from(2);
+            }
+        };
+        return match metra::create_psd_path(&arguments.files[0], &options, limits) {
             Ok(()) => {
                 println!("created: {}", arguments.files[0].display());
                 ExitCode::SUCCESS
@@ -1226,6 +1286,26 @@ fn parse_pdf_create(entries: &[String]) -> Result<metra::PdfCreateOptions, Strin
             return Err("--create-pdf requires a non-empty KEY".to_owned());
         }
         options.push_info(key, value);
+    }
+    Ok(options)
+}
+
+fn parse_psd_create(entries: &[String]) -> Result<metra::PsdCreateOptions, String> {
+    let mut options = metra::PsdCreateOptions::new();
+    for assignment in entries {
+        let (key, value) = assignment
+            .split_once('=')
+            .ok_or_else(|| "--create-psd expects XMP=PACKET".to_owned())?;
+        let key = key.strip_prefix("PSD:").unwrap_or(key);
+        if key != "XMP" {
+            return Err(format!(
+                "unsupported --create-psd field {key}; use XMP=PACKET"
+            ));
+        }
+        if options.xmp.is_some() {
+            return Err("--create-psd accepts only one XMP field".to_owned());
+        }
+        options.set_xmp(value);
     }
     Ok(options)
 }
