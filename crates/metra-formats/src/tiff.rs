@@ -499,7 +499,21 @@ impl<R: Read + Seek> TiffParser<'_, R> {
             Vec::new()
         };
         let is_empty_string = matches!(&value, TagValue::String(value) if value.is_empty());
-        if !is_empty_string {
+        let is_zeroed_gps_coordinate = namespace == "GPS"
+            && matches!(id, 0x0002 | 0x0004)
+            && matches!(
+                &value,
+                TagValue::Array(values)
+                    if values.len() == 3
+                        && values.iter().all(|value| matches!(
+                            value,
+                            TagValue::UnsignedRational {
+                                numerator: 0,
+                                denominator: 0,
+                            }
+                        ))
+            );
+        if !is_empty_string && !is_zeroed_gps_coordinate {
             metadata.add_tag(Tag {
                 namespace: definition.namespace.to_owned(),
                 group: group.to_owned(),

@@ -189,6 +189,26 @@ fn minimal_dng_with_make(make: &str) -> Vec<u8> {
     bytes
 }
 
+fn minimal_tiff_with_gps() -> Vec<u8> {
+    let mut bytes = vec![
+        b'I', b'I', 42, 0, 8, 0, 0, 0, 1, 0, // one IFD0 entry
+        0x25, 0x88, 4, 0, 1, 0, 0, 0, 26, 0, 0, 0, // GPS IFD -> offset 26
+        0, 0, 0, 0, // no next IFD
+        2, 0, // two GPS IFD entries
+        2, 0, 5, 0, 3, 0, 0, 0, 56, 0, 0, 0, // GPSLatitude -> offset 56
+        1, 0, 2, 0, 2, 0, 0, 0, b'N', 0, 0, 0, // GPSLatitudeRef = N
+        0, 0, 0, 0, // no next IFD
+    ];
+    bytes.extend_from_slice(&48_u32.to_le_bytes());
+    bytes.extend_from_slice(&1_u32.to_le_bytes());
+    bytes.extend_from_slice(&51_u32.to_le_bytes());
+    bytes.extend_from_slice(&1_u32.to_le_bytes());
+    bytes.extend_from_slice(&24_u32.to_le_bytes());
+    bytes.extend_from_slice(&1_u32.to_le_bytes());
+    assert_eq!(bytes.len(), 80);
+    bytes
+}
+
 #[test]
 fn public_reader_api_detects_and_dispatches_in_memory_tiff() {
     let bytes = b"II*\0\0\0\0\0";
@@ -748,6 +768,45 @@ fn public_generic_edit_api_deletes_existing_tiff_like_raw_ascii() {
     .expect("deleted DNG should remain readable");
     assert_eq!(metadata.find("RAW:Variant").unwrap().display_value(), "DNG");
     assert!(metadata.find("EXIF:Make").is_none());
+}
+
+#[test]
+fn public_generic_edit_api_rewrites_gps_decimal_coordinates() {
+    let bytes = minimal_tiff_with_gps();
+    let output = metra::rewrite_metadata_to_vec(
+        &bytes,
+        metra::FileInfo::new(
+            "memory.tif".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::set("GPS:Latitude", "-48.8566")],
+    )
+    .expect("generic GPS edit should validate its rewritten bytes");
+
+    let metadata = metra::read_from(
+        &mut std::io::Cursor::new(output.clone()),
+        metra::FileInfo::new(
+            "memory.tif".into(),
+            output.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+    )
+    .expect("rewritten GPS TIFF should remain readable");
+    let latitude = metadata
+        .find("GPS:LatitudeDecimal")
+        .expect("derived latitude should be present")
+        .value
+        .clone();
+    let metra::TagValue::Float(latitude) = latitude else {
+        panic!("derived latitude should be a float");
+    };
+    assert!((latitude + 48.8566).abs() < 0.000001);
+    assert_eq!(
+        metadata.find("GPS:GPSLatitudeRef").unwrap().display_value(),
+        "S"
+    );
 }
 
 #[test]

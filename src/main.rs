@@ -1860,6 +1860,7 @@ enum CopyKey {
     JpegXmp,
     JpegIptc(String),
     TiffAscii(String),
+    TiffGpsDecimal(String),
     IsobmffText(String),
     IsobmffXmp,
     PngText(String),
@@ -1902,6 +1903,14 @@ fn parse_edits(
                 return Ok(Some(EditRequest::DirectJpeg(vec![
                     metra::JpegEdit::SetExifAscii {
                         key: exif_key.to_owned(),
+                        value: value.to_owned(),
+                    },
+                ])));
+            }
+            if let Some(gps_key) = gps_decimal_key(key) {
+                return Ok(Some(EditRequest::DirectTiff(vec![
+                    metra::TiffEdit::SetGpsDecimal {
+                        key: gps_key.to_owned(),
                         value: value.to_owned(),
                     },
                 ])));
@@ -2063,6 +2072,13 @@ fn parse_edits(
     }
     if let Some(key) = delete {
         if key != "JPEG:Comment" {
+            if let Some(gps_key) = gps_decimal_key(key) {
+                return Ok(Some(EditRequest::DirectTiff(vec![
+                    metra::TiffEdit::DeleteGpsDecimal {
+                        key: gps_key.to_owned(),
+                    },
+                ])));
+            }
             if let Some(tiff_key) = tiff_ascii_key(key) {
                 return Ok(Some(EditRequest::DirectTiff(vec![
                     metra::TiffEdit::DeleteAscii {
@@ -2214,6 +2230,8 @@ fn parse_edits(
             CopyKey::JpegComment
         } else if let Some(exif_key) = jpeg_exif_ascii_key(key) {
             CopyKey::JpegExifAscii(exif_key.to_owned())
+        } else if let Some(gps_key) = gps_decimal_key(key) {
+            CopyKey::TiffGpsDecimal(gps_key.to_owned())
         } else if let Some(tiff_key) = tiff_ascii_key(key) {
             CopyKey::TiffAscii(tiff_key.to_owned())
         } else if let Some(name) = pdf_info_name(key) {
@@ -2280,6 +2298,15 @@ fn tiff_ascii_key(key: &str) -> Option<&str> {
         .iter()
         .any(|prefix| key.starts_with(prefix))
         .then_some(key)
+}
+
+fn gps_decimal_key(key: &str) -> Option<&'static str> {
+    let key = key.strip_prefix("TIFF:").unwrap_or(key);
+    match key {
+        "GPS:Latitude" | "GPS:LatitudeDecimal" | "GPS:GPSLatitude" => Some("GPS:GPSLatitude"),
+        "GPS:Longitude" | "GPS:LongitudeDecimal" | "GPS:GPSLongitude" => Some("GPS:GPSLongitude"),
+        _ => None,
+    }
 }
 
 fn pdf_info_name(key: &str) -> Option<&str> {
@@ -2447,7 +2474,7 @@ fn svg_text_key(key: &str) -> Option<SvgTextKey> {
 
 fn unsupported_edit_message(key: &str) -> String {
     format!(
-        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:EXIF:<ASCII tag>, JPEG:XMP, IPTC:<dataset>, TIFF:EXIF:<ASCII tag>, PDF:<Info field>, PSD:XMP, AVI:<INFO field>, Matroska:Title/MuxingApp/WritingApp, Matroska:Tag:<name>, ISOBMFF:<text field>, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, Ogg:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
+        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:EXIF:<ASCII tag>, JPEG:XMP, IPTC:<dataset>, TIFF:EXIF:<ASCII tag>, GPS:Latitude/Longitude, PDF:<Info field>, PSD:XMP, AVI:<INFO field>, Matroska:Title/MuxingApp/WritingApp, Matroska:Tag:<name>, ISOBMFF:<text field>, ISOBMFF:XMP, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, Ogg:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
     )
 }
 
@@ -3108,6 +3135,49 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path, limits: ParseLimit
             let edits = [metra::TiffEdit::SetAscii {
                 key,
                 value: value.clone(),
+            }];
+            apply_tiff_edits(paths, &edits, limits)
+        }
+        CopyKey::TiffGpsDecimal(key) => {
+            if !matches!(
+                source_metadata.file_info.format,
+                metra::FileFormat::Tiff | metra::FileFormat::Raw
+            ) {
+                eprintln!(
+                    "metra: {}: source format {} is not TIFF or RAW",
+                    source.display(),
+                    source_metadata.file_info.format
+                );
+                return ExitCode::from(1);
+            }
+            let source_key = match key.as_str() {
+                "GPS:GPSLatitude" => "GPS:LatitudeDecimal",
+                "GPS:GPSLongitude" => "GPS:LongitudeDecimal",
+                _ => {
+                    eprintln!(
+                        "metra: {}: unsupported GPS coordinate {key}",
+                        source.display()
+                    );
+                    return ExitCode::from(1);
+                }
+            };
+            let Some(tag) = source_metadata.find(source_key) else {
+                eprintln!(
+                    "metra: {}: source does not contain a valid {source_key}",
+                    source.display()
+                );
+                return ExitCode::from(1);
+            };
+            let metra::TagValue::Float(value) = tag.value else {
+                eprintln!(
+                    "metra: {}: {source_key} is not a decimal number",
+                    source.display()
+                );
+                return ExitCode::from(1);
+            };
+            let edits = [metra::TiffEdit::SetGpsDecimal {
+                key,
+                value: value.to_string(),
             }];
             apply_tiff_edits(paths, &edits, limits)
         }

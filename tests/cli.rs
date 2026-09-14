@@ -707,6 +707,26 @@ fn minimal_raw_tiff() -> Vec<u8> {
     tiff
 }
 
+fn minimal_tiff_with_gps() -> Vec<u8> {
+    let mut bytes = vec![
+        b'I', b'I', 42, 0, 8, 0, 0, 0, 1, 0, // one IFD0 entry
+        0x25, 0x88, 4, 0, 1, 0, 0, 0, 26, 0, 0, 0, // GPS IFD -> offset 26
+        0, 0, 0, 0, // no next IFD
+        2, 0, // two GPS IFD entries
+        2, 0, 5, 0, 3, 0, 0, 0, 56, 0, 0, 0, // GPSLatitude -> offset 56
+        1, 0, 2, 0, 2, 0, 0, 0, b'N', 0, 0, 0, // GPSLatitudeRef = N
+        0, 0, 0, 0, // no next IFD
+    ];
+    bytes.extend_from_slice(&48_u32.to_le_bytes());
+    bytes.extend_from_slice(&1_u32.to_le_bytes());
+    bytes.extend_from_slice(&51_u32.to_le_bytes());
+    bytes.extend_from_slice(&1_u32.to_le_bytes());
+    bytes.extend_from_slice(&24_u32.to_le_bytes());
+    bytes.extend_from_slice(&1_u32.to_le_bytes());
+    assert_eq!(bytes.len(), 80);
+    bytes
+}
+
 fn run(args: &[&Path]) -> std::process::Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_metra"));
     for path in args {
@@ -2480,6 +2500,66 @@ fn cli_can_delete_existing_tiff_like_raw_ascii() {
     let metadata = metra::read(&path).expect("deleted DNG should remain readable");
     assert_eq!(metadata.find("RAW:Variant").unwrap().display_value(), "DNG");
     assert!(metadata.find("EXIF:Make").is_none());
+}
+
+#[test]
+fn cli_can_set_copy_and_delete_gps_decimal_coordinates() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.file("source.tif", &minimal_tiff_with_gps());
+    let target = directory.file("target.tif", &minimal_tiff_with_gps());
+
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "GPS:Latitude=-48.8566",
+            source.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+    assert_eq!(
+        metra::read(&source)
+            .unwrap()
+            .find("GPS:LatitudeDecimal")
+            .unwrap()
+            .display_value(),
+        "-48.8566"
+    );
+
+    let copy_assignment = format!("GPS:Latitude={}", source.to_str().expect("UTF-8 test path"));
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            copy_assignment.as_str(),
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("GPS:LatitudeDecimal")
+            .unwrap()
+            .display_value(),
+        "-48.8566"
+    );
+
+    let delete = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--delete",
+            "TIFF:GPS:Latitude",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(delete.status.success(), "stderr: {:?}", delete.stderr);
+    assert!(
+        metra::read(&target)
+            .unwrap()
+            .find("GPS:LatitudeDecimal")
+            .is_none()
+    );
 }
 
 #[test]

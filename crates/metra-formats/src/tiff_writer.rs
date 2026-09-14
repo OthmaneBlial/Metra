@@ -17,6 +17,8 @@ use crate::tiff::read_tiff;
 pub enum TiffEdit {
     SetAscii { key: String, value: String },
     DeleteAscii { key: String },
+    SetGpsDecimal { key: String, value: String },
+    DeleteGpsDecimal { key: String },
 }
 
 pub fn rewrite_tiff<R: Read + Seek, W: Write + Seek>(
@@ -168,9 +170,21 @@ fn collect_patches<R: Read + Seek>(
     let variant = read_variant(reader, file_info.size, &file_info.path)?;
     let mut patches = Vec::with_capacity(edits.len());
     for edit in edits {
+        if matches!(
+            edit,
+            TiffEdit::SetGpsDecimal { .. } | TiffEdit::DeleteGpsDecimal { .. }
+        ) {
+            patches.extend(collect_gps_patches(
+                reader, metadata, file_info, limits, variant, edit,
+            )?);
+            continue;
+        }
         let (key, value) = match edit {
             TiffEdit::SetAscii { key, value } => (key, value.as_str()),
             TiffEdit::DeleteAscii { key } => (key, ""),
+            TiffEdit::SetGpsDecimal { .. } | TiffEdit::DeleteGpsDecimal { .. } => {
+                unreachable!("GPS edits are handled before ASCII edits")
+            }
         };
         if value.contains('\0') {
             return Err(MetraError::WriteFailure {
@@ -311,6 +325,286 @@ fn collect_patches<R: Read + Seek>(
     Ok(patches)
 }
 
+#[derive(Debug, Clone, Copy)]
+struct GpsCoordinateSpec {
+    value_key: &'static str,
+    reference_key: &'static str,
+    maximum: f64,
+    positive_reference: u8,
+    negative_reference: u8,
+}
+
+fn gps_coordinate_spec(key: &str) -> Option<GpsCoordinateSpec> {
+    match key {
+        "GPS:GPSLatitude" => Some(GpsCoordinateSpec {
+            value_key: "GPS:GPSLatitude",
+            reference_key: "GPS:GPSLatitudeRef",
+            maximum: 90.0,
+            positive_reference: b'N',
+            negative_reference: b'S',
+        }),
+        "GPS:GPSLongitude" => Some(GpsCoordinateSpec {
+            value_key: "GPS:GPSLongitude",
+            reference_key: "GPS:GPSLongitudeRef",
+            maximum: 180.0,
+            positive_reference: b'E',
+            negative_reference: b'W',
+        }),
+        _ => None,
+    }
+}
+
+fn collect_gps_patches<R: Read + Seek>(
+    reader: &mut R,
+    metadata: &Metadata,
+    file_info: &FileInfo,
+    limits: ParseLimits,
+    variant: Variant,
+    edit: &TiffEdit,
+) -> Result<Vec<Patch>> {
+    let (key, replacement) = match edit {
+        TiffEdit::SetGpsDecimal { key, value } => (key.as_str(), Some(value.as_str())),
+        TiffEdit::DeleteGpsDecimal { key } => (key.as_str(), None),
+        TiffEdit::SetAscii { .. } | TiffEdit::DeleteAscii { .. } => {
+            unreachable!("ASCII edits are handled by the ASCII collector")
+        }
+    };
+    let spec = gps_coordinate_spec(key).ok_or_else(|| MetraError::WriteFailure {
+        message: format!("TIFF GPS coordinate key {key} is not writable"),
+    })?;
+    if limits.max_value_bytes < 24 {
+        return Err(MetraError::ResourceLimitExceeded {
+            resource: "TIFF GPS coordinate".to_owned(),
+            limit: limits.max_value_bytes,
+        });
+    }
+
+    let coordinate_tag = match metadata.find_all(spec.value_key).as_slice() {
+        [tag] => *tag,
+        [] => {
+            return Err(MetraError::WriteFailure {
+                message: format!("TIFF GPS coordinate {} does not exist", spec.value_key),
+            });
+        }
+        _ => {
+            return Err(MetraError::WriteFailure {
+                message: format!("TIFF GPS coordinate {} is repeated", spec.value_key),
+            });
+        }
+    };
+    if !matches!(
+        &coordinate_tag.value,
+        TagValue::Array(values)
+            if values.len() == 3
+                && values.iter().all(|value| matches!(
+                    value,
+                    TagValue::UnsignedRational { .. }
+                ))
+    ) {
+        return Err(MetraError::WriteFailure {
+            message: format!(
+                "TIFF GPS coordinate {} is not an unsigned-rational triplet",
+                spec.value_key
+            ),
+        });
+    }
+    let coordinate_entry_offset =
+        coordinate_tag
+            .source
+            .offset
+            .ok_or_else(|| MetraError::WriteFailure {
+                message: format!("TIFF GPS coordinate {} has no source entry", spec.value_key),
+            })?;
+    let coordinate_entry = read_at(
+        reader,
+        coordinate_entry_offset,
+        variant.entry_size(),
+        file_info.size,
+        &file_info.path,
+        "TIFF GPS coordinate entry",
+    )?;
+    let endian = variant.endian();
+    let coordinate_type = read_u16(endian, &coordinate_entry[2..4]);
+    let coordinate_count = match variant {
+        Variant::Classic { .. } => u64::from(read_u32(endian, &coordinate_entry[4..8])),
+        Variant::Big { .. } => read_u64(endian, &coordinate_entry[4..12]),
+    };
+    if coordinate_type != 5 || coordinate_count != 3 {
+        return Err(MetraError::WriteFailure {
+            message: format!(
+                "TIFF GPS coordinate {} must use exactly three unsigned rationals",
+                spec.value_key,
+            ),
+        });
+    }
+    let coordinate_offset =
+        entry_value_offset(variant, coordinate_entry_offset, &coordinate_entry, 24)?;
+    let coordinate_end = coordinate_offset
+        .checked_add(24)
+        .ok_or(MetraError::InvalidOffset {
+            context: "TIFF GPS coordinate value".to_owned(),
+            offset: coordinate_offset,
+        })?;
+    if coordinate_end > file_info.size {
+        return Err(MetraError::UnexpectedEof {
+            context: "TIFF GPS coordinate value".to_owned(),
+        });
+    }
+
+    let reference_tag = match metadata.find_all(spec.reference_key).as_slice() {
+        [tag] => *tag,
+        [] => {
+            return Err(MetraError::WriteFailure {
+                message: format!("TIFF GPS reference {} does not exist", spec.reference_key),
+            });
+        }
+        _ => {
+            return Err(MetraError::WriteFailure {
+                message: format!("TIFF GPS reference {} is repeated", spec.reference_key),
+            });
+        }
+    };
+    if !matches!(reference_tag.value, TagValue::String(_)) {
+        return Err(MetraError::WriteFailure {
+            message: format!(
+                "TIFF GPS reference {} is not ASCII text",
+                spec.reference_key
+            ),
+        });
+    }
+    let reference_entry_offset =
+        reference_tag
+            .source
+            .offset
+            .ok_or_else(|| MetraError::WriteFailure {
+                message: format!(
+                    "TIFF GPS reference {} has no source entry",
+                    spec.reference_key
+                ),
+            })?;
+    let reference_entry = read_at(
+        reader,
+        reference_entry_offset,
+        variant.entry_size(),
+        file_info.size,
+        &file_info.path,
+        "TIFF GPS reference entry",
+    )?;
+    let reference_type = read_u16(endian, &reference_entry[2..4]);
+    let reference_count = match variant {
+        Variant::Classic { .. } => u64::from(read_u32(endian, &reference_entry[4..8])),
+        Variant::Big { .. } => read_u64(endian, &reference_entry[4..12]),
+    };
+    let reference_count_usize =
+        usize::try_from(reference_count).map_err(|_| MetraError::ResourceLimitExceeded {
+            resource: "TIFF GPS reference".to_owned(),
+            limit: limits.max_value_bytes,
+        })?;
+    if reference_type != 2
+        || reference_count_usize < 2
+        || reference_count_usize > limits.max_value_bytes
+    {
+        return Err(MetraError::WriteFailure {
+            message: format!(
+                "TIFF GPS reference {} must be an existing ASCII field with a NUL slot",
+                spec.reference_key
+            ),
+        });
+    }
+    let reference_offset = entry_value_offset(
+        variant,
+        reference_entry_offset,
+        &reference_entry,
+        reference_count_usize,
+    )?;
+    let reference_end =
+        reference_offset
+            .checked_add(reference_count)
+            .ok_or(MetraError::InvalidOffset {
+                context: "TIFF GPS reference value".to_owned(),
+                offset: reference_offset,
+            })?;
+    if reference_end > file_info.size {
+        return Err(MetraError::UnexpectedEof {
+            context: "TIFF GPS reference value".to_owned(),
+        });
+    }
+
+    let mut coordinate_bytes = vec![0_u8; 24];
+    let mut reference_bytes = vec![0_u8; reference_count_usize];
+    if let Some(replacement) = replacement {
+        let decimal = replacement
+            .parse::<f64>()
+            .map_err(|_| MetraError::WriteFailure {
+                message: format!("TIFF GPS coordinate value {replacement:?} is not a number"),
+            })?;
+        let negative = decimal.is_sign_negative() && decimal != 0.0;
+        let rationals = encode_gps_coordinate(decimal, spec.maximum, spec.value_key)?;
+        for (index, (numerator, denominator)) in rationals.into_iter().enumerate() {
+            let start = index * 8;
+            write_u32(endian, &mut coordinate_bytes[start..start + 4], numerator);
+            write_u32(
+                endian,
+                &mut coordinate_bytes[start + 4..start + 8],
+                denominator,
+            );
+        }
+        reference_bytes[0] = if negative {
+            spec.negative_reference
+        } else {
+            spec.positive_reference
+        };
+    }
+
+    Ok(vec![
+        Patch {
+            offset: coordinate_offset,
+            span: 24,
+            bytes: coordinate_bytes,
+        },
+        Patch {
+            offset: reference_offset,
+            span: reference_count,
+            bytes: reference_bytes,
+        },
+    ])
+}
+
+fn encode_gps_coordinate(value: f64, maximum: f64, key: &str) -> Result<[(u32, u32); 3]> {
+    if !value.is_finite() || value.abs() > maximum {
+        return Err(MetraError::WriteFailure {
+            message: format!("TIFF GPS coordinate {key} must be finite and within ±{maximum}"),
+        });
+    }
+    const SCALE: f64 = 1_000_000.0;
+    let magnitude = value.abs();
+    let mut degrees = magnitude.floor() as u64;
+    let minutes_total = (magnitude - degrees as f64) * 60.0;
+    let mut minutes = minutes_total.floor() as u64;
+    let mut seconds_scaled = ((minutes_total - minutes as f64) * 60.0 * SCALE).round() as u64;
+    if seconds_scaled >= 60 * SCALE as u64 {
+        seconds_scaled = 0;
+        minutes += 1;
+    }
+    if minutes >= 60 {
+        minutes = 0;
+        degrees += 1;
+    }
+    if degrees > maximum as u64 {
+        return Err(MetraError::WriteFailure {
+            message: format!("TIFF GPS coordinate {key} rounded outside ±{maximum}"),
+        });
+    }
+    Ok([
+        (u32::try_from(degrees).expect("GPS degrees fit u32"), 1),
+        (u32::try_from(minutes).expect("GPS minutes fit u32"), 1),
+        (
+            u32::try_from(seconds_scaled).expect("GPS seconds scale fits u32"),
+            1_000_000,
+        ),
+    ])
+}
+
 fn read_variant<R: Read + Seek>(reader: &mut R, file_length: u64, path: &Path) -> Result<Variant> {
     let header = read_at(reader, 0, 8, file_length, path, "TIFF header")?;
     let endian = match &header[..2] {
@@ -382,6 +676,30 @@ fn rewrite_stream<R: Read + Seek, W: Write + Seek>(
     copy_exact(reader, writer, file_length.saturating_sub(cursor), path)
 }
 
+fn entry_value_offset(
+    variant: Variant,
+    entry_offset: u64,
+    entry: &[u8],
+    value_size: usize,
+) -> Result<u64> {
+    if value_size <= variant.inline_size() {
+        entry_offset
+            .checked_add(match variant {
+                Variant::Classic { .. } => 8,
+                Variant::Big { .. } => 12,
+            })
+            .ok_or(MetraError::InvalidOffset {
+                context: "TIFF inline value".to_owned(),
+                offset: entry_offset,
+            })
+    } else {
+        match variant {
+            Variant::Classic { endian } => Ok(u64::from(read_u32(endian, &entry[8..12]))),
+            Variant::Big { endian } => Ok(read_u64(endian, &entry[12..20])),
+        }
+    }
+}
+
 fn read_u16(endian: Endian, bytes: &[u8]) -> u16 {
     let bytes: [u8; 2] = bytes.try_into().expect("caller validates u16 length");
     match endian {
@@ -404,6 +722,14 @@ fn read_u64(endian: Endian, bytes: &[u8]) -> u64 {
         Endian::Little => u64::from_le_bytes(bytes),
         Endian::Big => u64::from_be_bytes(bytes),
     }
+}
+
+fn write_u32(endian: Endian, bytes: &mut [u8], value: u32) {
+    let encoded = match endian {
+        Endian::Little => value.to_le_bytes(),
+        Endian::Big => value.to_be_bytes(),
+    };
+    bytes.copy_from_slice(&encoded);
 }
 
 fn read_at<R: Read + Seek>(
@@ -552,6 +878,26 @@ mod tests {
         bytes
     }
 
+    fn tiff_with_gps() -> Vec<u8> {
+        let mut bytes = vec![
+            b'I', b'I', 42, 0, 8, 0, 0, 0, 1, 0, // one IFD0 entry
+            0x25, 0x88, 4, 0, 1, 0, 0, 0, 26, 0, 0, 0, // GPS IFD -> offset 26
+            0, 0, 0, 0, // no next IFD
+            2, 0, // two GPS IFD entries
+            2, 0, 5, 0, 3, 0, 0, 0, 56, 0, 0, 0, // GPSLatitude -> offset 56
+            1, 0, 2, 0, 2, 0, 0, 0, b'N', 0, 0, 0, // GPSLatitudeRef = N
+            0, 0, 0, 0, // no next IFD
+        ];
+        bytes.extend_from_slice(&48_u32.to_le_bytes());
+        bytes.extend_from_slice(&1_u32.to_le_bytes());
+        bytes.extend_from_slice(&51_u32.to_le_bytes());
+        bytes.extend_from_slice(&1_u32.to_le_bytes());
+        bytes.extend_from_slice(&24_u32.to_le_bytes());
+        bytes.extend_from_slice(&1_u32.to_le_bytes());
+        assert_eq!(bytes.len(), 80);
+        bytes
+    }
+
     fn info(bytes: &[u8]) -> FileInfo {
         FileInfo::new("editable.tif".into(), bytes.len() as u64, FileFormat::Tiff)
     }
@@ -671,5 +1017,101 @@ mod tests {
                 .display_value(),
             "2027:10:14 13:35:57"
         );
+    }
+
+    #[test]
+    fn rewrites_gps_decimal_coordinates_and_reference_without_resizing() {
+        let bytes = tiff_with_gps();
+        let output = rewrite_tiff_to_vec(
+            &bytes,
+            info(&bytes),
+            ParseLimits::default(),
+            &[TiffEdit::SetGpsDecimal {
+                key: "GPS:GPSLatitude".to_owned(),
+                value: "-48.8566".to_owned(),
+            }],
+        )
+        .expect("GPS decimal rewrite should succeed");
+        assert_eq!(output.len(), bytes.len());
+        let metadata = read_tiff(
+            &mut Cursor::new(output),
+            info(&bytes),
+            ParseLimits::default(),
+        )
+        .expect("edited GPS should remain readable");
+        let latitude = metadata
+            .find("GPS:LatitudeDecimal")
+            .expect("derived latitude should be present")
+            .value
+            .clone();
+        let TagValue::Float(latitude) = latitude else {
+            panic!("derived latitude should be a float");
+        };
+        assert!((latitude + 48.8566).abs() < 0.000001);
+        assert_eq!(
+            metadata.find("GPS:GPSLatitudeRef").unwrap().display_value(),
+            "S"
+        );
+
+        let mut longitude_bytes = tiff_with_gps();
+        longitude_bytes[28..30].copy_from_slice(&4_u16.to_le_bytes());
+        longitude_bytes[40..42].copy_from_slice(&3_u16.to_le_bytes());
+        longitude_bytes[48] = b'E';
+        let longitude_output = rewrite_tiff_to_vec(
+            &longitude_bytes,
+            info(&longitude_bytes),
+            ParseLimits::default(),
+            &[TiffEdit::SetGpsDecimal {
+                key: "GPS:GPSLongitude".to_owned(),
+                value: "-122.4194".to_owned(),
+            }],
+        )
+        .expect("GPS longitude rewrite should succeed");
+        let longitude_metadata = read_tiff(
+            &mut Cursor::new(longitude_output),
+            info(&longitude_bytes),
+            ParseLimits::default(),
+        )
+        .expect("edited GPS longitude should remain readable");
+        let longitude = longitude_metadata
+            .find("GPS:LongitudeDecimal")
+            .expect("derived longitude should be present")
+            .value
+            .clone();
+        let TagValue::Float(longitude) = longitude else {
+            panic!("derived longitude should be a float");
+        };
+        assert!((longitude + 122.4194).abs() < 0.000001);
+        assert_eq!(
+            longitude_metadata
+                .find("GPS:GPSLongitudeRef")
+                .unwrap()
+                .display_value(),
+            "W"
+        );
+    }
+
+    #[test]
+    fn deletes_gps_decimal_coordinates_as_zeroed_tombstones() {
+        let bytes = tiff_with_gps();
+        let output = rewrite_tiff_to_vec(
+            &bytes,
+            info(&bytes),
+            ParseLimits::default(),
+            &[TiffEdit::DeleteGpsDecimal {
+                key: "GPS:GPSLatitude".to_owned(),
+            }],
+        )
+        .expect("GPS deletion should succeed");
+        assert_eq!(output.len(), bytes.len());
+        let metadata = read_tiff(
+            &mut Cursor::new(output),
+            info(&bytes),
+            ParseLimits::default(),
+        )
+        .expect("deleted GPS should remain readable");
+        assert!(metadata.find("GPS:GPSLatitude").is_none());
+        assert!(metadata.find("GPS:GPSLatitudeRef").is_none());
+        assert!(metadata.find("GPS:LatitudeDecimal").is_none());
     }
 }

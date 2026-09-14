@@ -307,17 +307,34 @@ pub(crate) fn collect_tiff(
     edits
         .iter()
         .map(|edit| match edit {
-            MetadataEdit::Set { key, value } => tiff_ascii_key(key)
-                .map(|key| crate::TiffEdit::SetAscii {
-                    key: key.to_owned(),
-                    value: value.clone(),
-                })
-                .ok_or_else(|| unsupported_edit(format, key)),
-            MetadataEdit::Delete { key } => tiff_ascii_key(key)
-                .map(|key| crate::TiffEdit::DeleteAscii {
-                    key: key.to_owned(),
-                })
-                .ok_or_else(|| unsupported_edit(format, key)),
+            MetadataEdit::Set { key, value } => {
+                if let Some(key) = gps_decimal_key(key) {
+                    Ok(crate::TiffEdit::SetGpsDecimal {
+                        key: key.to_owned(),
+                        value: value.clone(),
+                    })
+                } else {
+                    tiff_ascii_key(key)
+                        .map(|key| crate::TiffEdit::SetAscii {
+                            key: key.to_owned(),
+                            value: value.clone(),
+                        })
+                        .ok_or_else(|| unsupported_edit(format, key))
+                }
+            }
+            MetadataEdit::Delete { key } => {
+                if let Some(key) = gps_decimal_key(key) {
+                    Ok(crate::TiffEdit::DeleteGpsDecimal {
+                        key: key.to_owned(),
+                    })
+                } else {
+                    tiff_ascii_key(key)
+                        .map(|key| crate::TiffEdit::DeleteAscii {
+                            key: key.to_owned(),
+                        })
+                        .ok_or_else(|| unsupported_edit(format, key))
+                }
+            }
         })
         .collect()
 }
@@ -680,6 +697,15 @@ fn tiff_ascii_key(key: &str) -> Option<&str> {
         .then_some(key)
 }
 
+fn gps_decimal_key(key: &str) -> Option<&'static str> {
+    let key = key.strip_prefix("TIFF:").unwrap_or(key);
+    match key {
+        "GPS:Latitude" | "GPS:LatitudeDecimal" | "GPS:GPSLatitude" => Some("GPS:GPSLatitude"),
+        "GPS:Longitude" | "GPS:LongitudeDecimal" | "GPS:GPSLongitude" => Some("GPS:GPSLongitude"),
+        _ => None,
+    }
+}
+
 fn png_xmp_key(key: &str) -> bool {
     matches!(key, "PNG:XMP" | "PNG:iTXt:XMP")
 }
@@ -987,6 +1013,31 @@ mod tests {
             )
             .unwrap(),
             vec![crate::IsobmffEdit::DeleteXmp]
+        );
+    }
+
+    #[test]
+    fn tiff_collector_accepts_gps_decimal_aliases() {
+        assert_eq!(
+            collect_tiff(
+                &[MetadataEdit::set("GPS:Latitude", "48.8566")],
+                FileFormat::Tiff,
+            )
+            .unwrap(),
+            vec![crate::TiffEdit::SetGpsDecimal {
+                key: "GPS:GPSLatitude".to_owned(),
+                value: "48.8566".to_owned(),
+            }]
+        );
+        assert_eq!(
+            collect_tiff(
+                &[MetadataEdit::delete("TIFF:GPS:LongitudeDecimal")],
+                FileFormat::Raw,
+            )
+            .unwrap(),
+            vec![crate::TiffEdit::DeleteGpsDecimal {
+                key: "GPS:GPSLongitude".to_owned(),
+            }]
         );
     }
 
