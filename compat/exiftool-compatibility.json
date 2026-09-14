@@ -51,7 +51,7 @@
     "PDF": {
       "read": "partial",
       "write": "partial",
-      "create": "planned",
+      "create": "partial",
       "delete": "planned",
       "lossless_rewrite": "partial",
       "streaming": "partial"
@@ -209,6 +209,7 @@
     "create_ogg_opus_seed": "partial",
     "create_svg_seed": "partial",
     "create_webp_seed": "partial",
+    "create_pdf_document": "partial",
     "validate": "supported",
     "compare": "supported",
     "exiftool_compatibility_mode": "partial"
