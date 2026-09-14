@@ -7,6 +7,9 @@ Initial read-first foundation with narrow validated rewrites:
 - expanded Broadcast Wave `bext` inspection with ExifTool-compatible canonical
   names, validated typed `DateTimeOriginal`, bounded UMID/coding-history values,
   fixed-field raw-byte retention, truncation warnings, and RIFF oracle aliases;
+- added validated read-modify-write support for existing BWF fixed fields and
+  bounded `CodingHistory`, exposed through the generic Rust edit API and CLI
+  with round-trip and no-audio-change coverage;
 - extended the opt-in differential JSON report with symmetric oracle-side key
   totals and oracle-only coverage, plus an opt-in strict gate for requiring all
   oracle keys to be matched;

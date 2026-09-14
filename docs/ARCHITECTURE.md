@@ -167,7 +167,8 @@ XMP packets, and known IPTC-IIM datasets inside Photoshop APP13 resources, PNG
 `tEXt` chunks and uncompressed `iTXt` XMP chunks, GIF comment extensions, WebP `XMP ` chunks,
 and existing standalone XMP packets,
 and existing standalone ICC `desc`/`text` payloads,
-SVG title/description/comment nodes, WAV `LIST/INFO` fields, FLAC Vorbis
+SVG title/description/comment nodes, WAV `LIST/INFO` fields and existing
+Broadcast Wave `bext` fixed fields, FLAC Vorbis
 Comment key/value pairs, Ogg Vorbis/Opus comment packets, common ID3v2 text/comment frames,
 and existing PDF Info literal or hexadecimal string tokens, existing Matroska/WebM
 `Info` title/app strings and `SimpleTag` string values, and existing TIFF/BigTIFF ASCII slots in TIFF-like
@@ -263,7 +264,7 @@ with replace and write-through flags. The public facade also exposes determinist
 backpressure-bounded `read_many_streaming` helpers, plus cancellation-aware
 variants; the CLI uses these same batch APIs before rendering. The CLI exposes
 `--set`/`--delete`/`--copy` for
-`JPEG:Comment`, `JPEG:EXIF:<ASCII tag>`, `IPTC:<dataset>`, `PNG:XMP`, `PNG:Text:<keyword>`, `SVG:Title`/`Description`/`Comment`, `WAV:<INFO field>`,
+`JPEG:Comment`, `JPEG:EXIF:<ASCII tag>`, `IPTC:<dataset>`, `PNG:XMP`, `PNG:Text:<keyword>`, `SVG:Title`/`Description`/`Comment`, `WAV:<INFO field>` and `WAV:<bext field>`,
 `FLAC:<Vorbis field>`, `ID3:<text field>`, `ISOBMFF:<text field>` plus
 `ISOBMFF:XMP`/`ISOBMFF:UUID:XMP`, `PDF:<Info field>`, `GIF:Comment`, `WebP:XMP`,
 `Matroska:Title`/`MuxingApp`/`WritingApp`, `Matroska:Tag:<name>`,

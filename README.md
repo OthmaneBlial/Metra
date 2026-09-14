@@ -74,7 +74,8 @@ APP13 resources, PNG `tEXt` and uncompressed `iTXt` XMP, GIF comments, WebP XMP,
 title/description/comments, WAV `LIST/INFO`, FLAC Vorbis Comment, bounded Ogg
 Vorbis/Opus/Ogg-FLAC comment rewrites (including mapping packets), and common ID3v2 text/comment frames, plus existing TIFF/BigTIFF ASCII and ISO-BMFF
 QuickTime text values, existing PDF Info string tokens, and existing PSD XMP
-resources, existing AVI `LIST/INFO` strings, Matroska/WebM `Info` title/app and
+resources, existing AVI `LIST/INFO` strings, existing Broadcast Wave `bext`
+fixed fields and bounded `CodingHistory`, Matroska/WebM `Info` title/app and
 `SimpleTag` strings,
 and TIFF ASCII slots in TIFF-like RAW files through format-specific rewrite APIs,
 and the CLI exposes the same narrow operations through `--set`,
