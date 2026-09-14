@@ -31,7 +31,7 @@ Implemented today:
 | PNG | Chunk walking, IHDR dimensions and encoding parameters, CRC warnings, tEXt/zTXt/iTXt including bounded zlib text, eXIf, tIME, pHYs, structured XMP, bounded ICC profile headers from `iCCP`, and minimal 1×1 RGBA creation with bounded `tEXt` seeds |
 | WebP | RIFF chunk walking, VP8X/VP8/VP8L dimensions, EXIF, structured XMP, typed ICC profiles, and minimal 1x1 lossless seed creation with bounded XMP |
 | GIF | GIF87a/GIF89a headers, logical-screen dimensions, comments, bounded extension validation, and minimal 1x1 creation with comment extensions |
-| ISO-BMFF | HEIF/AVIF/MP4/MOV/M4A brand detection, bounded box walking, `mvhd` movie timing, `tkhd` track IDs/durations/dimensions, `ispe` dimensions, `pixi` channels, `irot`/`imir` orientation, `pasp` aspect ratio, `colr` nclx values, `auxC` auxiliary type, direct and Adobe-UUID XMP/EXIF metadata, QuickTime-style `ilst` text metadata, and validated in-place edits for existing text values |
+| ISO-BMFF | HEIF/AVIF/MP4/MOV/M4A brand detection, bounded box walking, `mvhd` movie timing, `tkhd` track IDs/durations/dimensions, `ispe` dimensions, `pixi` channels, `irot`/`imir` orientation, `pasp` aspect ratio, `colr` nclx values, `auxC` auxiliary type, direct and Adobe-UUID XMP/EXIF metadata, QuickTime-style `ilst` text metadata, and validated in-place edits for existing text and XMP payloads |
 | MP3 | ID3v2.2/v2.3/v2.4 text, comments, lyrics, attached-picture metadata, ID3v1 fallback, first MPEG frame properties, and minimal ID3v2.4 seed creation |
 | FLAC | `STREAMINFO`, bounded `SEEKTABLE` seek-point and `CUESHEET` track/index structures, Vorbis comments, embedded-picture properties/data, bounded metadata-block validation, and minimal metadata-only creation with Vorbis comments |
 | Ogg/Vorbis/Opus | Bounded Ogg page walking with metadata-page CRC warnings, Vorbis and Opus stream headers, Vorbis Comments/OpusTags, Ogg-FLAC comments, typed FLAC-in-Ogg `STREAMINFO` fields, and minimal Opus seed creation with bounded comments |
@@ -81,6 +81,10 @@ TIFF ASCII field when the target field has enough storage.
 Existing ISO-BMFF text values can be cleared or copied between supported
 ISO-BMFF files when the target value slot has enough storage; clearing zero-fills
 the existing slot without changing box sizes.
+Existing direct `xml ` and standard Adobe XMP `uuid` packets can be replaced or
+cleared through `ISOBMFF:XMP` (or `ISOBMFF:UUID:XMP`) when the replacement has
+the exact existing byte length. The writer validates the replacement packet,
+preserves the UUID and box layout, and zero-fills the packet on deletion.
 Existing JPEG EXIF ASCII fields can be rewritten or copied when the target field
 has enough storage; the JPEG segment size and image bytes remain unchanged.
 Repeated IPTC datasets remain typed arrays when read; `--copy` accepts only a

@@ -71,7 +71,8 @@ APP13 resources, PNG `tEXt` and uncompressed `iTXt` XMP, GIF comments, WebP XMP,
 title/description/comments, WAV `LIST/INFO`, FLAC Vorbis Comment, Ogg Vorbis/Opus/Ogg-FLAC
 comment packet rewrites, common
 ID3v2 text/comment replacement/deletion/copy, bounded TIFF ASCII copy,
-existing ISO-BMFF text replacement/copy, bounded JPEG APP6 GoPro `DEVC`/`STRM`
+existing ISO-BMFF text and direct/Adobe-UUID XMP replacement/copy/deletion,
+bounded JPEG APP6 GoPro `DEVC`/`STRM`
 records, and bounded Nikon/Canon/Fujifilm/Panasonic/Olympus/Sony/Apple/Pentax/DJI MakerNote IFD plus Samsung STMN fields
 inspection are implemented, through the
 library API and the explicit `--set`/`--delete`/`--copy` CLI flags. JPEG XMP
@@ -110,8 +111,11 @@ the same payload, so RIFF sizes and media bytes remain unchanged before the
 validated atomic replacement.
 Matroska/WebM writes are limited to existing `Info` title/app and `SimpleTag`
 string payloads and zero-pad within the original EBML element; ISO-BMFF text
-deletion similarly zero-fills only the existing value span. Element/box sizes,
-names, and media bytes remain unchanged before the validated atomic replacement.
+deletion similarly zero-fills only the existing value span. ISO-BMFF XMP edits
+accept only one direct `xml ` or standard Adobe XMP `uuid` packet, require an
+exact byte-length replacement with a recognized XMP root, and zero-fill the
+packet payload on deletion. Element/box sizes, names, UUID bytes, and media
+bytes remain unchanged before the validated atomic replacement.
 RAW TIFF-like writes are limited to existing TIFF/BigTIFF ASCII slots; set and
 delete operations only replace or zero-fill those slots, so the payload layout
 remains unchanged. CR3 writes are limited to existing ISO-BMFF text slots after

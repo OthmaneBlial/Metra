@@ -158,7 +158,8 @@ out-of-range required read.
 ## Rewrite boundary
 
 The current writer surface is deliberately limited to existing TIFF/BigTIFF
-ASCII value slots, existing ISO-BMFF QuickTime text item values, existing JPEG APP1
+ASCII value slots, existing ISO-BMFF QuickTime text item values and direct or
+Adobe XMP `uuid` packet payloads, existing JPEG APP1
 EXIF ASCII value slots, JPEG COM segments, APP1
 XMP packets, and known IPTC-IIM datasets inside Photoshop APP13 resources, PNG
 `tEXt` chunks and uncompressed `iTXt` XMP chunks, GIF comment extensions, WebP `XMP ` chunks,
@@ -199,6 +200,10 @@ The standalone XMP writer accepts only one `XMP:Packet` replacement for an
 existing packet. It validates the replacement with the bounded XML reader and
 requires an exactly equal byte length, so the packet file is not resized or
 restructured.
+The ISO-BMFF writer applies the same fixed-span rule to one direct `xml ` or
+standard Adobe XMP `uuid` packet. `ISOBMFF:XMP` and `ISOBMFF:UUID:XMP` are
+canonical edit aliases; replacements are root-validated and deletions zero-fill
+only the packet payload, leaving box headers, UUID bytes, and media bytes intact.
 The standalone ICC writer accepts existing `Description`, `Copyright`,
 `ManufacturerDescription`, and `ModelDescription` tags when their payload uses
 `desc`, `text`, or `mluc` storage. Replacements fit the existing payload;
@@ -237,7 +242,8 @@ backpressure-bounded `read_many_streaming` helpers, plus cancellation-aware
 variants; the CLI uses these same batch APIs before rendering. The CLI exposes
 `--set`/`--delete`/`--copy` for
 `JPEG:Comment`, `JPEG:EXIF:<ASCII tag>`, `IPTC:<dataset>`, `PNG:XMP`, `PNG:Text:<keyword>`, `SVG:Title`/`Description`/`Comment`, `WAV:<INFO field>`,
-`FLAC:<Vorbis field>`, `ID3:<text field>`, `ISOBMFF:<text field>`, `PDF:<Info field>`, `GIF:Comment`, `WebP:XMP`,
+`FLAC:<Vorbis field>`, `ID3:<text field>`, `ISOBMFF:<text field>` plus
+`ISOBMFF:XMP`/`ISOBMFF:UUID:XMP`, `PDF:<Info field>`, `GIF:Comment`, `WebP:XMP`,
 `Matroska:Title`/`MuxingApp`/`WritingApp`, `Matroska:Tag:<name>`,
 `TIFF:EXIF:<ASCII tag>` in TIFF-like RAW files, and existing
 `TIFF:EXIF:<ASCII tag>` values; generic
