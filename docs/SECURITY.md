@@ -77,6 +77,10 @@ resource payload at that same length, and the reader recognizes the all-zero
 payload as absent. Resource headers, section boundaries, image data, and unknown
 resources are copied unchanged; the temporary PSD is re-read before atomic
 replacement.
+Standalone XMP rewrites validate exactly one replacement packet with the bounded
+entity-safe XML reader and require the same byte length as the existing packet.
+They do not create XML structure or resize the file; the temporary output is
+re-read before atomic replacement.
 AVI INFO writes are limited to existing known text chunks and bounded payloads;
 the replacement is zero-padded within the original chunk, and deletion clears
 the same payload, so RIFF sizes and media bytes remain unchanged before the

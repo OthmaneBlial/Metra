@@ -4,6 +4,9 @@
 
 Initial read-first foundation with narrow validated rewrites:
 
+- added bounded standalone XMP packet replacement with equal-byte-length XML
+  validation, generic and registry API dispatch, atomic replacement, and CLI
+  `--set`/`--copy` coverage;
 - added standalone XMP packet creation with bounded XML validation, atomic
   no-overwrite path creation, resource-limit checks, and CLI
   `--create-xmp PACKET` coverage;

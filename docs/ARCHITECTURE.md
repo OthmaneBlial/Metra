@@ -151,6 +151,7 @@ ASCII value slots, existing ISO-BMFF QuickTime text item values, existing JPEG A
 EXIF ASCII value slots, JPEG COM segments, APP1
 XMP packets, and known IPTC-IIM datasets inside Photoshop APP13 resources, PNG
 `tEXt` chunks and uncompressed `iTXt` XMP chunks, GIF comment extensions, WebP `XMP ` chunks,
+and existing standalone XMP packets,
 SVG title/description/comment nodes, WAV `LIST/INFO` fields, FLAC Vorbis
 Comment key/value pairs, Ogg Vorbis/Opus comment packets, common ID3v2 text/comment frames,
 and existing PDF Info literal or hexadecimal string tokens, existing Matroska/WebM
@@ -182,6 +183,10 @@ The PSD writer accepts only an existing `8BIM` XMP image resource. Replacements
 require an equal packet length; deletion zero-fills the resource payload at the
 same length and the reader omits that explicit tombstone. Resource headers,
 section boundaries, image data, and unknown resources are copied unchanged.
+The standalone XMP writer accepts only one `XMP:Packet` replacement for an
+existing packet. It validates the replacement with the bounded XML reader and
+requires an exactly equal byte length, so the packet file is not resized or
+restructured.
 The AVI writer accepts existing known `LIST/INFO` string chunks, writes only
 within their allocated payloads, preserves a NUL terminator when space exists,
 and never changes RIFF chunk sizes or media data. Delete operations zero-fill

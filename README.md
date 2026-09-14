@@ -38,7 +38,7 @@ Implemented today:
 | PDF | Header/version, bounded Info dictionaries, PDF string decoding, embedded XMP packets when directly available, and minimal xref-valid document creation with Info fields |
 | WAV | RIFF/WAVE chunks, `fmt ` audio properties, `LIST/INFO`, Broadcast Wave `bext`, bounded iXML XML leaves and packet retention, embedded ID3v2 delegation, bounded validation, and minimal 1x1 PCM creation with bounded `LIST/INFO` seeds |
 | SVG | Bounded XML detection, root dimensions/version/viewBox, title, description, comments, embedded XMP extraction, nesting/text limits, safe document-text rewrites, and minimal 1x1 metadata-seed creation |
-| Standalone XMP/ICC | Signature-based standalone XMP packet and ICC profile readers reuse the bounded XML/profile engines and retain the detected file family; standalone XMP packets and minimal RGB ICC profiles can also be created and validated as new files |
+| Standalone XMP/ICC | Signature-based standalone XMP packet and ICC profile readers reuse the bounded XML/profile engines and retain the detected file family; standalone XMP packets can be replaced at a validated equal byte length, and minimal RGB ICC profiles can also be created and validated as new files |
 | PSD/PSB | Big-endian header and dimensions, bounded Photoshop image resources, XMP/IPTC/ICC/embedded EXIF delegation, resolution and common resource fields, preservation of unknown resources as bytes, and bounded replacement of existing PSD XMP resources |
 | RAW | DNG and TIFF-like CR2/NEF/ARW/ORF/RW2/PEF containers reuse the bounded TIFF/EXIF reader with common DNG tags (version, CFA, levels, matrices, white balance, and camera/lens identity) and safe rewrites of existing TIFF ASCII slots; CR3 reuses ISO-BMFF inspection and supports bounded rewrites of existing ISO-BMFF text slots; RAF, legacy Canon CRW, Minolta MRW, and Sigma X3F containers are identified with explicit partial-decoding warnings and remain read-only |
 | AVI | RIFF/AVI validation, bounded `avih` dimensions and frame timing, `strh` stream type/codec/rate/duration/frame bounds, video `strf` bitmap properties, audio `strf` format properties, common `LIST/INFO` text fields without decoding media frames, and safe rewrites of existing `LIST/INFO` values |
@@ -57,6 +57,8 @@ aliases (`-json`, `-jsonl`, `-Make`, `-Model`, `-Artist`, `-Copyright`,
 output; the resulting structured output keeps Metra schema version `1`. A
 standalone XMP packet can also be created from caller-supplied XML after the
 same bounded parser validation.
+An existing standalone XMP packet can be replaced through the validated
+equal-byte-length `XMP:Packet` rewrite seam.
 The library now supports validated, lossless
 JPEG comment, existing APP1 EXIF ASCII fields, bounded APP1 XMP, and selected IPTC-IIM datasets in Photoshop
 APP13 resources, PNG `tEXt` and uncompressed `iTXt` XMP, GIF comments, WebP XMP, SVG
@@ -93,6 +95,9 @@ minimal SOI/metadata/EOI JPEG container seed with bounded Comment and XMP.
 `PdfCreateEntry`/`PdfCreateOptions` and `create_pdf_to_vec`/`create_pdf_path`
 provide a minimal xref-valid PDF document with bounded Info fields, without
 creating page content.
+`XmpEdit` and `rewrite_xmp`/`rewrite_xmp_path` provide bounded replacement of
+an existing standalone XMP packet, requiring an equal byte length and re-reading
+the result before replacement.
 `IccCreateOptions` and `create_icc_to_vec`/`create_icc_path` provide the
 standalone ICC creation seam.
 `FlacCreateOptions` and `create_flac_to_vec`/`create_flac_path` provide a
@@ -145,6 +150,8 @@ cargo run -- --create-mp3 'Title=Metra' --create-mp3 'Artist=Othmane' --create-m
 cargo run -- --create-ogg 'TITLE=Metra' --create-ogg 'ARTIST=Othmane' new.ogg
 cargo run -- --create-svg 'Title=Metra' --create-svg 'Description=metadata seed' new.svg
 cargo run -- --create-webp-xmp '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF/></x:xmpmeta>' new.webp
+cargo run -- --set 'XMP:Packet=<x:xmpmeta>...</x:xmpmeta>' packet.xmp
+cargo run -- --copy XMP:Packet=source.xmp target.xmp
 cargo run -- -Make photo.jpg
 cargo run -- -json photo.jpg
 cargo run -- --set 'JPEG:EXIF:Make=Sony' photo.jpg
@@ -183,6 +190,11 @@ cargo run -- --set 'GIF:Comment=reviewed' animation.gif
 cargo run -- --set 'WebP:XMP=<x:xmpmeta>...</x:xmpmeta>' image.webp
 cargo run -- --set 'SVG:Title=reviewed' drawing.svg
 ```
+
+Standalone XMP edits target an existing `XMP:Packet`; replacements must have
+the same byte length as the original packet so the file layout remains fixed.
+The public `XmpEdit` API and the generic `rewrite_metadata_*`/`copy_metadata_*`
+helpers expose the same bounded operation.
 
 PDF Info edits target an existing field and preserve the document byte layout;
 the replacement must have the same encoded length as the original value token.
