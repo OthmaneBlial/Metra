@@ -283,6 +283,35 @@ fn public_generic_edit_api_rewrites_and_revalidates_pdf_info() {
 }
 
 #[test]
+fn public_generic_edit_api_deletes_and_revalidates_pdf_info() {
+    let bytes = b"%PDF-1.7\n5 0 obj\n<< /Title (Before) /Author (Ot) >>\nendobj\ntrailer\n<< /Info 5 0 R >>\nstartxref\n9\n%%EOF\n";
+    let output = metra::rewrite_metadata_to_vec(
+        bytes,
+        metra::FileInfo::new(
+            "memory.pdf".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::delete("PDF:Title")],
+    )
+    .expect("generic PDF deletion should validate its rewritten bytes");
+
+    assert_eq!(output.len(), bytes.len());
+    let metadata = metra::read_from(
+        &mut std::io::Cursor::new(output),
+        metra::FileInfo::new(
+            "memory.pdf".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+    )
+    .expect("deleted PDF should remain readable");
+    assert!(metadata.find("PDF:Title").is_none());
+    assert_eq!(metadata.find("PDF:Author").unwrap().display_value(), "Ot");
+}
+
+#[test]
 fn public_generic_edit_api_rewrites_and_revalidates_psd_xmp() {
     let bytes = minimal_psd_with_xmp("old");
     let xmp = "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF><rdf:Description xmlns:dc=\"urn:dc\" dc:format=\"new\"/></rdf:RDF></x:xmpmeta>";

@@ -910,4 +910,14 @@ mod tests {
             }]
         );
     }
+
+    #[test]
+    fn pdf_collector_accepts_canonical_info_deletion() {
+        assert_eq!(
+            collect_pdf(&[MetadataEdit::delete("PDF:Title")], FileFormat::Pdf).unwrap(),
+            vec![crate::PdfEdit::DeleteInfo {
+                name: "Title".to_owned(),
+            }]
+        );
+    }
 }

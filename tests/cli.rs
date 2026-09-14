@@ -1495,6 +1495,17 @@ fn cli_can_set_and_copy_existing_pdf_info() {
             .display_value(),
         "Source"
     );
+
+    let delete = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--delete",
+            "PDF:Title",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(delete.status.success(), "stderr: {:?}", delete.stderr);
+    assert!(metra::read(&target).unwrap().find("PDF:Title").is_none());
 }
 
 #[test]
