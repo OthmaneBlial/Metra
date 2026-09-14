@@ -12,8 +12,6 @@ use crate::tiff_create::{
 };
 
 const BASE_ENTRY_COUNT: usize = 9;
-const GPS_ENTRY_COUNT: usize = 5;
-const GPS_IFD_BYTES: usize = 8 + GPS_ENTRY_COUNT * 20 + 8 + 48;
 
 /// Create a minimal little-endian BigTIFF with one monochrome pixel.
 ///
@@ -60,12 +58,17 @@ pub fn create_bigtiff_to_vec(options: &TiffCreateOptions, limits: ParseLimits) -
                 resource: "BigTIFF creation metadata".to_owned(),
                 limit: limits.max_metadata_bytes,
             })?;
-    let data_offset = ifd_end
-        .checked_add(usize::from(gps.is_some()).saturating_mul(GPS_IFD_BYTES))
-        .ok_or_else(|| MetraError::ResourceLimitExceeded {
-            resource: "BigTIFF creation metadata".to_owned(),
-            limit: limits.max_metadata_bytes,
-        })?;
+    let gps_ifd_bytes = gps
+        .as_ref()
+        .map(|gps| gps.ifd_bytes(8, 20, 8, 8))
+        .unwrap_or(0);
+    let data_offset =
+        ifd_end
+            .checked_add(gps_ifd_bytes)
+            .ok_or_else(|| MetraError::ResourceLimitExceeded {
+                resource: "BigTIFF creation metadata".to_owned(),
+                limit: limits.max_metadata_bytes,
+            })?;
     let ascii_bytes =
         entries.iter().try_fold(0_usize, |total, entry| {
             let value_len = entry.value.len().checked_add(1).ok_or_else(|| {
@@ -329,38 +332,28 @@ fn push_long8_entry(output: &mut Vec<u8>, tag: u16, value: u64) {
 
 fn write_gps_ifd(output: &mut Vec<u8>, ifd_offset: usize, gps: &EncodedGpsCoordinates) {
     debug_assert_eq!(output.len(), ifd_offset);
-    let values_offset = ifd_offset + 8 + GPS_ENTRY_COUNT * 20 + 8;
-    output.extend_from_slice(&(GPS_ENTRY_COUNT as u64).to_le_bytes());
-    push_gps_byte_entry(output, 0x0000, [2, 3, 0, 0]);
-    push_gps_ascii_reference(output, 0x0001, gps.latitude_reference);
-    push_gps_rational_entry(output, 0x0002, values_offset as u64);
-    push_gps_ascii_reference(output, 0x0003, gps.longitude_reference);
-    push_gps_rational_entry(output, 0x0004, (values_offset + 24) as u64);
+    let values_offset = ifd_offset + 8 + gps.entries.len() * 20 + 8;
+    output.extend_from_slice(&(gps.entries.len() as u64).to_le_bytes());
+    let mut payload_offset = values_offset;
+    for entry in &gps.entries {
+        output.extend_from_slice(&entry.tag.to_le_bytes());
+        output.extend_from_slice(&entry.type_id.to_le_bytes());
+        output.extend_from_slice(&(u64::from(entry.count)).to_le_bytes());
+        if entry.bytes.len() <= 8 {
+            output.extend_from_slice(&entry.bytes);
+            output.resize(output.len() + (8 - entry.bytes.len()), 0);
+        } else {
+            output.extend_from_slice(&(payload_offset as u64).to_le_bytes());
+            payload_offset += entry.bytes.len();
+        }
+    }
     output.extend_from_slice(&0_u64.to_le_bytes());
-    output.extend_from_slice(&gps.rationals);
-    debug_assert_eq!(output.len(), ifd_offset + GPS_IFD_BYTES);
-}
-
-fn push_gps_byte_entry(output: &mut Vec<u8>, tag: u16, value: [u8; 4]) {
-    output.extend_from_slice(&tag.to_le_bytes());
-    output.extend_from_slice(&1_u16.to_le_bytes());
-    output.extend_from_slice(&4_u64.to_le_bytes());
-    output.extend_from_slice(&value);
-    output.extend_from_slice(&[0; 4]);
-}
-
-fn push_gps_ascii_reference(output: &mut Vec<u8>, tag: u16, reference: u8) {
-    output.extend_from_slice(&tag.to_le_bytes());
-    output.extend_from_slice(&2_u16.to_le_bytes());
-    output.extend_from_slice(&2_u64.to_le_bytes());
-    output.extend_from_slice(&[reference, 0, 0, 0, 0, 0, 0, 0]);
-}
-
-fn push_gps_rational_entry(output: &mut Vec<u8>, tag: u16, value_offset: u64) {
-    output.extend_from_slice(&tag.to_le_bytes());
-    output.extend_from_slice(&5_u16.to_le_bytes());
-    output.extend_from_slice(&3_u64.to_le_bytes());
-    output.extend_from_slice(&value_offset.to_le_bytes());
+    for entry in &gps.entries {
+        if entry.bytes.len() > 8 {
+            output.extend_from_slice(&entry.bytes);
+        }
+    }
+    debug_assert_eq!(output.len(), ifd_offset + gps.ifd_bytes(8, 20, 8, 8));
 }
 
 fn temporary_path(path: &Path) -> Result<PathBuf> {
@@ -423,7 +416,13 @@ mod tests {
 
     #[test]
     fn creates_readable_bigtiff_with_gps_coordinates() {
-        let options = TiffCreateOptions::new().with_gps_coordinates("48.8566", "2.3522");
+        let options = TiffCreateOptions::new()
+            .with_gps_coordinates("48.8566", "2.3522")
+            .with_gps_altitude_meters("-125.5")
+            .with_gps_image_direction_degrees("271.25")
+            .with_gps_speed_meters_per_second("10")
+            .with_gps_time_of_day_seconds("45296.125")
+            .with_gps_date("2026:09:14");
         let bytes = create_bigtiff_to_vec(&options, ParseLimits::default())
             .expect("BigTIFF GPS creation should succeed");
         let metadata = read_tiff(
@@ -450,6 +449,35 @@ mod tests {
             .expect("derived longitude should be numeric");
         assert!((latitude - 48.8566).abs() < 0.000001);
         assert!((longitude - 2.3522).abs() < 0.000001);
+        for (key, expected) in [
+            ("GPS:AltitudeMeters", -125.5),
+            ("GPS:ImageDirectionDegrees", 271.25),
+            ("GPS:SpeedMetersPerSecond", 10.0),
+            ("GPS:TimeOfDaySeconds", 45296.125),
+        ] {
+            let actual = metadata
+                .find(key)
+                .unwrap_or_else(|| panic!("{key} should be present"))
+                .display_value()
+                .parse::<f64>()
+                .unwrap_or_else(|_| panic!("{key} should be numeric"));
+            assert!(
+                (actual - expected).abs() < 0.000001,
+                "{key}: {actual} != {expected}"
+            );
+        }
+        assert_eq!(
+            metadata.find("GPS:GPSAltitudeRef").unwrap().display_value(),
+            "1"
+        );
+        assert_eq!(
+            metadata.find("GPS:GPSSpeedRef").unwrap().display_value(),
+            "K"
+        );
+        assert_eq!(
+            metadata.find("GPS:GPSDateStamp").unwrap().display_value(),
+            "2026-09-14"
+        );
         assert_eq!(
             metadata.find("GPS:GPSLatitudeRef").unwrap().display_value(),
             "N"

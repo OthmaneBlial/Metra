@@ -1591,6 +1591,12 @@ fn parse_tiff_create(entries: &[String]) -> Result<metra::TiffCreateOptions, Str
     let mut options = metra::TiffCreateOptions::new();
     let mut latitude = None;
     let mut longitude = None;
+    let mut altitude = None;
+    let mut direction = None;
+    let mut speed = None;
+    let mut time = None;
+    let mut date = None;
+    let mut has_gps_field = false;
     for assignment in entries {
         let (key, value) = assignment
             .split_once('=')
@@ -1598,36 +1604,82 @@ fn parse_tiff_create(entries: &[String]) -> Result<metra::TiffCreateOptions, Str
         if key.is_empty() {
             return Err("--create-tiff requires a non-empty KEY".to_owned());
         }
-        match tiff_create_gps_coordinate_key(key) {
+        match tiff_create_gps_field_key(key) {
             Some("Latitude") => {
-                if latitude.replace(value).is_some() {
-                    return Err("--create-tiff accepts only one GPS latitude".to_owned());
-                }
+                has_gps_field = true;
+                replace_tiff_create_gps_value(&mut latitude, value, "latitude")?;
             }
             Some("Longitude") => {
-                if longitude.replace(value).is_some() {
-                    return Err("--create-tiff accepts only one GPS longitude".to_owned());
-                }
+                has_gps_field = true;
+                replace_tiff_create_gps_value(&mut longitude, value, "longitude")?;
+            }
+            Some("Altitude") => {
+                has_gps_field = true;
+                replace_tiff_create_gps_value(&mut altitude, value, "altitude")?;
+            }
+            Some("Direction") => {
+                has_gps_field = true;
+                replace_tiff_create_gps_value(&mut direction, value, "image direction")?;
+            }
+            Some("Speed") => {
+                has_gps_field = true;
+                replace_tiff_create_gps_value(&mut speed, value, "speed")?;
+            }
+            Some("Time") => {
+                has_gps_field = true;
+                replace_tiff_create_gps_value(&mut time, value, "time")?;
+            }
+            Some("Date") => {
+                has_gps_field = true;
+                replace_tiff_create_gps_value(&mut date, value, "date")?;
             }
             None => options.push_ascii(key, value),
             _ => unreachable!("GPS creation key is normalized above"),
         }
     }
-    match (latitude, longitude) {
-        (Some(latitude), Some(longitude)) => {
-            options = options.with_gps_coordinates(latitude, longitude);
+    match (latitude, longitude, has_gps_field) {
+        (Some(latitude), Some(longitude), _) => {
+            let mut gps = metra::TiffGpsCreateOptions::new(latitude, longitude);
+            if let Some(value) = altitude {
+                gps = gps.with_altitude_meters(value);
+            }
+            if let Some(value) = direction {
+                gps = gps.with_image_direction_degrees(value);
+            }
+            if let Some(value) = speed {
+                gps = gps.with_speed_meters_per_second(value);
+            }
+            if let Some(value) = time {
+                gps = gps.with_time_of_day_seconds(value);
+            }
+            if let Some(value) = date {
+                gps = gps.with_date(value);
+            }
+            options.gps = Some(gps);
         }
-        (Some(_), None) | (None, Some(_)) => {
+        (Some(_), None, _) | (None, Some(_), _) | (None, None, true) => {
             return Err(
                 "--create-tiff GPS creation requires both Latitude and Longitude".to_owned(),
             );
         }
-        (None, None) => {}
+        (None, None, false) => {}
     }
     Ok(options)
 }
 
-fn tiff_create_gps_coordinate_key(key: &str) -> Option<&'static str> {
+fn replace_tiff_create_gps_value<'a>(
+    slot: &mut Option<&'a str>,
+    value: &'a str,
+    field: &str,
+) -> Result<(), String> {
+    if slot.replace(value).is_some() {
+        Err(format!("--create-tiff accepts only one GPS {field}"))
+    } else {
+        Ok(())
+    }
+}
+
+fn tiff_create_gps_field_key(key: &str) -> Option<&'static str> {
     match key {
         "GPS:Latitude" | "GPS:GPSLatitude" | "TIFF:GPS:Latitude" | "TIFF:GPS:GPSLatitude" => {
             Some("Latitude")
@@ -1635,6 +1687,29 @@ fn tiff_create_gps_coordinate_key(key: &str) -> Option<&'static str> {
         "GPS:Longitude" | "GPS:GPSLongitude" | "TIFF:GPS:Longitude" | "TIFF:GPS:GPSLongitude" => {
             Some("Longitude")
         }
+        "GPS:Altitude"
+        | "GPS:AltitudeMeters"
+        | "GPS:GPSAltitude"
+        | "TIFF:GPS:Altitude"
+        | "TIFF:GPS:AltitudeMeters"
+        | "TIFF:GPS:GPSAltitude" => Some("Altitude"),
+        "GPS:ImageDirection"
+        | "GPS:ImageDirectionDegrees"
+        | "GPS:GPSImgDirection"
+        | "TIFF:GPS:ImageDirection"
+        | "TIFF:GPS:ImageDirectionDegrees"
+        | "TIFF:GPS:GPSImgDirection" => Some("Direction"),
+        "GPS:Speed"
+        | "GPS:SpeedMetersPerSecond"
+        | "GPS:GPSSpeed"
+        | "TIFF:GPS:Speed"
+        | "TIFF:GPS:SpeedMetersPerSecond"
+        | "TIFF:GPS:GPSSpeed" => Some("Speed"),
+        "GPS:TimeOfDaySeconds"
+        | "GPS:GPSTimeStamp"
+        | "TIFF:GPS:TimeOfDaySeconds"
+        | "TIFF:GPS:GPSTimeStamp" => Some("Time"),
+        "GPS:Date" | "GPS:GPSDateStamp" | "TIFF:GPS:Date" | "TIFF:GPS:GPSDateStamp" => Some("Date"),
         _ => None,
     }
 }

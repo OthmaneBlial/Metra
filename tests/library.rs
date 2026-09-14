@@ -1235,6 +1235,47 @@ fn public_generic_copy_api_rewrites_icc_text() {
 }
 
 #[test]
+fn public_tiff_creation_api_supports_full_gps_seed() {
+    let options = metra::TiffCreateOptions::new()
+        .with_gps_coordinates("48.8566", "2.3522")
+        .with_gps_altitude_meters("-125.5")
+        .with_gps_image_direction_degrees("271.25")
+        .with_gps_speed_meters_per_second("10")
+        .with_gps_time_of_day_seconds("45296.125")
+        .with_gps_date("2026:09:14");
+    let bytes = metra::create_tiff_to_vec(&options, metra::ParseLimits::default())
+        .expect("public TIFF creation API should emit a GPS seed");
+    let metadata = metra::read_from(
+        &mut Cursor::new(bytes.clone()),
+        metra::FileInfo::new(
+            "public-gps.tif".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Tiff,
+        ),
+    )
+    .expect("publicly created GPS TIFF should remain readable");
+    assert_eq!(
+        metadata.find("GPS:GPSDateStamp").unwrap().display_value(),
+        "2026-09-14"
+    );
+    assert_eq!(
+        metadata.find("GPS:GPSAltitudeRef").unwrap().display_value(),
+        "1"
+    );
+    assert!(
+        (metadata
+            .find("GPS:SpeedMetersPerSecond")
+            .unwrap()
+            .display_value()
+            .parse::<f64>()
+            .unwrap()
+            - 10.0)
+            .abs()
+            < 0.000001
+    );
+}
+
+#[test]
 fn public_batch_api_keeps_input_order_and_supports_streaming() {
     let paths = vec![
         std::env::temp_dir().join("metra-batch-z-does-not-exist"),

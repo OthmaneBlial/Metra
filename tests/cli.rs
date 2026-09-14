@@ -1350,6 +1350,16 @@ fn cli_can_create_tiff_seed_with_gps_coordinates() {
             "GPS:Latitude=-48.8566",
             "--create-tiff",
             "GPS:Longitude=2.3522",
+            "--create-tiff",
+            "GPS:Altitude=-125.5",
+            "--create-tiff",
+            "GPS:ImageDirection=271.25",
+            "--create-tiff",
+            "GPS:Speed=10",
+            "--create-tiff",
+            "GPS:TimeOfDaySeconds=45296.125",
+            "--create-tiff",
+            "GPS:Date=2026:09:14",
             path.to_str().expect("UTF-8 test path"),
         ])
         .output()
@@ -1371,6 +1381,27 @@ fn cli_can_create_tiff_seed_with_gps_coordinates() {
         .expect("derived longitude should be numeric");
     assert!((latitude + 48.8566).abs() < 0.000001);
     assert!((longitude - 2.3522).abs() < 0.000001);
+    for (key, expected) in [
+        ("GPS:AltitudeMeters", -125.5),
+        ("GPS:ImageDirectionDegrees", 271.25),
+        ("GPS:SpeedMetersPerSecond", 10.0),
+        ("GPS:TimeOfDaySeconds", 45296.125),
+    ] {
+        let actual = metadata
+            .find(key)
+            .unwrap_or_else(|| panic!("{key} should be present"))
+            .display_value()
+            .parse::<f64>()
+            .unwrap_or_else(|_| panic!("{key} should be numeric"));
+        assert!(
+            (actual - expected).abs() < 0.000001,
+            "{key}: {actual} != {expected}"
+        );
+    }
+    assert_eq!(
+        metadata.find("GPS:GPSDateStamp").unwrap().display_value(),
+        "2026-09-14"
+    );
     assert_eq!(
         metadata.find("GPS:GPSLatitudeRef").unwrap().display_value(),
         "S"
@@ -1417,6 +1448,16 @@ fn cli_can_create_minimal_bigtiff_seed_without_overwrite() {
             "GPS:Latitude=48.8566",
             "--create-bigtiff",
             "GPS:Longitude=2.3522",
+            "--create-bigtiff",
+            "GPS:Altitude=-125.5",
+            "--create-bigtiff",
+            "GPS:ImageDirection=271.25",
+            "--create-bigtiff",
+            "GPS:Speed=10",
+            "--create-bigtiff",
+            "GPS:TimeOfDaySeconds=45296.125",
+            "--create-bigtiff",
+            "GPS:Date=2026:09:14",
             path.to_str().expect("UTF-8 test path"),
         ])
         .output()
@@ -1444,6 +1485,27 @@ fn cli_can_create_minimal_bigtiff_seed_without_overwrite() {
         .expect("derived BigTIFF longitude should be numeric");
     assert!((latitude - 48.8566).abs() < 0.000001);
     assert!((longitude - 2.3522).abs() < 0.000001);
+    for (key, expected) in [
+        ("GPS:AltitudeMeters", -125.5),
+        ("GPS:ImageDirectionDegrees", 271.25),
+        ("GPS:SpeedMetersPerSecond", 10.0),
+        ("GPS:TimeOfDaySeconds", 45296.125),
+    ] {
+        let actual = metadata
+            .find(key)
+            .unwrap_or_else(|| panic!("{key} should be present"))
+            .display_value()
+            .parse::<f64>()
+            .unwrap_or_else(|_| panic!("{key} should be numeric"));
+        assert!(
+            (actual - expected).abs() < 0.000001,
+            "{key}: {actual} != {expected}"
+        );
+    }
+    assert_eq!(
+        metadata.find("GPS:GPSDateStamp").unwrap().display_value(),
+        "2026-09-14"
+    );
 
     let second = Command::new(env!("CARGO_BIN_EXE_metra"))
         .args([
