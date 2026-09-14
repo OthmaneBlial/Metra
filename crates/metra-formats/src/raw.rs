@@ -13,6 +13,7 @@ const BIG_TIFF_LITTLE_ENDIAN: &[u8; 4] = b"II+\0";
 const BIG_TIFF_BIG_ENDIAN: &[u8; 4] = b"MM\0+";
 const RAF_SIGNATURE: &[u8; 16] = b"FUJIFILMCCD-RAW ";
 const MRW_SIGNATURE: &[u8; 4] = b"\0MRM";
+const MRW_LITTLE_SIGNATURE: &[u8; 4] = b"\0MRI";
 const X3F_SIGNATURE: &[u8; 4] = b"FOVb";
 
 pub fn read_raw<R: Read + Seek>(
@@ -56,7 +57,7 @@ pub fn read_raw<R: Read + Seek>(
         crate::raf::read_raf(reader, file_info, limits)
     } else if is_crw_header(&prefix) {
         crate::crw::read_crw(reader, file_info, limits)
-    } else if prefix.starts_with(MRW_SIGNATURE) {
+    } else if is_mrw_header(&prefix) {
         crate::mrw::read_mrw(reader, file_info, limits)
     } else if prefix.starts_with(X3F_SIGNATURE) {
         crate::x3f::read_x3f(reader, file_info, limits)
@@ -82,7 +83,7 @@ pub(crate) fn is_crw_header(bytes: &[u8]) -> bool {
 }
 
 pub(crate) fn is_mrw_header(bytes: &[u8]) -> bool {
-    bytes.starts_with(MRW_SIGNATURE)
+    bytes.starts_with(MRW_SIGNATURE) || bytes.starts_with(MRW_LITTLE_SIGNATURE)
 }
 
 pub(crate) fn is_x3f_header(bytes: &[u8]) -> bool {
@@ -279,6 +280,12 @@ mod tests {
             (
                 "capture.mrw",
                 b"\0MRM\0\0\0\0".as_slice(),
+                "MRW",
+                "raw-mrw-partial",
+            ),
+            (
+                "capture-little.mrw",
+                b"\0MRI\0\0\0\0".as_slice(),
                 "MRW",
                 "raw-mrw-partial",
             ),

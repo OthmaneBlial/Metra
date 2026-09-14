@@ -458,6 +458,26 @@ mod tests {
         bytes
     }
 
+    fn little_endian_mrw_fixture() -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(MRW_LITTLE_ENDIAN);
+        bytes.extend_from_slice(&32_u32.to_le_bytes());
+        bytes.extend_from_slice(b"\0PRD");
+        bytes.extend_from_slice(&24_u32.to_le_bytes());
+        let mut prd = [0_u8; 24];
+        prd[..5].copy_from_slice(b"FW-L\0");
+        prd[8..10].copy_from_slice(&3000_u16.to_le_bytes());
+        prd[10..12].copy_from_slice(&4000_u16.to_le_bytes());
+        prd[12..14].copy_from_slice(&2000_u16.to_le_bytes());
+        prd[14..16].copy_from_slice(&3000_u16.to_le_bytes());
+        prd[16] = 14;
+        prd[17] = 14;
+        prd[18] = 82;
+        prd[23] = 1;
+        bytes.extend_from_slice(&prd);
+        bytes
+    }
+
     #[test]
     fn reads_mrw_prd_without_touching_image_data() {
         let bytes = mrw_fixture();
@@ -495,5 +515,25 @@ mod tests {
                 .iter()
                 .any(|warning| warning.code == "raw-mrw-partial")
         );
+    }
+
+    #[test]
+    fn reads_little_endian_mrw_prd() {
+        let bytes = little_endian_mrw_fixture();
+        let metadata = read_mrw(
+            &mut Cursor::new(bytes.clone()),
+            FileInfo::new("capture.mrw".into(), bytes.len() as u64, FileFormat::Raw),
+            ParseLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            metadata.find("MRW:FirmwareID").unwrap().display_value(),
+            "FW-L"
+        );
+        assert_eq!(
+            metadata.find("MRW:ImageWidth").unwrap().display_value(),
+            "3000"
+        );
+        assert!(metadata.warnings.is_empty());
     }
 }
