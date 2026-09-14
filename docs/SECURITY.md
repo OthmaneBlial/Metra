@@ -71,8 +71,9 @@ expansion and nesting limits before being enabled.
 
 Only JPEG comment, existing APP1 EXIF ASCII slots, bounded APP1 XMP, and known IPTC-IIM datasets in Photoshop
 APP13 resources, PNG `tEXt` and uncompressed `iTXt` XMP, GIF comments, WebP XMP, SVG
-title/description/comments, WAV `LIST/INFO` and Broadcast Wave `bext` fields on
-RIFF/RF64/BW64 containers, FLAC Vorbis Comment, Ogg Vorbis/Opus/Ogg-FLAC
+title/description/comments, WAV `LIST/INFO`, Broadcast Wave `bext`, and
+existing iXML packet fields on RIFF/RF64/BW64 containers, FLAC Vorbis Comment,
+Ogg Vorbis/Opus/Ogg-FLAC
 comment packet rewrites, common
 ID3v2 text/comment replacement/deletion/copy, bounded TIFF ASCII copy,
 existing ISO-BMFF text and direct/Adobe-UUID XMP replacement/copy/deletion,
@@ -154,6 +155,9 @@ resolves sentinel sizes with checked 64-bit arithmetic, copies the original
 audio payload without materializing it, and updates only the 64-bit RIFF size
 descriptor after the temporary output has been validated. Malformed or
 incomplete descriptors fail before replacement.
+WAV iXML replacements are parsed with the bounded XML reader, reject NUL bytes
+and DOCTYPE declarations, and must keep the existing packet byte length;
+deletion removes only the existing iXML chunk while preserving the audio data.
 Ogg rewrites retain page boundaries, recalculate CRCs, preserve opaque packet
 bytes, and refuse packet growth unless the existing bounded packet can hold it.
 ID3v2

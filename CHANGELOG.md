@@ -4,6 +4,10 @@
 
 Initial read-first foundation with narrow validated rewrites:
 
+- added bounded WAV iXML packet set/delete/copy support through the Rust API and
+  CLI; replacements require safe XML and stay within the existing packet size,
+  while deletions remove the chunk without touching audio bytes and recalculate
+  the RIFF/RF64/BW64 container size;
 - expanded Broadcast Wave `bext` inspection with ExifTool-compatible canonical
   names, validated typed `DateTimeOriginal`, bounded UMID/coding-history values,
   fixed-field raw-byte retention, truncation warnings, and RIFF oracle aliases;
