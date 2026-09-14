@@ -887,6 +887,36 @@ fn jsonl_and_human_modes_are_available() {
 }
 
 #[test]
+fn capabilities_command_exposes_human_and_json_matrix() {
+    let human = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .arg("--capabilities")
+        .output()
+        .expect("Metra CLI should start");
+    assert!(human.status.success(), "stderr: {:?}", human.stderr);
+    let stdout = String::from_utf8(human.stdout).expect("capability output should be UTF-8");
+    assert!(stdout.lines().next().is_some_and(|line| {
+        line == "format	read	write	create	delete	lossless_rewrite	streaming"
+    }));
+    assert!(stdout.lines().any(|line| line.starts_with("JPEG	")));
+    assert!(stdout.lines().any(|line| line.starts_with("WebP	")));
+
+    let json = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args(["--capabilities", "--json"])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(json.status.success(), "stderr: {:?}", json.stderr);
+    let document: Value =
+        serde_json::from_slice(&json.stdout).expect("capability JSON should parse");
+    let entries = document
+        .as_array()
+        .expect("capability JSON should be an array");
+    assert_eq!(entries.len(), metra::format_capabilities_all().len());
+    assert_eq!(entries[0]["format"], "JPEG");
+    assert_eq!(entries[0]["read"], "partial");
+    assert_eq!(entries[0]["lossless_rewrite"], "partial");
+}
+
+#[test]
 fn validate_returns_failure_for_recoverable_warnings() {
     let directory = TemporaryDirectory::new();
     let mut bytes = minimal_png("warning");

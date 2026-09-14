@@ -15,6 +15,49 @@ use metra_core::{Metadata, ParseLimits};
     long_about = "Inspect file metadata without decoding image pixels."
 )]
 struct Arguments {
+    /// Show the public format capability matrix instead of inspecting files.
+    #[arg(
+        long,
+        conflicts_with_all = [
+            "jsonl",
+            "csv",
+            "toml",
+            "yaml",
+            "tag",
+            "set",
+            "delete",
+            "copy",
+            "create_tiff",
+            "create_bigtiff",
+            "create_dng",
+            "create_jpeg",
+            "create_pdf",
+            "create_psd",
+            "create_mov",
+            "create_heif",
+            "create_avif",
+            "create_avi",
+            "create_mkv",
+            "create_webm",
+            "create_png",
+            "create_xmp",
+            "create_wav",
+            "create_flac",
+            "create_gif",
+            "create_icc",
+            "create_ogg",
+            "create_svg",
+            "create_webp_xmp",
+            "validate",
+            "compare",
+            "recursive",
+            "jobs",
+            "max_metadata_bytes",
+            "max_value_bytes"
+        ]
+    )]
+    capabilities: bool,
+
     /// Emit one structured JSON document (an array when multiple files are read).
     #[arg(long, conflicts_with = "jsonl")]
     json: bool,
@@ -763,12 +806,20 @@ struct Arguments {
     max_value_bytes: Option<usize>,
 
     /// Files to inspect.
-    #[arg(value_name = "FILE", required = true)]
+    #[arg(value_name = "FILE", required_unless_present = "capabilities")]
     files: Vec<PathBuf>,
 }
 
 fn main() -> ExitCode {
     let arguments = Arguments::parse_from(normalize_legacy_args(env::args_os()));
+    if arguments.capabilities {
+        if !arguments.files.is_empty() {
+            eprintln!("metra: --capabilities does not accept input files");
+            return ExitCode::from(2);
+        }
+        emit_capabilities(arguments.json);
+        return ExitCode::SUCCESS;
+    }
     let limits = parse_limits(arguments.max_metadata_bytes, arguments.max_value_bytes);
     if !arguments.create_jpeg.is_empty() {
         if arguments.files.len() != 1 {
@@ -4220,6 +4271,40 @@ fn emit_json(results: &[(PathBuf, metra::Result<Metadata>)], jsonl: bool) {
         if let Err(error) = result {
             eprintln!("metra: {}: {error}", path.display());
         }
+    }
+}
+
+fn emit_capabilities(json: bool) {
+    let capabilities = metra::format_capabilities_all();
+    if json {
+        match serde_json::to_string_pretty(capabilities) {
+            Ok(document) => println!("{document}"),
+            Err(error) => eprintln!("metra: cannot serialize capability matrix: {error}"),
+        }
+        return;
+    }
+
+    println!("format	read	write	create	delete	lossless_rewrite	streaming");
+    for capability in capabilities {
+        println!(
+            "{}	{}	{}	{}	{}	{}	{}",
+            capability.format,
+            capability_status_label(capability.read),
+            capability_status_label(capability.write),
+            capability_status_label(capability.create),
+            capability_status_label(capability.delete),
+            capability_status_label(capability.lossless_rewrite),
+            capability_status_label(capability.streaming),
+        );
+    }
+}
+
+fn capability_status_label(status: metra::CapabilityStatus) -> &'static str {
+    match status {
+        metra::CapabilityStatus::Supported => "supported",
+        metra::CapabilityStatus::Partial => "partial",
+        metra::CapabilityStatus::Planned => "planned",
+        metra::CapabilityStatus::Unsupported => "unsupported",
     }
 }
 
