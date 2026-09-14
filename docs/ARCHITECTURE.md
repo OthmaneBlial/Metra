@@ -169,7 +169,7 @@ XMP packets, and known IPTC-IIM datasets inside Photoshop APP13 resources, PNG
 and existing standalone XMP packets,
 and existing standalone ICC `desc`/`text` payloads,
 SVG title/description/comment nodes, WAV `LIST/INFO` fields and existing
-Broadcast Wave `bext` fixed fields, FLAC Vorbis
+Broadcast Wave `bext` fixed fields on RIFF/RF64/BW64 containers, FLAC Vorbis
 Comment key/value pairs, Ogg Vorbis/Opus comment packets, common ID3v2 text/comment frames,
 and existing PDF Info literal or hexadecimal string tokens, existing Matroska/WebM
 `Info` title/app strings and `SimpleTag` string values, and existing TIFF/BigTIFF ASCII slots in TIFF-like
@@ -241,7 +241,10 @@ The AVI writer accepts existing known `LIST/INFO` string chunks, writes only
 within their allocated payloads, preserves a NUL terminator when space exists,
 and never changes RIFF chunk sizes or media data. Delete operations zero-fill
 the selected payload so the reader no longer exposes that field.
-The Matroska/WebM writer accepts existing `Info` title/app strings and
+The WAV writer accepts existing `LIST/INFO` and Broadcast Wave `bext` fields on
+RIFF, RF64, and BW64 containers. For RF64/BW64 it requires the bounded `ds64`
+chunk, preserves sentinel-sized `data` chunks and their audio bytes, and updates
+only `ds64.RIFFSize64` after the metadata rewrite. The Matroska/WebM writer accepts existing `Info` title/app strings and
 `SimpleTag` string values, writes only within their allocated EBML payloads, and
 never changes element widths, tag names, or media payloads. Set operations replace
 text in place; delete operations zero-fill the selected payload so the reader no
@@ -307,6 +310,8 @@ The WAV creation seam exposes `WavCreateOptions`, `WavBextCreateEntry`,
 fixed 1x1 PCM RIFF/WAVE seed with optional bounded `LIST/INFO` fields and a
 validated 602-byte `bext` base for `BWF:Field=VALUE` entries, validates the
 output through the WAV reader, and refuses to overwrite an existing destination.
+Existing RF64/BW64 files are handled by the separate metadata rewrite seam;
+creation still emits the fixed RIFF seed.
 
 Standalone ICC creation exposes `IccCreateOptions`, `create_icc_to_vec`,
 `create_icc_path`, and the CLI `--create-icc KEY=VALUE`. It emits a minimal

@@ -16,6 +16,9 @@ Initial read-first foundation with narrow validated rewrites:
   fields, including canonical conversion of typed date/time and integer values;
 - added bounded RF64/BW64 WAV detection and `ds64` 64-bit size resolution,
   including safe handling of sentinel-sized `data` chunks without reading audio;
+- extended the validated WAV metadata rewrite path to existing RF64/BW64
+  containers, preserving sentinel-sized `data` chunks and recomputing
+  `ds64.RIFFSize64` after `LIST/INFO` or `bext` edits;
 - extended the opt-in differential JSON report with symmetric oracle-side key
   totals and oracle-only coverage, plus an opt-in strict gate for requiring all
   oracle keys to be matched;

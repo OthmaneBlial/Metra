@@ -71,7 +71,8 @@ expansion and nesting limits before being enabled.
 
 Only JPEG comment, existing APP1 EXIF ASCII slots, bounded APP1 XMP, and known IPTC-IIM datasets in Photoshop
 APP13 resources, PNG `tEXt` and uncompressed `iTXt` XMP, GIF comments, WebP XMP, SVG
-title/description/comments, WAV `LIST/INFO`, FLAC Vorbis Comment, Ogg Vorbis/Opus/Ogg-FLAC
+title/description/comments, WAV `LIST/INFO` and Broadcast Wave `bext` fields on
+RIFF/RF64/BW64 containers, FLAC Vorbis Comment, Ogg Vorbis/Opus/Ogg-FLAC
 comment packet rewrites, common
 ID3v2 text/comment replacement/deletion/copy, bounded TIFF ASCII copy,
 existing ISO-BMFF text and direct/Adobe-UUID XMP replacement/copy/deletion,
@@ -148,6 +149,11 @@ remains unchanged. CR3 writes are limited to existing ISO-BMFF text or XMP slots
 the RAW reader has identified the container; both paths re-read the result
 before replacement. RAF, CRW, MRW, and X3F are rejected before any write is
 attempted.
+For RF64/BW64 rewrites, the writer requires a bounded first `ds64` chunk,
+resolves sentinel sizes with checked 64-bit arithmetic, copies the original
+audio payload without materializing it, and updates only the 64-bit RIFF size
+descriptor after the temporary output has been validated. Malformed or
+incomplete descriptors fail before replacement.
 Ogg rewrites retain page boundaries, recalculate CRCs, preserve opaque packet
 bytes, and refuse packet growth unless the existing bounded packet can hold it.
 ID3v2
