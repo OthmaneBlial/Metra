@@ -172,7 +172,7 @@ struct Arguments {
     )]
     create_bigtiff: Vec<String>,
 
-    /// Create a bounded 1x1 DNG/TIFF-like RAW seed with EXIF ASCII fields.
+    /// Create a bounded 1x1 DNG/TIFF-like RAW seed with EXIF ASCII fields and optional GPS metadata.
     #[arg(
         long = "create-dng",
         value_name = "KEY=VALUE",
@@ -1716,6 +1716,14 @@ fn tiff_create_gps_field_key(key: &str) -> Option<&'static str> {
 
 fn parse_dng_create(entries: &[String]) -> Result<metra::DngCreateOptions, String> {
     let mut options = metra::DngCreateOptions::new();
+    let mut latitude = None;
+    let mut longitude = None;
+    let mut altitude = None;
+    let mut direction = None;
+    let mut speed = None;
+    let mut time = None;
+    let mut date = None;
+    let mut has_gps_field = false;
     for assignment in entries {
         let (raw_key, value) = assignment
             .split_once('=')
@@ -1724,7 +1732,65 @@ fn parse_dng_create(entries: &[String]) -> Result<metra::DngCreateOptions, Strin
         if key.is_empty() {
             return Err("--create-dng requires a non-empty KEY".to_owned());
         }
-        options.push_ascii(key, value);
+        match tiff_create_gps_field_key(key) {
+            Some("Latitude") => {
+                has_gps_field = true;
+                replace_tiff_create_gps_value(&mut latitude, value, "latitude")?;
+            }
+            Some("Longitude") => {
+                has_gps_field = true;
+                replace_tiff_create_gps_value(&mut longitude, value, "longitude")?;
+            }
+            Some("Altitude") => {
+                has_gps_field = true;
+                replace_tiff_create_gps_value(&mut altitude, value, "altitude")?;
+            }
+            Some("Direction") => {
+                has_gps_field = true;
+                replace_tiff_create_gps_value(&mut direction, value, "image direction")?;
+            }
+            Some("Speed") => {
+                has_gps_field = true;
+                replace_tiff_create_gps_value(&mut speed, value, "speed")?;
+            }
+            Some("Time") => {
+                has_gps_field = true;
+                replace_tiff_create_gps_value(&mut time, value, "time")?;
+            }
+            Some("Date") => {
+                has_gps_field = true;
+                replace_tiff_create_gps_value(&mut date, value, "date")?;
+            }
+            None => options.push_ascii(key, value),
+            _ => unreachable!("GPS creation key is normalized above"),
+        }
+    }
+    match (latitude, longitude, has_gps_field) {
+        (Some(latitude), Some(longitude), _) => {
+            let mut gps = metra::TiffGpsCreateOptions::new(latitude, longitude);
+            if let Some(value) = altitude {
+                gps = gps.with_altitude_meters(value);
+            }
+            if let Some(value) = direction {
+                gps = gps.with_image_direction_degrees(value);
+            }
+            if let Some(value) = speed {
+                gps = gps.with_speed_meters_per_second(value);
+            }
+            if let Some(value) = time {
+                gps = gps.with_time_of_day_seconds(value);
+            }
+            if let Some(value) = date {
+                gps = gps.with_date(value);
+            }
+            options.gps = Some(gps);
+        }
+        (Some(_), None, _) | (None, Some(_), _) | (None, None, true) => {
+            return Err(
+                "--create-dng GPS creation requires both Latitude and Longitude".to_owned(),
+            );
+        }
+        (None, None, false) => {}
     }
     Ok(options)
 }

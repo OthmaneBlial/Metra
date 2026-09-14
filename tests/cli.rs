@@ -1529,6 +1529,16 @@ fn cli_can_create_minimal_dng_seed_without_overwrite() {
             "DNG:Make=Metra",
             "--create-dng",
             "Artist=Othmane",
+            "--create-dng",
+            "GPS:Latitude=48.8566",
+            "--create-dng",
+            "GPS:Longitude=2.3522",
+            "--create-dng",
+            "GPS:Altitude=-125.5",
+            "--create-dng",
+            "GPS:Speed=10",
+            "--create-dng",
+            "GPS:Date=2026:09:14",
             path.to_str().expect("UTF-8 test path"),
         ])
         .output()
@@ -1546,6 +1556,25 @@ fn cli_can_create_minimal_dng_seed_without_overwrite() {
     assert_eq!(
         metadata.find("DNG:DNGVersion").unwrap().display_value(),
         "1, 4, 0, 0"
+    );
+    assert_eq!(
+        metadata.find("GPS:GPSDateStamp").unwrap().display_value(),
+        "2026-09-14"
+    );
+    assert_eq!(
+        metadata.find("GPS:GPSAltitudeRef").unwrap().display_value(),
+        "1"
+    );
+    assert!(
+        (metadata
+            .find("GPS:SpeedMetersPerSecond")
+            .unwrap()
+            .display_value()
+            .parse::<f64>()
+            .unwrap()
+            - 10.0)
+            .abs()
+            < 0.000001
     );
 
     let second = Command::new(env!("CARGO_BIN_EXE_metra"))

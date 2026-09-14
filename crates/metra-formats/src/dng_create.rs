@@ -7,12 +7,15 @@ use metra_core::{FileFormat, FileInfo, MetraError, ParseLimits, Result};
 
 use crate::atomic::atomic_replace;
 use crate::raw::read_raw;
-use crate::tiff_create::{TiffCreateEntry, TiffCreateOptions, create_tiff_to_vec};
+use crate::tiff_create::{
+    TiffCreateEntry, TiffCreateOptions, TiffGpsCreateOptions, create_tiff_to_vec,
+};
 
 /// Options for creating a bounded 1x1 DNG/TIFF-like RAW seed.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DngCreateOptions {
     pub entries: Vec<TiffCreateEntry>,
+    pub gps: Option<TiffGpsCreateOptions>,
 }
 
 impl DngCreateOptions {
@@ -31,18 +34,76 @@ impl DngCreateOptions {
     pub fn push_ascii(&mut self, key: impl Into<String>, value: impl Into<String>) {
         self.entries.push(TiffCreateEntry::ascii(key, value));
     }
+
+    /// Add a bounded GPS latitude/longitude pair to the DNG seed.
+    pub fn with_gps_coordinates(
+        mut self,
+        latitude: impl Into<String>,
+        longitude: impl Into<String>,
+    ) -> Self {
+        let gps = self
+            .gps
+            .get_or_insert_with(|| TiffGpsCreateOptions::new("", ""));
+        gps.latitude = latitude.into();
+        gps.longitude = longitude.into();
+        self
+    }
+
+    /// Add signed altitude in meters to the DNG GPS seed.
+    pub fn with_gps_altitude_meters(mut self, value: impl Into<String>) -> Self {
+        self.gps_options_mut().altitude_meters = Some(value.into());
+        self
+    }
+
+    /// Add image direction in degrees to the DNG GPS seed.
+    pub fn with_gps_image_direction_degrees(mut self, value: impl Into<String>) -> Self {
+        self.gps_options_mut().image_direction_degrees = Some(value.into());
+        self
+    }
+
+    /// Add speed in meters per second to the DNG GPS seed.
+    pub fn with_gps_speed_meters_per_second(mut self, value: impl Into<String>) -> Self {
+        self.gps_options_mut().speed_meters_per_second = Some(value.into());
+        self
+    }
+
+    /// Add seconds since midnight to the DNG GPS seed.
+    pub fn with_gps_time_of_day_seconds(mut self, value: impl Into<String>) -> Self {
+        self.gps_options_mut().time_of_day_seconds = Some(value.into());
+        self
+    }
+
+    /// Add a `YYYY:MM:DD` date to the DNG GPS seed.
+    pub fn with_gps_date(mut self, value: impl Into<String>) -> Self {
+        self.gps_options_mut().date = Some(value.into());
+        self
+    }
+
+    fn gps_options_mut(&mut self) -> &mut TiffGpsCreateOptions {
+        self.gps
+            .get_or_insert_with(|| TiffGpsCreateOptions::new("", ""))
+    }
 }
 
 /// Create a readable DNG seed using a classic little-endian TIFF container.
 pub fn create_dng_to_vec(options: &DngCreateOptions, limits: ParseLimits) -> Result<Vec<u8>> {
     let tiff_options = TiffCreateOptions {
         entries: options.entries.clone(),
-        gps: None,
+        gps: options.gps.clone(),
     };
     let mut output = create_tiff_to_vec(&tiff_options, limits)?;
     let next_ifd_offset = 8_usize
         .checked_add(2)
-        .and_then(|value| value.checked_add(options.entries.len().saturating_add(9) * 12))
+        .and_then(|value| {
+            value.checked_add(
+                options
+                    .entries
+                    .len()
+                    .saturating_add(9)
+                    .saturating_add(usize::from(options.gps.is_some()))
+                    * 12,
+            )
+        })
         .ok_or_else(|| MetraError::ResourceLimitExceeded {
             resource: "DNG creation IFD".to_owned(),
             limit: limits.max_metadata_bytes,
@@ -178,6 +239,49 @@ mod tests {
         assert_eq!(
             metadata.find("DNG:DNGVersion").unwrap().display_value(),
             "1, 4, 0, 0"
+        );
+    }
+
+    #[test]
+    fn creates_readable_dng_with_full_gps_metadata() {
+        let options = DngCreateOptions::new()
+            .with_gps_coordinates("48.8566", "2.3522")
+            .with_gps_altitude_meters("-125.5")
+            .with_gps_image_direction_degrees("271.25")
+            .with_gps_speed_meters_per_second("10")
+            .with_gps_time_of_day_seconds("45296.125")
+            .with_gps_date("2026:09:14");
+        let bytes = create_dng_to_vec(&options, ParseLimits::default())
+            .expect("DNG GPS creation should succeed");
+        let metadata = read_raw(
+            &mut std::io::Cursor::new(bytes.clone()),
+            FileInfo::new(
+                "created-gps.dng".into(),
+                bytes.len() as u64,
+                FileFormat::Raw,
+            ),
+            ParseLimits::default(),
+        )
+        .expect("created DNG GPS metadata should remain readable");
+        assert_eq!(metadata.find("RAW:Variant").unwrap().display_value(), "DNG");
+        assert_eq!(
+            metadata.find("GPS:GPSDateStamp").unwrap().display_value(),
+            "2026-09-14"
+        );
+        assert_eq!(
+            metadata.find("GPS:GPSAltitudeRef").unwrap().display_value(),
+            "1"
+        );
+        assert!(
+            (metadata
+                .find("GPS:SpeedMetersPerSecond")
+                .unwrap()
+                .display_value()
+                .parse::<f64>()
+                .unwrap()
+                - 10.0)
+                .abs()
+                < 0.000001
         );
     }
 
