@@ -6,6 +6,10 @@ use metra_core::{
     ValueType, Warning,
 };
 
+const ADOBE_XMP_UUID: [u8; 16] = [
+    0xBE, 0x7A, 0xCF, 0xCB, 0x97, 0xA9, 0x42, 0xE8, 0x9C, 0x71, 0x99, 0x94, 0x91, 0xE3, 0xAF, 0xAC,
+];
+
 #[derive(Debug, Clone, Copy)]
 struct BoxHeader {
     data_start: u64,
@@ -89,7 +93,6 @@ impl<R: Read + Seek> BoxParser<'_, R> {
             }
             let header = self.read_box_header(cursor, end)?;
             self.boxes_read += 1;
-            let kind_name = fourcc(&header.kind);
             if &header.kind == b"ftyp" {
                 self.parse_ftyp(&header, metadata)?;
             } else if is_container(&header.kind) {
@@ -138,13 +141,7 @@ impl<R: Read + Seek> BoxParser<'_, R> {
             } else if &header.kind == b"Exif" {
                 self.parse_exif(&header, metadata)?;
             } else if &header.kind == b"uuid" {
-                metadata.add_warning(
-                    Warning::new(
-                        "isobmff-embedded-metadata",
-                        format!("ISO-BMFF {kind_name} metadata block is detected but not decoded"),
-                    )
-                    .at(header.data_start),
-                );
+                self.parse_uuid(&header, metadata)?;
             }
             if header.end <= cursor {
                 return Err(MetraError::InvalidOffset {
@@ -845,31 +842,154 @@ impl<R: Read + Seek> BoxParser<'_, R> {
 
     fn parse_xmp(&mut self, header: &BoxHeader, metadata: &mut Metadata) -> Result<()> {
         let data = self.read_payload(header, "ISO-BMFF XMP")?;
-        if let Err(error) = crate::xmp::parse_xmp(
-            &data,
-            header.data_start,
-            "ISO-BMFF/xml",
-            metadata,
-            self.limits,
-        ) {
-            metadata.add_warning(
-                Warning::new("invalid-isobmff-xmp", error.to_string()).at(header.data_start),
-            );
-        }
+        self.parse_xmp_data(&data, header.data_start, "ISO-BMFF/xml", metadata);
         Ok(())
     }
 
     fn parse_exif(&mut self, header: &BoxHeader, metadata: &mut Metadata) -> Result<()> {
         let data = self.read_payload(header, "ISO-BMFF EXIF")?;
+        self.parse_exif_data(&data, header.data_start, metadata);
+        Ok(())
+    }
+
+    fn parse_uuid(&mut self, header: &BoxHeader, metadata: &mut Metadata) -> Result<()> {
+        let payload_length = header.end.saturating_sub(header.data_start);
+        if payload_length < 16 {
+            metadata.add_warning(
+                Warning::new(
+                    "truncated-isobmff-uuid",
+                    "ISO-BMFF uuid box is shorter than its 16-byte user type",
+                )
+                .at(header.data_start),
+            );
+            return Ok(());
+        }
+
+        let user_type = self.read_at(header.data_start, 16, "ISO-BMFF uuid user type")?;
+        let uuid = format_uuid(&user_type);
+        add_tag(
+            metadata,
+            "UUID",
+            TagValue::String(uuid),
+            header.data_start,
+            16,
+        );
+
+        let body_start = header
+            .data_start
+            .checked_add(16)
+            .ok_or(MetraError::InvalidOffset {
+                context: "ISO-BMFF uuid body".to_owned(),
+                offset: header.data_start,
+            })?;
+        let body_length = payload_length - 16;
+        if user_type.as_slice() == ADOBE_XMP_UUID {
+            add_tag(
+                metadata,
+                "UUIDKind",
+                TagValue::String("XMP".to_owned()),
+                header.data_start,
+                16,
+            );
+            if body_length == 0 {
+                metadata.add_warning(
+                    Warning::new("truncated-isobmff-xmp", "XMP uuid box has an empty payload")
+                        .at(body_start),
+                );
+                return Ok(());
+            }
+            let body_length_usize = match usize::try_from(body_length) {
+                Ok(length) if length <= self.limits.max_value_bytes => length,
+                _ => {
+                    metadata.add_warning(
+                        Warning::new(
+                            "isobmff-uuid-value-limit",
+                            format!(
+                                "XMP uuid payload is {body_length} bytes; value limit is {}",
+                                self.limits.max_value_bytes
+                            ),
+                        )
+                        .at(body_start),
+                    );
+                    return Ok(());
+                }
+            };
+            let body = self.read_at(body_start, body_length_usize, "ISO-BMFF uuid XMP")?;
+            self.parse_xmp_data(&body, body_start, "ISO-BMFF/uuid-XMP", metadata);
+            return Ok(());
+        }
+
+        let prefix_length = usize::try_from(body_length.min(16)).map_err(|_| {
+            MetraError::ResourceLimitExceeded {
+                resource: "ISO-BMFF uuid prefix".to_owned(),
+                limit: self.limits.max_value_bytes,
+            }
+        })?;
+        let prefix = self.read_at(body_start, prefix_length, "ISO-BMFF uuid prefix")?;
+        if prefix.starts_with(b"Exif\0\0") || crate::raw::is_tiff_header(&prefix) {
+            add_tag(
+                metadata,
+                "UUIDKind",
+                TagValue::String("EXIF".to_owned()),
+                header.data_start,
+                16,
+            );
+            let body_length_usize = match usize::try_from(body_length) {
+                Ok(length) if length <= self.limits.max_value_bytes => length,
+                _ => {
+                    metadata.add_warning(
+                        Warning::new(
+                            "isobmff-uuid-value-limit",
+                            format!(
+                                "EXIF uuid payload is {body_length} bytes; value limit is {}",
+                                self.limits.max_value_bytes
+                            ),
+                        )
+                        .at(body_start),
+                    );
+                    return Ok(());
+                }
+            };
+            let body = self.read_at(body_start, body_length_usize, "ISO-BMFF uuid EXIF")?;
+            self.parse_exif_data(&body, body_start, metadata);
+            return Ok(());
+        }
+
+        metadata.add_warning(
+            Warning::new(
+                "isobmff-embedded-metadata",
+                "ISO-BMFF uuid metadata block is detected but not decoded",
+            )
+            .at(header.data_start),
+        );
+        Ok(())
+    }
+
+    fn parse_xmp_data(
+        &self,
+        data: &[u8],
+        data_start: u64,
+        container: &str,
+        metadata: &mut Metadata,
+    ) {
+        if let Err(error) =
+            crate::xmp::parse_xmp(data, data_start, container, metadata, self.limits)
+        {
+            metadata
+                .add_warning(Warning::new("invalid-isobmff-xmp", error.to_string()).at(data_start));
+        }
+    }
+
+    fn parse_exif_data(&self, data: &[u8], data_start: u64, metadata: &mut Metadata) {
         let Some(tiff_offset) = find_tiff_offset(&data) else {
             metadata.add_warning(
                 Warning::new(
                     "invalid-isobmff-exif",
                     "ISO-BMFF Exif box does not contain a TIFF header",
                 )
-                .at(header.data_start),
+                .at(data_start),
             );
-            return Ok(());
+            return;
         };
         let tiff_data = data[tiff_offset..].to_vec();
         let info = FileInfo::new(
@@ -884,21 +1004,20 @@ impl<R: Read + Seek> BoxParser<'_, R> {
                     tag.source.offset = tag
                         .source
                         .offset
-                        .map(|offset| header.data_start + tiff_offset as u64 + offset);
+                        .map(|offset| data_start + tiff_offset as u64 + offset);
                     metadata.add_tag(tag);
                 }
                 for mut warning in embedded.warnings.drain(..) {
                     warning.offset = warning
                         .offset
-                        .map(|offset| header.data_start + tiff_offset as u64 + offset);
+                        .map(|offset| data_start + tiff_offset as u64 + offset);
                     metadata.add_warning(warning);
                 }
             }
             Err(error) => metadata.add_warning(
-                Warning::new("invalid-isobmff-exif", error.to_string()).at(header.data_start),
+                Warning::new("invalid-isobmff-exif", error.to_string()).at(data_start),
             ),
         }
-        Ok(())
     }
 
     fn read_payload(&mut self, header: &BoxHeader, context: &str) -> Result<Vec<u8>> {
@@ -1001,10 +1120,11 @@ fn find_tiff_offset(data: &[u8]) -> Option<usize> {
     if data.starts_with(b"Exif\0\0") && data.len() > 6 {
         return Some(6);
     }
-    if data.len() >= 4 {
+    if !is_tiff_header(data) && data.len() >= 4 {
         let declared = u32::from_be_bytes(data[..4].try_into().expect("Exif item offset")) as usize;
-        let candidate = 4_usize.checked_add(declared)?;
-        if is_tiff_header(data.get(candidate..)?) {
+        if let Some(candidate) = 4_usize.checked_add(declared)
+            && data.get(candidate..).is_some_and(is_tiff_header)
+        {
             return Some(candidate);
         }
     }
@@ -1013,6 +1133,34 @@ fn find_tiff_offset(data: &[u8]) -> Option<usize> {
 
 fn is_tiff_header(bytes: &[u8]) -> bool {
     crate::raw::is_tiff_header(bytes)
+}
+
+fn format_uuid(bytes: &[u8]) -> String {
+    if bytes.len() != 16 {
+        return bytes
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+    }
+    format!(
+        "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+        bytes[0],
+        bytes[1],
+        bytes[2],
+        bytes[3],
+        bytes[4],
+        bytes[5],
+        bytes[6],
+        bytes[7],
+        bytes[8],
+        bytes[9],
+        bytes[10],
+        bytes[11],
+        bytes[12],
+        bytes[13],
+        bytes[14],
+        bytes[15]
+    )
 }
 
 fn add_tag(metadata: &mut Metadata, name: &str, value: TagValue, offset: u64, length: u64) {
@@ -1080,6 +1228,21 @@ mod tests {
         let mut bytes = size.to_be_bytes().to_vec();
         bytes.extend_from_slice(kind);
         bytes.extend_from_slice(data);
+        bytes
+    }
+
+    fn uuid_box(user_type: &[u8; 16], data: &[u8]) -> Vec<u8> {
+        let mut payload = user_type.to_vec();
+        payload.extend_from_slice(data);
+        box_with_kind(b"uuid", &payload)
+    }
+
+    fn minimal_tiff_with_make() -> Vec<u8> {
+        let mut bytes = vec![
+            b'I', b'I', 42, 0, 8, 0, 0, 0, 1, 0, 0x0F, 0x01, 2, 0, 6, 0, 0, 0, 26, 0, 0, 0, 0, 0,
+            0, 0,
+        ];
+        bytes.extend_from_slice(b"Canon\0");
         bytes
     }
 
@@ -1197,6 +1360,83 @@ mod tests {
         assert_eq!(
             metadata.find("XMP:dc:format").unwrap().display_value(),
             "image/heic"
+        );
+    }
+
+    #[test]
+    fn decodes_adobe_xmp_uuid_boxes_with_absolute_sources() {
+        let ftyp = box_with_kind(b"ftyp", b"isom\0\0\0\0");
+        let packet =
+            br#"<x:xmpmeta><rdf:RDF><rdf:Description xmlns:dc="urn:dc" dc:format="image/avif"/></rdf:RDF></x:xmpmeta>"#;
+        let uuid = uuid_box(&ADOBE_XMP_UUID, packet);
+        let mut bytes = ftyp;
+        bytes.extend_from_slice(&uuid);
+        let info = FileInfo::new("uuid.avif".into(), bytes.len() as u64, FileFormat::Avif);
+        let metadata = read_isobmff(&mut Cursor::new(bytes), info, ParseLimits::default())
+            .expect("XMP uuid should be decoded");
+
+        assert_eq!(
+            metadata.find("ISOBMFF:UUIDKind").unwrap().display_value(),
+            "XMP"
+        );
+        assert_eq!(
+            metadata.find("XMP:dc:format").unwrap().display_value(),
+            "image/avif"
+        );
+        assert_eq!(
+            metadata.find("XMP:Packet").unwrap().source.container,
+            "ISO-BMFF/uuid-XMP"
+        );
+        assert!(
+            !metadata
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "isobmff-embedded-metadata")
+        );
+    }
+
+    #[test]
+    fn decodes_tiff_payloads_in_unknown_uuid_boxes_when_identifiable() {
+        let ftyp = box_with_kind(b"ftyp", b"isom\0\0\0\0");
+        let tiff = minimal_tiff_with_make();
+        assert_eq!(find_tiff_offset(&tiff), Some(0));
+        let uuid = uuid_box(&[0x11; 16], &tiff);
+        let mut bytes = ftyp;
+        bytes.extend_from_slice(&uuid);
+        let info = FileInfo::new("uuid.heic".into(), bytes.len() as u64, FileFormat::Heif);
+        let metadata = read_isobmff(&mut Cursor::new(bytes), info, ParseLimits::default())
+            .expect("TIFF uuid should be decoded");
+
+        assert_eq!(
+            metadata.find("ISOBMFF:UUIDKind").unwrap().display_value(),
+            "EXIF"
+        );
+        assert_eq!(metadata.find("EXIF:Make").unwrap().display_value(), "Canon");
+        assert_eq!(
+            metadata.find("EXIF:Make").unwrap().source.container,
+            "ISO-BMFF/Exif"
+        );
+    }
+
+    #[test]
+    fn bounds_known_uuid_payloads_without_failing_the_container() {
+        let ftyp = box_with_kind(b"ftyp", b"isom\0\0\0\0");
+        let packet = br#"<x:xmpmeta><rdf:RDF/></x:xmpmeta>"#;
+        let uuid = uuid_box(&ADOBE_XMP_UUID, packet);
+        let mut bytes = ftyp;
+        bytes.extend_from_slice(&uuid);
+        let info = FileInfo::new("large-uuid.mp4".into(), bytes.len() as u64, FileFormat::Mp4);
+        let mut limits = ParseLimits::default();
+        limits.max_value_bytes = 16;
+        let metadata = read_isobmff(&mut Cursor::new(bytes), info, limits)
+            .expect("oversized known UUID should remain a recoverable warning");
+
+        assert!(metadata.find("XMP:Packet").is_none());
+        assert!(
+            metadata
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "isobmff-uuid-value-limit")
         );
     }
 
