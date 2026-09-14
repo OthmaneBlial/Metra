@@ -313,10 +313,10 @@ const FORMAT_CAPABILITIES: &[FormatCapabilities] = &[
     FormatCapabilities {
         format: FileFormat::Icc,
         read: CapabilityStatus::Partial,
-        write: CapabilityStatus::Planned,
+        write: CapabilityStatus::Partial,
         create: CapabilityStatus::Partial,
-        delete: CapabilityStatus::Planned,
-        lossless_rewrite: CapabilityStatus::Planned,
+        delete: CapabilityStatus::Partial,
+        lossless_rewrite: CapabilityStatus::Partial,
         streaming: CapabilityStatus::Partial,
     },
     FormatCapabilities {
@@ -1060,6 +1060,18 @@ mod tests {
         );
         assert_eq!(
             format_capabilities(FileFormat::Icc).create,
+            CapabilityStatus::Partial
+        );
+        assert_eq!(
+            format_capabilities(FileFormat::Icc).write,
+            CapabilityStatus::Partial
+        );
+        assert_eq!(
+            format_capabilities(FileFormat::Icc).delete,
+            CapabilityStatus::Partial
+        );
+        assert_eq!(
+            format_capabilities(FileFormat::Icc).lossless_rewrite,
             CapabilityStatus::Partial
         );
         assert_eq!(

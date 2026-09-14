@@ -106,10 +106,10 @@
     },
     "ICC": {
       "read": "partial",
-      "write": "planned",
+      "write": "partial",
       "create": "partial",
-      "delete": "planned",
-      "lossless_rewrite": "planned",
+      "delete": "partial",
+      "lossless_rewrite": "partial",
       "streaming": "partial"
     },
     "PSD": {
