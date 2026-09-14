@@ -981,7 +981,7 @@ impl<R: Read + Seek> BoxParser<'_, R> {
     }
 
     fn parse_exif_data(&self, data: &[u8], data_start: u64, metadata: &mut Metadata) {
-        let Some(tiff_offset) = find_tiff_offset(&data) else {
+        let Some(tiff_offset) = find_tiff_offset(data) else {
             metadata.add_warning(
                 Warning::new(
                     "invalid-isobmff-exif",
@@ -1426,8 +1426,10 @@ mod tests {
         let mut bytes = ftyp;
         bytes.extend_from_slice(&uuid);
         let info = FileInfo::new("large-uuid.mp4".into(), bytes.len() as u64, FileFormat::Mp4);
-        let mut limits = ParseLimits::default();
-        limits.max_value_bytes = 16;
+        let limits = ParseLimits {
+            max_value_bytes: 16,
+            ..ParseLimits::default()
+        };
         let metadata = read_isobmff(&mut Cursor::new(bytes), info, limits)
             .expect("oversized known UUID should remain a recoverable warning");
 
