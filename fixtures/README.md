@@ -35,3 +35,8 @@ exposes. Reports are written only when their corresponding environment variable
 is explicitly set. Add `METRA_ORACLE_STRICT=1` to the differential command when
 any missing key, panic, or value mismatch should fail the run. A match count is
 evidence for follow-up analysis, not a complete compatibility claim.
+
+The versioned compatibility matrix is also checked during the normal workspace
+test run. This verifies that its format rows match the public Rust capability
+registry and that every metadata-family, MakerNote, and CLI status uses a known
+state.

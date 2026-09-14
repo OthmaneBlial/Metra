@@ -7,6 +7,8 @@ Initial read-first foundation with narrow validated rewrites:
 - strengthened the opt-in corpus differential harness with structured JSON
   summaries, separate key/value miss counters, panic/read-failure accounting,
   and an optional strict oracle mode;
+- added an integration contract test that keeps the versioned compatibility
+  matrix synchronized with the public format capability registry;
 - added bounded TIFF GPS latitude/longitude decimal rewrites, reference-field
   updates, zero-fill deletion tombstones, generic API aliases, CLI set/delete/
   copy support, and round-trip coverage for positive and negative coordinates;

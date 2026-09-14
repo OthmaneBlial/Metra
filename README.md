@@ -173,6 +173,9 @@ writable fields. ID3
 rewrites currently require a supported ID3v2 tag without unsynchronization,
 extended-header, or footer flags. Their boundaries are tracked in
 [`compat/exiftool-compatibility.json`](compat/exiftool-compatibility.json).
+The matrix is checked by `tests/compatibility.rs`, which keeps its format
+entries and six capability statuses synchronized with the public Rust registry;
+metadata-family, MakerNote, and CLI sections are also checked for valid states.
 
 ## Quick start
 
