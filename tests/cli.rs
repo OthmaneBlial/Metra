@@ -1413,6 +1413,10 @@ fn cli_can_create_minimal_bigtiff_seed_without_overwrite() {
             "EXIF:Make=Metra",
             "--create-bigtiff",
             "Software=BigTIFF",
+            "--create-bigtiff",
+            "GPS:Latitude=48.8566",
+            "--create-bigtiff",
+            "GPS:Longitude=2.3522",
             path.to_str().expect("UTF-8 test path"),
         ])
         .output()
@@ -1426,6 +1430,20 @@ fn cli_can_create_minimal_bigtiff_seed_without_overwrite() {
         metadata.find("EXIF:Software").unwrap().display_value(),
         "BigTIFF"
     );
+    let latitude = metadata
+        .find("GPS:LatitudeDecimal")
+        .expect("derived BigTIFF latitude should be present")
+        .display_value()
+        .parse::<f64>()
+        .expect("derived BigTIFF latitude should be numeric");
+    let longitude = metadata
+        .find("GPS:LongitudeDecimal")
+        .expect("derived BigTIFF longitude should be present")
+        .display_value()
+        .parse::<f64>()
+        .expect("derived BigTIFF longitude should be numeric");
+    assert!((latitude - 48.8566).abs() < 0.000001);
+    assert!((longitude - 2.3522).abs() < 0.000001);
 
     let second = Command::new(env!("CARGO_BIN_EXE_metra"))
         .args([

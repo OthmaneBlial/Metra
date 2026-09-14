@@ -128,7 +128,7 @@ struct Arguments {
     )]
     copy: Option<String>,
 
-    /// Create a new minimal TIFF with one or more EXIF ASCII seed fields.
+    /// Create a new minimal TIFF with EXIF ASCII fields and optional GPS coordinates.
     #[arg(
         long = "create-tiff",
         value_name = "KEY=VALUE",
@@ -157,7 +157,7 @@ struct Arguments {
     )]
     create_tiff: Vec<String>,
 
-    /// Create a bounded 1x1 BigTIFF seed with EXIF ASCII fields.
+    /// Create a bounded 1x1 BigTIFF seed with EXIF ASCII fields and optional GPS coordinates.
     #[arg(
         long = "create-bigtiff",
         value_name = "KEY=VALUE",

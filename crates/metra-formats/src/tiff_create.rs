@@ -331,13 +331,13 @@ fn push_long_entry(output: &mut Vec<u8>, tag: u16, value: u32) {
 }
 
 #[derive(Debug)]
-struct EncodedGpsCoordinates {
-    latitude_reference: u8,
-    longitude_reference: u8,
-    rationals: Vec<u8>,
+pub(crate) struct EncodedGpsCoordinates {
+    pub(crate) latitude_reference: u8,
+    pub(crate) longitude_reference: u8,
+    pub(crate) rationals: Vec<u8>,
 }
 
-fn encode_gps_coordinates(
+pub(crate) fn encode_gps_coordinates(
     options: &TiffGpsCreateOptions,
     limits: ParseLimits,
 ) -> Result<EncodedGpsCoordinates> {

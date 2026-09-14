@@ -7,28 +7,33 @@ use metra_core::{FileFormat, FileInfo, MetraError, ParseLimits, Result};
 
 use crate::atomic::atomic_replace;
 use crate::tiff::read_tiff;
-use crate::tiff_create::{TiffCreateEntry, TiffCreateOptions};
+use crate::tiff_create::{
+    EncodedGpsCoordinates, TiffCreateEntry, TiffCreateOptions, encode_gps_coordinates,
+};
 
 const BASE_ENTRY_COUNT: usize = 9;
+const GPS_ENTRY_COUNT: usize = 5;
+const GPS_IFD_BYTES: usize = 8 + GPS_ENTRY_COUNT * 20 + 8 + 48;
 
 /// Create a minimal little-endian BigTIFF with one monochrome pixel.
 ///
 /// The seed contains the standard image directory plus bounded ASCII EXIF
-/// fields. It is intended for metadata workflows, not general image authoring.
+/// fields and an optional GPS coordinate IFD. It is intended for metadata
+/// workflows, not general image authoring.
 pub fn create_bigtiff_to_vec(options: &TiffCreateOptions, limits: ParseLimits) -> Result<Vec<u8>> {
-    if options.gps.is_some() {
-        return Err(MetraError::InvalidTag {
-            context: "BigTIFF creation".to_owned(),
-            message: "GPS creation is currently supported only for classic TIFF".to_owned(),
-        });
-    }
+    let gps = options
+        .gps
+        .as_ref()
+        .map(|gps| encode_gps_coordinates(gps, limits))
+        .transpose()?;
     let entries = collect_ascii_entries(&options.entries, limits)?;
-    let entry_count = BASE_ENTRY_COUNT.checked_add(entries.len()).ok_or_else(|| {
-        MetraError::ResourceLimitExceeded {
+    let entry_count = BASE_ENTRY_COUNT
+        .checked_add(entries.len())
+        .and_then(|count| count.checked_add(usize::from(gps.is_some())))
+        .ok_or_else(|| MetraError::ResourceLimitExceeded {
             resource: "BigTIFF creation IFD entries".to_owned(),
             limit: limits.max_ifd_entries,
-        }
-    })?;
+        })?;
     if entry_count > limits.max_ifd_entries {
         return Err(MetraError::ResourceLimitExceeded {
             resource: "BigTIFF creation IFD entries".to_owned(),
@@ -48,13 +53,19 @@ pub fn create_bigtiff_to_vec(options: &TiffCreateOptions, limits: ParseLimits) -
             resource: "BigTIFF creation metadata".to_owned(),
             limit: limits.max_metadata_bytes,
         })?;
-    let data_offset =
+    let ifd_end =
         16_usize
             .checked_add(directory_len)
             .ok_or_else(|| MetraError::ResourceLimitExceeded {
                 resource: "BigTIFF creation metadata".to_owned(),
                 limit: limits.max_metadata_bytes,
             })?;
+    let data_offset = ifd_end
+        .checked_add(usize::from(gps.is_some()).saturating_mul(GPS_IFD_BYTES))
+        .ok_or_else(|| MetraError::ResourceLimitExceeded {
+            resource: "BigTIFF creation metadata".to_owned(),
+            limit: limits.max_metadata_bytes,
+        })?;
     let ascii_bytes =
         entries.iter().try_fold(0_usize, |total, entry| {
             let value_len = entry.value.len().checked_add(1).ok_or_else(|| {
@@ -117,6 +128,13 @@ pub fn create_bigtiff_to_vec(options: &TiffCreateOptions, limits: ParseLimits) -
     push_short_entry(&mut output, 0x0115, 1);
     push_long_entry(&mut output, 0x0116, 1);
     push_long8_entry(&mut output, 0x0117, 1);
+    if gps.is_some() {
+        let gps_offset = u64::try_from(ifd_end).map_err(|_| MetraError::ResourceLimitExceeded {
+            resource: "BigTIFF creation offset".to_owned(),
+            limit: u64::MAX as usize,
+        })?;
+        push_long8_entry(&mut output, 0x8825, gps_offset);
+    }
 
     let mut next_data_offset =
         u64::try_from(data_offset).map_err(|_| MetraError::ResourceLimitExceeded {
@@ -152,6 +170,11 @@ pub fn create_bigtiff_to_vec(options: &TiffCreateOptions, limits: ParseLimits) -
         }
     }
     output.extend_from_slice(&0_u64.to_le_bytes());
+
+    if let Some(gps) = &gps {
+        write_gps_ifd(&mut output, ifd_end, gps);
+    }
+
     for entry in &entries {
         if entry.value.len() + 1 > 8 {
             output.extend_from_slice(entry.value.as_bytes());
@@ -304,6 +327,42 @@ fn push_long8_entry(output: &mut Vec<u8>, tag: u16, value: u64) {
     output.extend_from_slice(&value.to_le_bytes());
 }
 
+fn write_gps_ifd(output: &mut Vec<u8>, ifd_offset: usize, gps: &EncodedGpsCoordinates) {
+    debug_assert_eq!(output.len(), ifd_offset);
+    let values_offset = ifd_offset + 8 + GPS_ENTRY_COUNT * 20 + 8;
+    output.extend_from_slice(&(GPS_ENTRY_COUNT as u64).to_le_bytes());
+    push_gps_byte_entry(output, 0x0000, [2, 3, 0, 0]);
+    push_gps_ascii_reference(output, 0x0001, gps.latitude_reference);
+    push_gps_rational_entry(output, 0x0002, values_offset as u64);
+    push_gps_ascii_reference(output, 0x0003, gps.longitude_reference);
+    push_gps_rational_entry(output, 0x0004, (values_offset + 24) as u64);
+    output.extend_from_slice(&0_u64.to_le_bytes());
+    output.extend_from_slice(&gps.rationals);
+    debug_assert_eq!(output.len(), ifd_offset + GPS_IFD_BYTES);
+}
+
+fn push_gps_byte_entry(output: &mut Vec<u8>, tag: u16, value: [u8; 4]) {
+    output.extend_from_slice(&tag.to_le_bytes());
+    output.extend_from_slice(&1_u16.to_le_bytes());
+    output.extend_from_slice(&4_u64.to_le_bytes());
+    output.extend_from_slice(&value);
+    output.extend_from_slice(&[0; 4]);
+}
+
+fn push_gps_ascii_reference(output: &mut Vec<u8>, tag: u16, reference: u8) {
+    output.extend_from_slice(&tag.to_le_bytes());
+    output.extend_from_slice(&2_u16.to_le_bytes());
+    output.extend_from_slice(&2_u64.to_le_bytes());
+    output.extend_from_slice(&[reference, 0, 0, 0, 0, 0, 0, 0]);
+}
+
+fn push_gps_rational_entry(output: &mut Vec<u8>, tag: u16, value_offset: u64) {
+    output.extend_from_slice(&tag.to_le_bytes());
+    output.extend_from_slice(&5_u16.to_le_bytes());
+    output.extend_from_slice(&3_u64.to_le_bytes());
+    output.extend_from_slice(&value_offset.to_le_bytes());
+}
+
 fn temporary_path(path: &Path) -> Result<PathBuf> {
     let filename = path
         .file_name()
@@ -363,15 +422,45 @@ mod tests {
     }
 
     #[test]
-    fn rejects_gps_creation_until_bigtiff_layout_is_supported() {
+    fn creates_readable_bigtiff_with_gps_coordinates() {
         let options = TiffCreateOptions::new().with_gps_coordinates("48.8566", "2.3522");
-        let error = create_bigtiff_to_vec(&options, ParseLimits::default())
-            .expect_err("BigTIFF GPS creation should remain explicitly bounded");
-        assert!(matches!(
-            error,
-            MetraError::InvalidTag { message, .. }
-                if message.contains("only for classic TIFF")
-        ));
+        let bytes = create_bigtiff_to_vec(&options, ParseLimits::default())
+            .expect("BigTIFF GPS creation should succeed");
+        let metadata = read_tiff(
+            &mut std::io::Cursor::new(bytes.clone()),
+            FileInfo::new(
+                "created-gps.bigtiff".into(),
+                bytes.len() as u64,
+                FileFormat::Tiff,
+            ),
+            ParseLimits::default(),
+        )
+        .expect("created GPS BigTIFF should remain readable");
+        let latitude = metadata
+            .find("GPS:LatitudeDecimal")
+            .expect("derived latitude should be present")
+            .display_value()
+            .parse::<f64>()
+            .expect("derived latitude should be numeric");
+        let longitude = metadata
+            .find("GPS:LongitudeDecimal")
+            .expect("derived longitude should be present")
+            .display_value()
+            .parse::<f64>()
+            .expect("derived longitude should be numeric");
+        assert!((latitude - 48.8566).abs() < 0.000001);
+        assert!((longitude - 2.3522).abs() < 0.000001);
+        assert_eq!(
+            metadata.find("GPS:GPSLatitudeRef").unwrap().display_value(),
+            "N"
+        );
+        assert_eq!(
+            metadata
+                .find("GPS:GPSLongitudeRef")
+                .unwrap()
+                .display_value(),
+            "E"
+        );
     }
 
     #[test]
