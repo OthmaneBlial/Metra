@@ -411,6 +411,73 @@ fn public_generic_edit_api_rewrites_and_revalidates_standalone_xmp() {
 }
 
 #[test]
+fn public_generic_edit_api_rewrites_and_revalidates_icc_text() {
+    let bytes = metra::create_icc_to_vec(
+        &metra::IccCreateOptions::new().with_text("Description", "old"),
+        metra::ParseLimits::default(),
+    )
+    .expect("ICC seed should be created");
+    let output = metra::rewrite_metadata_to_vec(
+        &bytes,
+        metra::FileInfo::new(
+            "memory.icc".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::set("ICC:Description", "new")],
+    )
+    .expect("generic ICC edit should validate its rewritten bytes");
+
+    assert_eq!(output.len(), bytes.len());
+    let metadata = metra::read_from(
+        &mut std::io::Cursor::new(output),
+        metra::FileInfo::new(
+            "memory.icc".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+    )
+    .expect("rewritten ICC should remain readable");
+    assert_eq!(
+        metadata.find("ICC:Description").unwrap().display_value(),
+        "new"
+    );
+}
+
+#[test]
+fn public_generic_edit_api_deletes_icc_text_without_resizing() {
+    let bytes = metra::create_icc_to_vec(
+        &metra::IccCreateOptions::new().with_text("Description", "old"),
+        metra::ParseLimits::default(),
+    )
+    .expect("ICC seed should be created");
+    let output = metra::rewrite_metadata_to_vec(
+        &bytes,
+        metra::FileInfo::new(
+            "memory.icc".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::delete("ICC:Description")],
+    )
+    .expect("generic ICC deletion should validate its rewritten bytes");
+
+    assert_eq!(output.len(), bytes.len());
+    let metadata = metra::read_from(
+        &mut std::io::Cursor::new(output),
+        metra::FileInfo::new(
+            "memory.icc".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+    )
+    .expect("deleted ICC should remain readable");
+    assert!(metadata.find("ICC:Description").is_none());
+}
+
+#[test]
 fn public_generic_edit_api_rewrites_and_revalidates_avi_info() {
     let bytes = minimal_avi_with_title("old");
     let output = metra::rewrite_metadata_to_vec(
@@ -724,6 +791,44 @@ fn public_generic_copy_api_rewrites_standalone_xmp() {
     let metadata = metra::read(&target).expect("copied XMP should remain readable");
     assert_eq!(
         metadata.find("XMP:dc:format").unwrap().display_value(),
+        "source"
+    );
+    fs::remove_file(source).expect("source fixture should be removable");
+    fs::remove_file(target).expect("target fixture should be removable");
+}
+
+#[test]
+fn public_generic_copy_api_rewrites_icc_text() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock should be after the Unix epoch")
+        .as_nanos();
+    let source = std::env::temp_dir().join(format!("metra-copy-source-{nonce}.icc"));
+    let target = std::env::temp_dir().join(format!("metra-copy-target-{nonce}.icc"));
+    let source_bytes = metra::create_icc_to_vec(
+        &metra::IccCreateOptions::new().with_text("Description", "source"),
+        metra::ParseLimits::default(),
+    )
+    .expect("source ICC fixture should be creatable");
+    let target_bytes = metra::create_icc_to_vec(
+        &metra::IccCreateOptions::new().with_text("Description", "target"),
+        metra::ParseLimits::default(),
+    )
+    .expect("target ICC fixture should be creatable");
+    fs::write(&source, source_bytes).expect("source fixture should be writable");
+    fs::write(&target, target_bytes).expect("target fixture should be writable");
+
+    metra::copy_metadata_path(
+        &source,
+        &target,
+        metra::ParseLimits::default(),
+        "ICC:Description",
+    )
+    .expect("generic ICC copy should rewrite the target");
+
+    let metadata = metra::read(&target).expect("copied ICC should remain readable");
+    assert_eq!(
+        metadata.find("ICC:Description").unwrap().display_value(),
         "source"
     );
     fs::remove_file(source).expect("source fixture should be removable");
