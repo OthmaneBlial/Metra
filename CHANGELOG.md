@@ -9,6 +9,8 @@ Initial read-first foundation with narrow validated rewrites:
   and an optional strict oracle mode;
 - added an integration contract test that keeps the versioned compatibility
   matrix synchronized with the public format capability registry;
+- exposed the public format capability registry through human-readable and JSON
+  `--capabilities` CLI output, without requiring an input file;
 - added bounded TIFF GPS latitude/longitude decimal rewrites, reference-field
   updates, zero-fill deletion tombstones, generic API aliases, CLI set/delete/
   copy support, and round-trip coverage for positive and negative coordinates;

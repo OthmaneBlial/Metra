@@ -184,6 +184,8 @@ With Rust 1.95 or newer:
 ```bash
 cargo run -- photo.jpg
 cargo run -- --json photo.jpg
+cargo run -- --capabilities
+cargo run -- --capabilities --json
 cargo run -- --jsonl -r photos/
 cargo run -- --jsonl --jobs 4 -r photos/
 cargo run -- --csv -r photos/
@@ -380,6 +382,9 @@ Format support is also available programmatically through
 `format_capabilities(format)` and `format_capabilities_all()`. Each entry
 reports independent `read`, `write`, `create`, `delete`, `lossless_rewrite`,
 and `streaming` statuses instead of implying full support from detection alone.
+The CLI exposes the same registry with `--capabilities`; add `--json` for a
+machine-readable array. This command accepts no input file and does not invoke
+any parser.
 
 ## Architecture
 

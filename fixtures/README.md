@@ -40,3 +40,7 @@ The versioned compatibility matrix is also checked during the normal workspace
 test run. This verifies that its format rows match the public Rust capability
 registry and that every metadata-family, MakerNote, and CLI status uses a known
 state.
+
+The same public registry is available without a file through
+`cargo run -- --capabilities`, or as an automation-friendly JSON array with
+`cargo run -- --capabilities --json`.
