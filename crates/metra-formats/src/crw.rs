@@ -65,6 +65,7 @@ pub fn read_crw<R: Read + Seek>(
         None,
         TagValue::Bytes(header[14..18].to_vec()),
         header[14..18].to_vec(),
+        "Header",
         Source::new("CRW/header", Some(14), Some(4)),
     );
     add_u32_tag(
@@ -221,6 +222,7 @@ fn parse_directory<R: Read + Seek>(
         let type_bits = tag & 0x3800;
         let location_bits = tag & 0xC000;
         let tag_id = tag & 0x3FFF;
+        let group = format!("Dir{directory_offset:04X}");
         if matches!(type_bits, 0x2800 | 0x3000) {
             if location_bits == 0x4000 {
                 parse_directory(
@@ -316,6 +318,7 @@ fn parse_directory<R: Read + Seek>(
             if value_length > limits.max_value_bytes as u64 || tag_id == 0x2008 {
                 add_descriptor(
                     metadata,
+                    &group,
                     tag_id,
                     value_offset,
                     value_length,
@@ -357,6 +360,7 @@ fn parse_directory<R: Read + Seek>(
             &raw_value,
             source_offset,
             value_length,
+            &group,
             base_offset + entry_local,
             endian,
         );
@@ -374,6 +378,7 @@ fn overlaps_entry(value_offset: u64, value_length: u64, entry_offset: u64) -> bo
 
 fn add_descriptor(
     metadata: &mut Metadata,
+    group: &str,
     tag_id: u16,
     value_offset: u64,
     value_length: u64,
@@ -391,6 +396,7 @@ fn add_descriptor(
         Some(u32::from(tag_id)),
         TagValue::Unsigned(value_offset),
         entry[..10].to_vec(),
+        group,
         Source::new("CRW/directory", Some(entry_offset), Some(10)),
     );
     add_tag(
@@ -399,6 +405,7 @@ fn add_descriptor(
         Some(u32::from(tag_id)),
         TagValue::Unsigned(value_length),
         entry[..10].to_vec(),
+        group,
         Source::new("CRW/directory", Some(entry_offset), Some(10)),
     );
 }
@@ -411,6 +418,7 @@ fn decode_entry(
     raw_value: &[u8],
     source_offset: u64,
     value_length: u64,
+    group: &str,
     entry_offset: u64,
     endian: Endian,
 ) {
@@ -424,6 +432,7 @@ fn decode_entry(
                     Some(u32::from(tag_id)),
                     TagValue::String(value),
                     raw_value.to_vec(),
+                    group,
                     source,
                 );
             }
@@ -439,6 +448,7 @@ fn decode_entry(
                     Some(u32::from(tag_id)),
                     TagValue::String(String::from_utf8_lossy(field).to_string()),
                     field.to_vec(),
+                    group,
                     source.clone(),
                 );
             }
@@ -450,6 +460,7 @@ fn decode_entry(
                 tag_id,
                 &raw_value[..4],
                 source.clone(),
+                group,
                 endian,
             );
             add_scalar_from_bytes(
@@ -458,6 +469,7 @@ fn decode_entry(
                 tag_id,
                 &raw_value[4..8],
                 source.clone(),
+                group,
                 endian,
             );
             if raw_value.len() >= 16 {
@@ -468,6 +480,7 @@ fn decode_entry(
                     Some(u32::from(tag_id)),
                     TagValue::Signed(i64::from(rotation)),
                     raw_value[12..16].to_vec(),
+                    group,
                     source.clone(),
                 );
             }
@@ -498,6 +511,7 @@ fn decode_entry(
                 Some(u32::from(tag_id)),
                 value,
                 raw_value.to_vec(),
+                group,
                 Source::new("CRW/value", Some(entry_offset), Some(value_length)),
             );
         }
@@ -529,6 +543,7 @@ fn add_scalar_from_bytes(
     tag_id: u16,
     raw_value: &[u8],
     source: Source,
+    group: &str,
     endian: Endian,
 ) {
     add_tag(
@@ -537,6 +552,7 @@ fn add_scalar_from_bytes(
         Some(u32::from(tag_id)),
         TagValue::Unsigned(u64::from(read_u32(endian, raw_value))),
         raw_value.to_vec(),
+        group,
         source,
     );
 }
@@ -554,6 +570,7 @@ fn add_u32_tag(
         None,
         TagValue::Unsigned(value),
         raw_value,
+        "Header",
         source,
     );
 }
@@ -564,6 +581,7 @@ fn add_tag(
     id: Option<u32>,
     value: TagValue,
     raw_value: Vec<u8>,
+    group: &str,
     source: Source,
 ) {
     let value_type = match &value {
@@ -576,7 +594,7 @@ fn add_tag(
     };
     metadata.add_tag(Tag {
         namespace: "CRW".to_owned(),
-        group: "CRW".to_owned(),
+        group: group.to_owned(),
         id,
         name,
         description: Some("Canon CIFF/CRW metadata".to_owned()),
@@ -730,6 +748,7 @@ mod tests {
         .unwrap();
         assert_eq!(metadata.find("RAW:Variant").unwrap().display_value(), "CRW");
         assert_eq!(metadata.find("CRW:Make").unwrap().display_value(), "Canon");
+        assert_eq!(metadata.find("CRW:Make").unwrap().group, "Dir0000");
         assert_eq!(
             metadata.find("CRW:Model").unwrap().display_value(),
             "EOS-1D"
@@ -755,6 +774,7 @@ mod tests {
             metadata.find("CRW:Comment").unwrap().display_value(),
             "Nested"
         );
+        assert_eq!(metadata.find("CRW:Comment").unwrap().group, "Dir3000");
         assert!(metadata.warnings.is_empty());
     }
 }
