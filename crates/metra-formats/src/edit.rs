@@ -8,7 +8,8 @@ use metra_core::{FileFormat, FileInfo, MetraError, ParseLimits, Result};
 /// Keys use the same stable namespace form emitted by [`metra_core::Tag`],
 /// for example `JPEG:Comment`, `PNG:Text:Comment`, or `ID3:Title`. The
 /// operation is deliberately string-based until a typed write IR can cover
-/// numeric, rational, array, and binary metadata safely.
+/// numeric, rational, array, and binary metadata safely. The bounded
+/// `GPS:*` deletion is the one supported namespace wildcard.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MetadataEdit {
     Set { key: String, value: String },
@@ -373,6 +374,7 @@ pub(crate) fn collect_tiff(
                         .ok_or_else(|| unsupported_edit(format, key))
                 }
             }
+            MetadataEdit::Delete { key } if key == "GPS:*" => Ok(crate::TiffEdit::DeleteGpsAll),
             MetadataEdit::Delete { key } => {
                 if let Some(key) = gps_decimal_key(key) {
                     Ok(crate::TiffEdit::DeleteGpsDecimal {

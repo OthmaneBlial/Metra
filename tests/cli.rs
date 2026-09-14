@@ -2762,6 +2762,24 @@ fn cli_can_set_copy_and_delete_gps_scalar_values() {
 }
 
 #[test]
+fn cli_can_delete_supported_gps_wildcard() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.file("gps-scalars.tif", &minimal_tiff_with_gps_scalars());
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args(["--delete", "GPS:*", path.to_str().expect("UTF-8 test path")])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let metadata = metra::read(&path).expect("GPS wildcard result should remain readable");
+    assert!(metadata.find("GPS:GPSAltitude").is_none());
+    assert!(metadata.find("GPS:GPSImgDirection").is_none());
+    assert!(metadata.find("GPS:GPSSpeed").is_none());
+    assert!(metadata.find("GPS:AltitudeMeters").is_none());
+    assert!(metadata.find("GPS:ImageDirectionDegrees").is_none());
+    assert!(metadata.find("GPS:SpeedMetersPerSecond").is_none());
+}
+
+#[test]
 fn cli_can_set_copy_and_delete_gps_time_of_day() {
     let directory = TemporaryDirectory::new();
     let source = directory.file("source.tif", &minimal_tiff_with_gps_time());

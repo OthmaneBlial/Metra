@@ -2157,6 +2157,11 @@ fn parse_edits(
         ])));
     }
     if let Some(key) = delete {
+        if key == "GPS:*" {
+            return Ok(Some(EditRequest::DirectTiff(vec![
+                metra::TiffEdit::DeleteGpsAll,
+            ])));
+        }
         if key != "JPEG:Comment" {
             if let Some(gps_key) = gps_decimal_key(key) {
                 return Ok(Some(EditRequest::DirectTiff(vec![
@@ -2609,7 +2614,7 @@ fn svg_text_key(key: &str) -> Option<SvgTextKey> {
 
 fn unsupported_edit_message(key: &str) -> String {
     format!(
-        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:EXIF:<ASCII tag>, JPEG:XMP, IPTC:<dataset>, TIFF:EXIF:<ASCII tag>, GPS:Latitude/Longitude, GPS:Altitude, GPS:ImageDirection, GPS:Speed, GPS:TimeOfDaySeconds, GPS:Date, PDF:<Info field>, PSD:XMP, AVI:<INFO field>, Matroska:Title/MuxingApp/WritingApp, Matroska:Tag:<name>, ISOBMFF:<text field>, ISOBMFF:XMP, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, Ogg:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
+        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:EXIF:<ASCII tag>, JPEG:XMP, IPTC:<dataset>, TIFF:EXIF:<ASCII tag>, GPS:Latitude/Longitude, GPS:Altitude, GPS:ImageDirection, GPS:Speed, GPS:TimeOfDaySeconds, GPS:Date, GPS:*, PDF:<Info field>, PSD:XMP, AVI:<INFO field>, Matroska:Title/MuxingApp/WritingApp, Matroska:Tag:<name>, ISOBMFF:<text field>, ISOBMFF:XMP, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, Ogg:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
     )
 }
 

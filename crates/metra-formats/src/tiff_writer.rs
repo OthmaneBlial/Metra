@@ -15,14 +15,36 @@ use crate::tiff::read_tiff;
 /// existing rational and reference fields only.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TiffEdit {
-    SetAscii { key: String, value: String },
-    DeleteAscii { key: String },
-    SetGpsDecimal { key: String, value: String },
-    DeleteGpsDecimal { key: String },
-    SetGpsScalar { key: String, value: String },
-    DeleteGpsScalar { key: String },
-    SetGpsTime { key: String, value: String },
-    DeleteGpsTime { key: String },
+    SetAscii {
+        key: String,
+        value: String,
+    },
+    DeleteAscii {
+        key: String,
+    },
+    SetGpsDecimal {
+        key: String,
+        value: String,
+    },
+    DeleteGpsDecimal {
+        key: String,
+    },
+    SetGpsScalar {
+        key: String,
+        value: String,
+    },
+    DeleteGpsScalar {
+        key: String,
+    },
+    SetGpsTime {
+        key: String,
+        value: String,
+    },
+    DeleteGpsTime {
+        key: String,
+    },
+    /// Delete all supported GPS groups while preserving unknown GPS tags.
+    DeleteGpsAll,
 }
 
 pub fn rewrite_tiff<R: Read + Seek, W: Write + Seek>(
@@ -174,6 +196,57 @@ fn collect_patches<R: Read + Seek>(
     let variant = read_variant(reader, file_info.size, &file_info.path)?;
     let mut patches = Vec::with_capacity(edits.len());
     for edit in edits {
+        if matches!(edit, TiffEdit::DeleteGpsAll) {
+            let deletes = [
+                TiffEdit::DeleteGpsDecimal {
+                    key: "GPS:GPSLatitude".to_owned(),
+                },
+                TiffEdit::DeleteGpsDecimal {
+                    key: "GPS:GPSLongitude".to_owned(),
+                },
+                TiffEdit::DeleteGpsScalar {
+                    key: "GPS:GPSAltitude".to_owned(),
+                },
+                TiffEdit::DeleteGpsScalar {
+                    key: "GPS:GPSImgDirection".to_owned(),
+                },
+                TiffEdit::DeleteGpsScalar {
+                    key: "GPS:GPSSpeed".to_owned(),
+                },
+                TiffEdit::DeleteGpsTime {
+                    key: "GPS:GPSTimeStamp".to_owned(),
+                },
+                TiffEdit::DeleteAscii {
+                    key: "GPS:GPSDateStamp".to_owned(),
+                },
+            ];
+            let mut deleted = false;
+            for delete in &deletes {
+                let key = match delete {
+                    TiffEdit::DeleteGpsDecimal { key }
+                    | TiffEdit::DeleteGpsScalar { key }
+                    | TiffEdit::DeleteGpsTime { key }
+                    | TiffEdit::DeleteAscii { key } => key,
+                    _ => unreachable!("GPS wildcard contains deletion edits only"),
+                };
+                if metadata.find(key).is_some() {
+                    deleted = true;
+                    patches.extend(collect_patches(
+                        reader,
+                        metadata,
+                        file_info,
+                        limits,
+                        std::slice::from_ref(delete),
+                    )?);
+                }
+            }
+            if !deleted {
+                return Err(MetraError::WriteFailure {
+                    message: "TIFF GPS:* has no supported writable fields".to_owned(),
+                });
+            }
+            continue;
+        }
         if matches!(
             edit,
             TiffEdit::SetGpsDecimal { .. }
@@ -193,7 +266,9 @@ fn collect_patches<R: Read + Seek>(
                 TiffEdit::SetGpsTime { .. } | TiffEdit::DeleteGpsTime { .. } => {
                     collect_gps_time_patches(reader, metadata, file_info, limits, variant, edit)?
                 }
-                TiffEdit::SetAscii { .. } | TiffEdit::DeleteAscii { .. } => {
+                TiffEdit::SetAscii { .. }
+                | TiffEdit::DeleteAscii { .. }
+                | TiffEdit::DeleteGpsAll => {
                     unreachable!("ASCII edits are handled by the ASCII collector")
                 }
             };
@@ -208,7 +283,8 @@ fn collect_patches<R: Read + Seek>(
             | TiffEdit::SetGpsScalar { .. }
             | TiffEdit::DeleteGpsScalar { .. }
             | TiffEdit::SetGpsTime { .. }
-            | TiffEdit::DeleteGpsTime { .. } => {
+            | TiffEdit::DeleteGpsTime { .. }
+            | TiffEdit::DeleteGpsAll => {
                 unreachable!("GPS edits are handled before ASCII edits")
             }
         };
@@ -399,7 +475,8 @@ fn collect_gps_patches<R: Read + Seek>(
         | TiffEdit::SetGpsScalar { .. }
         | TiffEdit::DeleteGpsScalar { .. }
         | TiffEdit::SetGpsTime { .. }
-        | TiffEdit::DeleteGpsTime { .. } => {
+        | TiffEdit::DeleteGpsTime { .. }
+        | TiffEdit::DeleteGpsAll => {
             unreachable!("ASCII edits are handled by the ASCII collector")
         }
     };
@@ -697,7 +774,8 @@ fn collect_gps_scalar_patches<R: Read + Seek>(
         | TiffEdit::SetGpsDecimal { .. }
         | TiffEdit::DeleteGpsDecimal { .. }
         | TiffEdit::SetGpsTime { .. }
-        | TiffEdit::DeleteGpsTime { .. } => {
+        | TiffEdit::DeleteGpsTime { .. }
+        | TiffEdit::DeleteGpsAll => {
             unreachable!("other edits are handled by their dedicated collectors")
         }
     };
@@ -1037,7 +1115,8 @@ fn collect_gps_time_patches<R: Read + Seek>(
         | TiffEdit::SetGpsDecimal { .. }
         | TiffEdit::DeleteGpsDecimal { .. }
         | TiffEdit::SetGpsScalar { .. }
-        | TiffEdit::DeleteGpsScalar { .. } => {
+        | TiffEdit::DeleteGpsScalar { .. }
+        | TiffEdit::DeleteGpsAll => {
             unreachable!("other edits are handled by their dedicated collectors")
         }
     };
@@ -1861,6 +1940,52 @@ mod tests {
         assert!(metadata.find("GPS:ImageDirectionDegrees").is_none());
         assert!(metadata.find("GPS:SpeedMetersPerSecond").is_none());
         assert!(metadata.find("GPS:GPSSpeedRef").is_none());
+    }
+
+    #[test]
+    fn deletes_all_supported_gps_groups_without_resizing() {
+        let bytes = tiff_with_gps_scalars();
+        let output = rewrite_tiff_to_vec(
+            &bytes,
+            info(&bytes),
+            ParseLimits::default(),
+            &[TiffEdit::DeleteGpsAll],
+        )
+        .expect("GPS wildcard deletion should succeed");
+        assert_eq!(output.len(), bytes.len());
+        let metadata = read_tiff(
+            &mut Cursor::new(output),
+            info(&bytes),
+            ParseLimits::default(),
+        )
+        .expect("GPS wildcard result should remain readable");
+        for key in [
+            "GPS:GPSAltitude",
+            "GPS:GPSImgDirection",
+            "GPS:GPSSpeed",
+            "GPS:AltitudeMeters",
+            "GPS:ImageDirectionDegrees",
+            "GPS:SpeedMetersPerSecond",
+            "GPS:GPSSpeedRef",
+        ] {
+            assert!(metadata.find(key).is_none(), "{key} should be deleted");
+        }
+    }
+
+    #[test]
+    fn rejects_gps_wildcard_when_no_supported_group_exists() {
+        let bytes = tiff_with_make(b"Canon\0");
+        let result = rewrite_tiff_to_vec(
+            &bytes,
+            info(&bytes),
+            ParseLimits::default(),
+            &[TiffEdit::DeleteGpsAll],
+        );
+        assert!(matches!(
+            result,
+            Err(MetraError::WriteFailure { message })
+                if message.contains("GPS:* has no supported writable fields")
+        ));
     }
 
     #[test]

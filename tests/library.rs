@@ -937,6 +937,38 @@ fn public_generic_edit_api_rewrites_gps_scalar_values() {
 }
 
 #[test]
+fn public_generic_edit_api_deletes_supported_gps_wildcard() {
+    let bytes = minimal_tiff_with_gps_scalars();
+    let output = metra::rewrite_metadata_to_vec(
+        &bytes,
+        metra::FileInfo::new(
+            "memory.tif".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::delete("GPS:*")],
+    )
+    .expect("generic GPS wildcard deletion should validate its rewritten bytes");
+    assert_eq!(output.len(), bytes.len());
+    let metadata = metra::read_from(
+        &mut std::io::Cursor::new(output),
+        metra::FileInfo::new(
+            "memory.tif".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+    )
+    .expect("GPS wildcard result should remain readable");
+    assert!(metadata.find("GPS:GPSAltitude").is_none());
+    assert!(metadata.find("GPS:GPSImgDirection").is_none());
+    assert!(metadata.find("GPS:GPSSpeed").is_none());
+    assert!(metadata.find("GPS:AltitudeMeters").is_none());
+    assert!(metadata.find("GPS:ImageDirectionDegrees").is_none());
+    assert!(metadata.find("GPS:SpeedMetersPerSecond").is_none());
+}
+
+#[test]
 fn public_generic_copy_api_rewrites_derived_gps_scalar() {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
