@@ -4,6 +4,9 @@
 
 Initial read-first foundation with narrow validated rewrites:
 
+- extended the opt-in differential JSON report with symmetric oracle-side key
+  totals and oracle-only coverage, plus an opt-in strict gate for requiring all
+  oracle keys to be matched;
 - strengthened the opt-in corpus differential harness with structured JSON
   summaries, separate key/value miss counters, panic/read-failure accounting,
   and an optional strict oracle mode;
