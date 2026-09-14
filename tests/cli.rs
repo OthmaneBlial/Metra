@@ -443,6 +443,17 @@ fn minimal_png(comment: &str) -> Vec<u8> {
     bytes
 }
 
+fn minimal_png_with_time(time: [u8; 7]) -> Vec<u8> {
+    let mut bytes = b"\x89PNG\r\n\x1A\n".to_vec();
+    bytes.extend_from_slice(&png_chunk(
+        b"IHDR",
+        &[0, 0, 2, 0, 0, 0, 2, 0, 8, 2, 0, 0, 0],
+    ));
+    bytes.extend_from_slice(&png_chunk(b"tIME", &time));
+    bytes.extend_from_slice(&png_chunk(b"IEND", &[]));
+    bytes
+}
+
 fn minimal_png_xmp(format: &str) -> Vec<u8> {
     let xmp = format!(
         "<x:xmpmeta><rdf:RDF><rdf:Description xmlns:dc=\"urn:dc\" dc:format=\"{format}\"/></rdf:RDF></x:xmpmeta>"
@@ -3743,6 +3754,75 @@ fn cli_can_edit_and_copy_a_png_text_chunk() {
             .unwrap()
             .display_value(),
         "source value"
+    );
+}
+
+#[test]
+fn cli_can_edit_and_copy_png_modification_time() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.file(
+        "source-time.png",
+        &minimal_png_with_time([0x07, 0xEA, 9, 14, 10, 11, 12]),
+    );
+    let target = directory.file(
+        "target-time.png",
+        &minimal_png_with_time([0x07, 0xEA, 9, 13, 10, 11, 12]),
+    );
+
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "PNG:ModificationTime=2026-09-15 01:02:03",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("PNG:ModificationTime")
+            .unwrap()
+            .display_value(),
+        "2026-09-15 01:02:03"
+    );
+
+    let delete = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--delete",
+            "PNG:ModificationTime",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(delete.status.success(), "stderr: {:?}", delete.stderr);
+    assert!(
+        metra::read(&target)
+            .unwrap()
+            .find("PNG:ModificationTime")
+            .is_none()
+    );
+
+    let copy_assignment = format!(
+        "PNG:ModificationTime={}",
+        source.to_str().expect("UTF-8 test path")
+    );
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            copy_assignment.as_str(),
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("PNG:ModificationTime")
+            .unwrap()
+            .display_value(),
+        "2026-09-14 10:11:12"
     );
 }
 

@@ -2158,6 +2158,7 @@ enum CopyKey {
     IsobmffXmp,
     PngText(String),
     PngXmp,
+    PngTime,
     WavInfo(String),
     WavBext(String),
     WavIxml,
@@ -2328,6 +2329,11 @@ fn parse_edits(
                     value.to_owned(),
                 )])));
             }
+            if png_time_key(key) {
+                return Ok(Some(EditRequest::DirectPng(vec![metra::PngEdit::SetTime(
+                    value.to_owned(),
+                )])));
+            }
             if let Some(keyword) = png_text_keyword(key) {
                 return Ok(Some(EditRequest::DirectPng(vec![
                     metra::PngEdit::SetText {
@@ -2490,6 +2496,11 @@ fn parse_edits(
                     metra::PngEdit::DeleteXmp,
                 ])));
             }
+            if png_time_key(key) {
+                return Ok(Some(EditRequest::DirectPng(vec![
+                    metra::PngEdit::DeleteTime,
+                ])));
+            }
             if let Some(keyword) = png_text_keyword(key) {
                 return Ok(Some(EditRequest::DirectPng(vec![
                     metra::PngEdit::DeleteText {
@@ -2638,6 +2649,8 @@ fn parse_edits(
             CopyKey::SvgText(svg_key)
         } else if png_xmp_key(key) {
             CopyKey::PngXmp
+        } else if png_time_key(key) {
+            CopyKey::PngTime
         } else if let Some(keyword) = png_text_keyword(key) {
             CopyKey::PngText(keyword.to_owned())
         } else if let Some(name) = wav_info_name(key) {
@@ -2816,6 +2829,10 @@ fn png_xmp_key(key: &str) -> bool {
     matches!(key, "PNG:XMP" | "PNG:iTXt:XMP")
 }
 
+fn png_time_key(key: &str) -> bool {
+    matches!(key, "PNG:ModificationTime" | "PNG:tIME:ModificationTime")
+}
+
 fn jpeg_xmp_key(key: &str) -> bool {
     matches!(key, "JPEG:XMP" | "JPEG:APP1:XMP")
 }
@@ -2878,7 +2895,7 @@ fn svg_text_key(key: &str) -> Option<SvgTextKey> {
 
 fn unsupported_edit_message(key: &str) -> String {
     format!(
-        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:EXIF:<ASCII tag>, JPEG:XMP, IPTC:<dataset>, TIFF:EXIF:<ASCII tag>, GPS:Latitude/Longitude, GPS:Altitude, GPS:ImageDirection, GPS:Speed, GPS:TimeOfDaySeconds, GPS:Date, GPS:*, PDF:<Info field>, PSD:XMP, AVI:<INFO field>, Matroska:Title/MuxingApp/WritingApp, Matroska:Tag:<name>, ISOBMFF:<text field>, ISOBMFF:XMP, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, WAV:<bext field>, WAV:iXML:Packet, FLAC:<Vorbis field>, Ogg:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
+        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:EXIF:<ASCII tag>, JPEG:XMP, IPTC:<dataset>, TIFF:EXIF:<ASCII tag>, GPS:Latitude/Longitude, GPS:Altitude, GPS:ImageDirection, GPS:Speed, GPS:TimeOfDaySeconds, GPS:Date, GPS:*, PDF:<Info field>, PSD:XMP, AVI:<INFO field>, Matroska:Title/MuxingApp/WritingApp, Matroska:Tag:<name>, ISOBMFF:<text field>, ISOBMFF:XMP, PNG:XMP, PNG:Text:<keyword>, PNG:ModificationTime, WAV:<INFO field>, WAV:<bext field>, WAV:iXML:Packet, FLAC:<Vorbis field>, Ogg:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
     )
 }
 
@@ -4009,6 +4026,32 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path, limits: ParseLimit
                 return ExitCode::from(1);
             };
             let edits = [metra::PngEdit::SetXmp(packet)];
+            apply_png_edits(paths, &edits, limits)
+        }
+        CopyKey::PngTime => {
+            if source_metadata.file_info.format != metra::FileFormat::Png {
+                eprintln!(
+                    "metra: {}: source format {} is not PNG",
+                    source.display(),
+                    source_metadata.file_info.format
+                );
+                return ExitCode::from(1);
+            }
+            let Some(time) = source_metadata.find("PNG:ModificationTime") else {
+                eprintln!(
+                    "metra: {}: source does not contain PNG:ModificationTime",
+                    source.display()
+                );
+                return ExitCode::from(1);
+            };
+            let metra::TagValue::String(time) = &time.value else {
+                eprintln!(
+                    "metra: {}: PNG:ModificationTime is not a string",
+                    source.display()
+                );
+                return ExitCode::from(1);
+            };
+            let edits = [metra::PngEdit::SetTime(time.clone())];
             apply_png_edits(paths, &edits, limits)
         }
         CopyKey::SvgText(kind) => {

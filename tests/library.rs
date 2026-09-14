@@ -49,6 +49,31 @@ fn minimal_psd_with_xmp(format: &str) -> Vec<u8> {
     bytes
 }
 
+fn minimal_png_with_time(time: [u8; 7]) -> Vec<u8> {
+    fn chunk(kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
+        let mut crc = 0xFFFF_FFFF_u32;
+        for byte in kind.iter().chain(data.iter()) {
+            crc ^= u32::from(*byte);
+            for _ in 0..8 {
+                let mask = 0_u32.wrapping_sub(crc & 1);
+                crc = (crc >> 1) ^ (0xEDB8_8320 & mask);
+            }
+        }
+        let mut output = Vec::new();
+        output.extend_from_slice(&(data.len() as u32).to_be_bytes());
+        output.extend_from_slice(kind);
+        output.extend_from_slice(data);
+        output.extend_from_slice(&(!crc).to_be_bytes());
+        output
+    }
+
+    let mut bytes = b"\x89PNG\r\n\x1A\n".to_vec();
+    bytes.extend_from_slice(&chunk(b"IHDR", &[0, 0, 2, 0, 0, 0, 2, 0, 8, 2, 0, 0, 0]));
+    bytes.extend_from_slice(&chunk(b"tIME", &time));
+    bytes.extend_from_slice(&chunk(b"IEND", &[]));
+    bytes
+}
+
 fn minimal_avi_with_title(title: &str) -> Vec<u8> {
     let mut info_chunk = b"INAM".to_vec();
     info_chunk.extend_from_slice(&(title.len() as u32).to_le_bytes());
@@ -1542,6 +1567,104 @@ fn public_generic_edit_api_rewrites_embedded_wav_id3() {
         .find("ID3:Title")
         .is_none()
     );
+}
+
+#[test]
+fn public_generic_edit_api_rewrites_png_modification_time() {
+    let bytes = minimal_png_with_time([0x07, 0xEA, 9, 14, 10, 11, 12]);
+    let output = metra::rewrite_metadata_to_vec(
+        &bytes,
+        metra::FileInfo::new(
+            "memory.png".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::set(
+            "PNG:ModificationTime",
+            "2026-09-15 01:02:03",
+        )],
+    )
+    .expect("generic PNG tIME edit should validate its rewritten bytes");
+    let metadata = metra::read_from(
+        &mut Cursor::new(output.clone()),
+        metra::FileInfo::new(
+            "memory.png".into(),
+            output.len() as u64,
+            metra::FileFormat::Png,
+        ),
+    )
+    .expect("rewritten PNG should remain readable");
+    assert_eq!(
+        metadata
+            .find("PNG:ModificationTime")
+            .unwrap()
+            .display_value(),
+        "2026-09-15 01:02:03"
+    );
+
+    let deleted = metra::rewrite_metadata_to_vec(
+        &output,
+        metra::FileInfo::new(
+            "memory.png".into(),
+            output.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::delete("PNG:ModificationTime")],
+    )
+    .expect("generic PNG tIME deletion should validate its rewritten bytes");
+    assert!(
+        metra::read_from(
+            &mut Cursor::new(deleted.clone()),
+            metra::FileInfo::new(
+                "memory.png".into(),
+                deleted.len() as u64,
+                metra::FileFormat::Png,
+            ),
+        )
+        .unwrap()
+        .find("PNG:ModificationTime")
+        .is_none()
+    );
+}
+
+#[test]
+fn public_generic_copy_api_rewrites_png_modification_time() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock should be after the Unix epoch")
+        .as_nanos();
+    let source = std::env::temp_dir().join(format!("metra-copy-png-time-source-{nonce}.png"));
+    let target = std::env::temp_dir().join(format!("metra-copy-png-time-target-{nonce}.png"));
+    fs::write(
+        &source,
+        minimal_png_with_time([0x07, 0xEA, 9, 14, 10, 11, 12]),
+    )
+    .expect("source fixture should be writable");
+    fs::write(
+        &target,
+        minimal_png_with_time([0x07, 0xEA, 9, 13, 10, 11, 12]),
+    )
+    .expect("target fixture should be writable");
+
+    metra::copy_metadata_path(
+        &source,
+        &target,
+        metra::ParseLimits::default(),
+        "PNG:ModificationTime",
+    )
+    .expect("generic PNG tIME copy should rewrite the target");
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("PNG:ModificationTime")
+            .unwrap()
+            .display_value(),
+        "2026-09-14 10:11:12"
+    );
+    fs::remove_file(source).expect("source fixture should be removable");
+    fs::remove_file(target).expect("target fixture should be removable");
 }
 
 #[test]

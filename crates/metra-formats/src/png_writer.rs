@@ -12,10 +12,19 @@ use crate::xmp::parse_xmp;
 /// Lossless PNG text edits for uncompressed `tEXt` chunks.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PngEdit {
-    SetText { keyword: String, value: String },
-    DeleteText { keyword: String },
+    SetText {
+        keyword: String,
+        value: String,
+    },
+    DeleteText {
+        keyword: String,
+    },
     SetXmp(String),
     DeleteXmp,
+    /// Replace or insert the PNG `tIME` chunk using `YYYY-MM-DD HH:MM:SS`.
+    SetTime(String),
+    /// Remove every PNG `tIME` chunk.
+    DeleteTime,
 }
 
 pub fn rewrite_png<R: Read + Seek, W: Write>(
@@ -122,6 +131,12 @@ enum TextAction {
     DeleteXmp,
 }
 
+#[derive(Debug)]
+enum TimeAction {
+    Set(Vec<u8>),
+    Delete,
+}
+
 fn rewrite_png_stream<R: Read, W: Write>(
     reader: &mut R,
     writer: &mut W,
@@ -130,6 +145,7 @@ fn rewrite_png_stream<R: Read, W: Write>(
     edits: &[PngEdit],
 ) -> Result<()> {
     let action = text_action(edits, limits)?;
+    let time_action = time_action(edits)?;
     let mut signature = [0_u8; 8];
     read_exact(reader, &mut signature, path)?;
     if &signature != PNG_SIGNATURE {
@@ -142,6 +158,7 @@ fn rewrite_png_stream<R: Read, W: Write>(
     let mut chunks = 0_usize;
     let mut text_bytes = 0_usize;
     let mut inserted = false;
+    let mut time_inserted = false;
 
     loop {
         if chunks >= limits.max_jpeg_segments {
@@ -211,12 +228,31 @@ fn rewrite_png_stream<R: Read, W: Write>(
                 write_all(writer, &data)?;
                 write_all(writer, &crc)?;
             }
+        } else if &chunk_type == b"tIME" {
+            if let Some(action) = time_action.as_ref() {
+                copy_exact(&mut *reader, &mut std::io::sink(), data_length, path)?;
+                copy_exact(&mut *reader, &mut std::io::sink(), 4, path)?;
+                if !time_inserted {
+                    write_time_action(writer, action)?;
+                    time_inserted = true;
+                }
+            } else {
+                write_all(writer, &header)?;
+                copy_exact(reader, writer, data_length, path)?;
+                copy_exact(reader, writer, 4, path)?;
+            }
         } else if &chunk_type == b"IEND" {
             if let Some(action) = action.as_ref()
                 && !inserted
                 && action_is_set(action)
             {
                 write_action_chunk(writer, action)?;
+            }
+            if let Some(action) = time_action.as_ref()
+                && !time_inserted
+                && matches!(action, TimeAction::Set(_))
+            {
+                write_time_action(writer, action)?;
             }
             write_all(writer, &header)?;
             copy_exact(reader, writer, data_length, path)?;
@@ -229,6 +265,18 @@ fn rewrite_png_stream<R: Read, W: Write>(
         }
         chunks += 1;
     }
+}
+
+fn time_action(edits: &[PngEdit]) -> Result<Option<TimeAction>> {
+    let mut action = None;
+    for edit in edits {
+        match edit {
+            PngEdit::SetTime(value) => action = Some(TimeAction::Set(parse_png_time(value)?)),
+            PngEdit::DeleteTime => action = Some(TimeAction::Delete),
+            _ => {}
+        }
+    }
+    Ok(action)
 }
 
 fn text_action(edits: &[PngEdit], limits: ParseLimits) -> Result<Option<TextAction>> {
@@ -267,9 +315,81 @@ fn text_action(edits: &[PngEdit], limits: ParseLimits) -> Result<Option<TextActi
                 action = Some(TextAction::SetXmp(validate_xmp(value, limits)?));
             }
             PngEdit::DeleteXmp => action = Some(TextAction::DeleteXmp),
+            PngEdit::SetTime(_) | PngEdit::DeleteTime => {}
         }
     }
     Ok(action)
+}
+
+fn parse_png_time(value: &str) -> Result<Vec<u8>> {
+    let bytes = value.as_bytes();
+    if bytes.len() != 19
+        || !matches!(bytes[4], b'-' | b':')
+        || bytes[7] != bytes[4]
+        || bytes[10] != b' '
+        || bytes[13] != b':'
+        || bytes[16] != b':'
+    {
+        return Err(MetraError::InvalidTag {
+            context: "PNG tIME".to_owned(),
+            message: "expected YYYY-MM-DD HH:MM:SS".to_owned(),
+        });
+    }
+    let year = parse_decimal(&bytes[..4])?;
+    let month = parse_decimal(&bytes[5..7])?;
+    let day = parse_decimal(&bytes[8..10])?;
+    let hour = parse_decimal(&bytes[11..13])?;
+    let minute = parse_decimal(&bytes[14..16])?;
+    let second = parse_decimal(&bytes[17..19])?;
+    if !(1..=12).contains(&month)
+        || !(1..=days_in_month(year, month)).contains(&day)
+        || hour > 23
+        || minute > 59
+        || second > 59
+    {
+        return Err(MetraError::InvalidTag {
+            context: "PNG tIME".to_owned(),
+            message: "date or time components are out of range".to_owned(),
+        });
+    }
+    Ok(vec![
+        (year >> 8) as u8,
+        year as u8,
+        month as u8,
+        day as u8,
+        hour as u8,
+        minute as u8,
+        second as u8,
+    ])
+}
+
+fn parse_decimal(bytes: &[u8]) -> Result<u16> {
+    if bytes.is_empty() || bytes.len() > 4 || !bytes.iter().all(|byte| byte.is_ascii_digit()) {
+        return Err(MetraError::InvalidTag {
+            context: "PNG tIME".to_owned(),
+            message: "date and time components must be decimal digits".to_owned(),
+        });
+    }
+    bytes.iter().try_fold(0_u16, |value, byte| {
+        value
+            .checked_mul(10)
+            .and_then(|value| value.checked_add(u16::from(byte - b'0')))
+            .ok_or_else(|| MetraError::InvalidTag {
+                context: "PNG tIME".to_owned(),
+                message: "year is outside the PNG 16-bit range".to_owned(),
+            })
+    })
+}
+
+fn days_in_month(year: u16, month: u16) -> u16 {
+    match month {
+        2 if year.is_multiple_of(400) || (year.is_multiple_of(4) && !year.is_multiple_of(100)) => {
+            29
+        }
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    }
 }
 
 fn validate_keyword(keyword: &str) -> Result<Vec<u8>> {
@@ -353,6 +473,23 @@ fn write_action_chunk<W: Write>(writer: &mut W, action: &TextAction) -> Result<(
         TextAction::SetXmp(value) => write_itxt_xmp_chunk(writer, value),
         TextAction::Delete { .. } | TextAction::DeleteXmp => Ok(()),
     }
+}
+
+fn write_time_action<W: Write>(writer: &mut W, action: &TimeAction) -> Result<()> {
+    if let TimeAction::Set(value) = action {
+        write_png_chunk(writer, b"tIME", value)?;
+    }
+    Ok(())
+}
+
+fn write_png_chunk<W: Write>(writer: &mut W, chunk_type: &[u8; 4], data: &[u8]) -> Result<()> {
+    let length = u32::try_from(data.len()).map_err(|_| MetraError::WriteFailure {
+        message: "PNG chunk exceeds the 32-bit length limit".to_owned(),
+    })?;
+    write_all(writer, &length.to_be_bytes())?;
+    write_all(writer, chunk_type)?;
+    write_all(writer, data)?;
+    write_all(writer, &crc32(chunk_type, data).to_be_bytes())
 }
 
 fn write_text_chunk<W: Write>(writer: &mut W, keyword: &[u8], value: &[u8]) -> Result<()> {
@@ -486,6 +623,15 @@ mod tests {
         bytes
     }
 
+    fn png_with_time() -> Vec<u8> {
+        let mut bytes = PNG_SIGNATURE.to_vec();
+        bytes.extend_from_slice(&chunk(b"IHDR", &[0; 13]));
+        bytes.extend_from_slice(&chunk(b"tIME", &[0x07, 0xEA, 9, 13, 12, 34, 56]));
+        bytes.extend_from_slice(&chunk(b"IDAT", &[1, 2, 3, 4]));
+        bytes.extend_from_slice(&chunk(b"IEND", &[]));
+        bytes
+    }
+
     fn png_with_xmp(xmp: &[u8]) -> Vec<u8> {
         let mut itxt = b"XML:com.adobe.xmp\0\0\0\0\0".to_vec();
         itxt.extend_from_slice(xmp);
@@ -594,6 +740,82 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.to_string().contains("keywords"));
+    }
+
+    #[test]
+    fn replaces_deletes_and_inserts_modification_time() {
+        let bytes = png_with_time();
+        let output = rewrite_png_to_vec(
+            &bytes,
+            info(bytes.len()),
+            ParseLimits::default(),
+            &[PngEdit::SetTime("2026-09-14 01:02:03".to_owned())],
+        )
+        .unwrap();
+        let metadata = read_png(
+            &mut Cursor::new(output.clone()),
+            info(output.len()),
+            ParseLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            metadata
+                .find("PNG:ModificationTime")
+                .unwrap()
+                .display_value(),
+            "2026-09-14 01:02:03"
+        );
+        assert!(
+            output
+                .windows(11)
+                .any(|window| window == [0, 0, 0, 7, b't', b'I', b'M', b'E', 7, 234, 9])
+        );
+
+        let deleted = rewrite_png_to_vec(
+            &bytes,
+            info(bytes.len()),
+            ParseLimits::default(),
+            &[PngEdit::DeleteTime],
+        )
+        .unwrap();
+        assert!(!deleted.windows(4).any(|window| window == b"tIME"));
+
+        let mut without_time = PNG_SIGNATURE.to_vec();
+        without_time.extend_from_slice(&chunk(b"IHDR", &[0; 13]));
+        without_time.extend_from_slice(&chunk(b"IEND", &[]));
+        let inserted = rewrite_png_to_vec(
+            &without_time,
+            info(without_time.len()),
+            ParseLimits::default(),
+            &[PngEdit::SetTime("2026:09:14 01:02:03".to_owned())],
+        )
+        .unwrap();
+        let inserted_metadata = read_png(
+            &mut Cursor::new(inserted),
+            info(without_time.len() + 19),
+            ParseLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            inserted_metadata
+                .find("PNG:ModificationTime")
+                .unwrap()
+                .display_value(),
+            "2026-09-14 01:02:03"
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_modification_time() {
+        let bytes = png_with_time();
+        let error = rewrite_png_to_vec(
+            &bytes,
+            info(bytes.len()),
+            ParseLimits::default(),
+            &[PngEdit::SetTime("2026-02-29 01:02:03".to_owned())],
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("out of range"));
     }
 
     #[test]

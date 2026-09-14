@@ -358,6 +358,8 @@ fn source_lookup_key(key: &str) -> &str {
         "GPS:GPSDateStamp"
     } else if let Some(key) = key.strip_prefix("TIFF:") {
         key
+    } else if png_time_key(key) {
+        "PNG:ModificationTime"
     } else if jpeg_xmp_key(key)
         || png_xmp_key(key)
         || webp_xmp_key(key)
@@ -498,6 +500,10 @@ pub(crate) fn collect_png(
                 Ok(crate::PngEdit::SetXmp(value.clone()))
             }
             MetadataEdit::Delete { key } if png_xmp_key(key) => Ok(crate::PngEdit::DeleteXmp),
+            MetadataEdit::Set { key, value } if png_time_key(key) => {
+                Ok(crate::PngEdit::SetTime(value.clone()))
+            }
+            MetadataEdit::Delete { key } if png_time_key(key) => Ok(crate::PngEdit::DeleteTime),
             MetadataEdit::Set { key, value } => png_text_keyword(key)
                 .map(|keyword| crate::PngEdit::SetText {
                     keyword: keyword.to_owned(),
@@ -922,6 +928,10 @@ fn gps_date_key(key: &str) -> Option<&'static str> {
 
 fn png_xmp_key(key: &str) -> bool {
     matches!(key, "PNG:XMP" | "PNG:iTXt:XMP")
+}
+
+fn png_time_key(key: &str) -> bool {
+    matches!(key, "PNG:ModificationTime" | "PNG:tIME:ModificationTime")
 }
 
 fn png_text_keyword(key: &str) -> Option<&str> {
