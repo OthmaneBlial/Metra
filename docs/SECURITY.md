@@ -40,9 +40,9 @@ before allocating or traversing metadata.
   budgeted before inspection; X3F image payloads are never loaded by the
   metadata reader;
 - CRW root-directory pointers, entry counts, relative value ranges, data
-  locations, recursion depth, and value budgets are checked before decoding;
-  preview and oversized values are reported as descriptors without loading
-  their payloads;
+  locations, recursion depth, and a global entry budget are checked before
+  decoding; preview and oversized values are reported as descriptors without
+  loading their payloads;
 - typed EXIF/GPS date and time values are materialized only after calendar,
   clock, denominator, and fractional-range validation;
 - malformed embedded EXIF can be downgraded to a warning at the container

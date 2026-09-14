@@ -16,6 +16,8 @@ Initial read-first foundation with narrow validated rewrites:
   ASCII Make/Model and dimension entries, relative value checks, preview
   descriptors, generic RAW dispatch, and CLI JSON coverage; CRW image payloads
   remain untouched and CRW writes remain unsupported;
+- bounded CRW nested-directory traversal with one global entry budget and
+  regression coverage against multiplicative hostile directory graphs;
 - added bounded RAF header and Fuji-directory decoding with firmware, preview
   and directory offsets, selected raw-image/zoom fields, raw-value retention,
   range/entry/resource-limit checks, truncated-structure warnings, generic
