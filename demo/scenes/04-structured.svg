@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <rect width="1280" height="720" fill="#0b1518"/>
+  <text x="72" y="78" fill="#8baba4" font-family="SF Mono,Menlo,monospace" font-size="19" letter-spacing="4">05 / USE IT IN A PIPELINE</text>
+  <text x="72" y="184" fill="#eef5ec" font-family="Avenir Next,Helvetica,sans-serif" font-size="39">One model. Human or machine output.</text>
+  <text x="72" y="236" fill="#9ab6b0" font-family="Avenir Next,Helvetica,sans-serif" font-size="22">JSON Lines keeps large batches streamable and deterministic.</text>
+  <rect x="72" y="296" width="1140" height="274" rx="14" fill="#101e22" stroke="#36555a"/>
+  <text x="112" y="348" fill="#d7ff63" font-family="SF Mono,Menlo,monospace" font-size="22">$ ./metra --jsonl take.wav</text>
+  <text x="112" y="404" fill="#e9f1e8" font-family="SF Mono,Menlo,monospace" font-size="21">{"schema_version":1, "format":"WAV",</text>
+  <text x="112" y="442" fill="#e9f1e8" font-family="SF Mono,Menlo,monospace" font-size="21"> "tags":["Artist","Title","AudioFormat", ...],</text>
+  <text x="112" y="480" fill="#e9f1e8" font-family="SF Mono,Menlo,monospace" font-size="21"> "warnings":[]}</text>
+  <text x="112" y="536" fill="#8baba4" font-family="SF Mono,Menlo,monospace" font-size="19">JSON  ·  JSONL  ·  CSV  ·  TOML  ·  YAML</text>
+  <rect x="72" y="620" width="268" height="42" rx="21" fill="#d7ff63"/>
+  <text x="100" y="648" fill="#091013" font-family="SF Mono,Menlo,monospace" font-size="17" font-weight="700">SCHEMA VERSION 1</text>
+</svg>

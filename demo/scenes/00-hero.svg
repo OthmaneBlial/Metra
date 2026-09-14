@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <defs>
+    <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#071114"/><stop offset="1" stop-color="#12252a"/></linearGradient>
+    <pattern id="grid" width="42" height="42" patternUnits="userSpaceOnUse"><path d="M42 0H0V42" fill="none" stroke="#214047" stroke-opacity=".22"/></pattern>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/><rect width="1280" height="720" fill="url(#grid)"/>
+  <circle cx="1110" cy="110" r="220" fill="#d7ff63" opacity=".06"/>
+  <text x="72" y="78" fill="#8baba4" font-family="SF Mono,Menlo,monospace" font-size="19" letter-spacing="4">01 / START WITH THE FILE</text>
+  <text x="72" y="190" fill="#d7ff63" font-family="SF Mono,Menlo,monospace" font-size="82" font-weight="700">METRA</text>
+  <text x="76" y="248" fill="#eef5ec" font-family="Avenir Next,Helvetica,sans-serif" font-size="36">metadata workflows, with evidence</text>
+  <text x="76" y="304" fill="#9ab6b0" font-family="Avenir Next,Helvetica,sans-serif" font-size="22">A local-first Rust toolkit to read, validate, create, compare, and safely edit.</text>
+  <rect x="76" y="370" width="1128" height="210" rx="16" fill="#081619" stroke="#36555a"/>
+  <circle cx="108" cy="406" r="7" fill="#ff7d66"/><circle cx="134" cy="406" r="7" fill="#f4bd5b"/><circle cx="160" cy="406" r="7" fill="#d7ff63"/>
+  <text x="108" y="458" fill="#d7ff63" font-family="SF Mono,Menlo,monospace" font-size="24">$ ./metra --jsonl take.wav</text>
+  <text x="108" y="502" fill="#e9f1e8" font-family="SF Mono,Menlo,monospace" font-size="23">{"format":"WAV", "tags":9, "warnings":0}</text>
+  <text x="108" y="546" fill="#8baba4" font-family="SF Mono,Menlo,monospace" font-size="21">bounded parser  ·  typed output  ·  no pixel decode</text>
+  <text x="72" y="656" fill="#d7ff63" font-family="SF Mono,Menlo,monospace" font-size="18">RUST-NATIVE</text>
+  <text x="250" y="656" fill="#8baba4" font-family="SF Mono,Menlo,monospace" font-size="18">LOCAL-FIRST</text>
+  <text x="456" y="656" fill="#8baba4" font-family="SF Mono,Menlo,monospace" font-size="18">OPEN SOURCE</text>
+</svg>

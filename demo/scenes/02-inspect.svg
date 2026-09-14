@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <rect width="1280" height="720" fill="#0a1417"/>
+  <rect x="0" y="0" width="9" height="720" fill="#ff7d66"/>
+  <text x="72" y="78" fill="#8baba4" font-family="SF Mono,Menlo,monospace" font-size="19" letter-spacing="4">03 / INSPECT ONLY WHAT YOU NEED</text>
+  <text x="72" y="184" fill="#eef5ec" font-family="Avenir Next,Helvetica,sans-serif" font-size="39">Typed metadata, not a wall of bytes.</text>
+  <text x="72" y="238" fill="#9ab6b0" font-family="Avenir Next,Helvetica,sans-serif" font-size="22">Select canonical tags for humans, scripts, or downstream tools.</text>
+  <rect x="72" y="300" width="1140" height="228" rx="14" fill="#111f23" stroke="#36555a"/>
+  <text x="112" y="360" fill="#d7ff63" font-family="SF Mono,Menlo,monospace" font-size="23">$ ./metra --tag PNG:ModificationTime demo.png</text>
+  <text x="112" y="414" fill="#e9f1e8" font-family="SF Mono,Menlo,monospace" font-size="22">File: demo.png</text>
+  <text x="112" y="452" fill="#e9f1e8" font-family="SF Mono,Menlo,monospace" font-size="22">Format: PNG</text>
+  <text x="112" y="490" fill="#ffb58d" font-family="SF Mono,Menlo,monospace" font-size="22">PNG:ModificationTime = 2026-09-14 12:34:56</text>
+  <text x="72" y="632" fill="#d7ff63" font-family="SF Mono,Menlo,monospace" font-size="19">CANONICAL NAMES</text>
+  <text x="322" y="632" fill="#8baba4" font-family="SF Mono,Menlo,monospace" font-size="19">STABLE IDS</text>
+  <text x="526" y="632" fill="#8baba4" font-family="SF Mono,Menlo,monospace" font-size="19">STRUCTURED OUTPUT</text>
+</svg>

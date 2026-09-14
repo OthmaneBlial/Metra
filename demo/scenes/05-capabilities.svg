@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <rect width="1280" height="720" fill="#071114"/>
+  <path d="M72 120H1208M72 170H1208M72 220H1208M72 270H1208M72 320H1208" stroke="#26464b"/>
+  <text x="72" y="78" fill="#8baba4" font-family="SF Mono,Menlo,monospace" font-size="19" letter-spacing="4">06 / KNOW THE SURFACE</text>
+  <text x="72" y="390" fill="#eef5ec" font-family="Avenir Next,Helvetica,sans-serif" font-size="39">Capabilities are explicit.</text>
+  <text x="72" y="442" fill="#9ab6b0" font-family="Avenir Next,Helvetica,sans-serif" font-size="22">Read, write, create, delete, lossless rewrite, and streaming are tracked separately.</text>
+  <text x="88" y="112" fill="#d7ff63" font-family="SF Mono,Menlo,monospace" font-size="18">format        read      write     create    delete    lossless_rewrite</text>
+  <text x="88" y="158" fill="#e9f1e8" font-family="SF Mono,Menlo,monospace" font-size="18">JPEG          partial    partial   partial   partial   partial</text>
+  <text x="88" y="208" fill="#e9f1e8" font-family="SF Mono,Menlo,monospace" font-size="18">TIFF          partial    partial   partial   partial   partial</text>
+  <text x="88" y="258" fill="#e9f1e8" font-family="SF Mono,Menlo,monospace" font-size="18">PNG           partial    partial   partial   partial   partial</text>
+  <text x="88" y="308" fill="#e9f1e8" font-family="SF Mono,Menlo,monospace" font-size="18">WAV           partial    partial   partial   partial   partial</text>
+  <rect x="72" y="516" width="1136" height="94" rx="14" fill="#13252a" stroke="#36555a"/>
+  <text x="104" y="556" fill="#d7ff63" font-family="SF Mono,Menlo,monospace" font-size="21">$ ./metra --capabilities</text>
+  <text x="104" y="588" fill="#8baba4" font-family="SF Mono,Menlo,monospace" font-size="19">23 registered format families  ·  partial means intentionally bounded</text>
+</svg>

@@ -1,377 +1,204 @@
 # Metra
 
-Fast, safe metadata inspection powered by Rust.
+### Safe metadata workflows in native Rust.
 
-Metra is an independent metadata toolkit whose library is the product and whose
-CLI is a thin consumer of the same public API. The current release is a
-read-first foundation with narrow, validated rewrites: it inspects container
-metadata without decoding image pixels and reports unsupported blocks instead of
-pretending to understand them.
+Metra is a local-first metadata toolkit and CLI for reading, validating,
+creating, comparing, and narrowly editing image, audio, document, and media
+containers. It gives Rust applications a typed metadata model and gives shell
+pipelines deterministic human or structured output.
 
-## Current status
+Metra is an open-source alternative for bounded Rust metadata workflows. It is
+not a drop-in replacement for ExifTool and does not claim complete format or
+tag compatibility.
 
-The first verified vertical slice is:
+[![Release](https://img.shields.io/github/v/release/OthmaneBlial/Metra?display_name=tag&sort=semver)](https://github.com/OthmaneBlial/Metra/releases)
+[![CI](https://github.com/OthmaneBlial/Metra/actions/workflows/ci.yml/badge.svg)](https://github.com/OthmaneBlial/Metra/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-MIT-8baba4.svg)](LICENSE)
+[![Rust 1.95+](https://img.shields.io/badge/rust-1.95%2B-orange?logo=rust&logoColor=white)](rust-toolchain.toml)
+[![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-36555a.svg)](.github/workflows/ci.yml)
 
-```text
-JPEG / TIFF / PNG / WebP / GIF / SVG / PSD/PSB / RAW / AVI / MKV / WebM / Ogg / ISO-BMFF media
-        ↓
-bounded container parsing
-        ↓
-typed Rust metadata model
-        ↓
-human-readable or structured output
+[Website](https://othmaneblial.github.io/Metra/) ·
+[Watch the 49-second demo](https://github.com/OthmaneBlial/Metra/raw/main/site/assets/metra-demo.mp4) ·
+[Roadmap](ROADMAP.md) ·
+[Architecture](docs/ARCHITECTURE.md) ·
+[Security](docs/SECURITY.md) ·
+[Changelog](CHANGELOG.md) ·
+[Issues](https://github.com/OthmaneBlial/Metra/issues)
+
+![Metra terminal demo](https://raw.githubusercontent.com/OthmaneBlial/Metra/main/site/assets/metra-demo-poster.png)
+
+The demo is recorded from the current `metra` binary. It uses synthetic files
+only and shows creation, targeted inspection, a validated PNG rewrite, JSON
+Lines output, and the public capability matrix.
+
+## Why Metra exists
+
+Metadata code sits on a difficult boundary: files are untrusted, containers
+are nested, and a useful tool must preserve evidence instead of flattening
+everything into strings. Metra focuses on a small set of dependable building
+blocks:
+
+- parse with checked offsets, bounded allocations, typed values, and warnings;
+- expose the same model through a Rust API and a scriptable CLI;
+- make read, write, create, delete, lossless rewrite, and streaming status
+  explicit for every registered format;
+- refuse an edit when the writer cannot validate the result safely.
+
+## What it gives you
+
+### Inspect files without decoding media payloads
+
+Metra detects containers from signatures rather than extensions, walks bounded
+metadata regions, retains raw values where useful, and keeps warnings separate
+from successfully parsed tags. Image pixels, audio samples, video frames, and
+large attachment payloads are not decoded by the metadata reader.
+
+### Build deterministic metadata pipelines
+
+Use human-readable output for investigation or JSON, JSON Lines, CSV, TOML, and
+YAML for tools. Recursive traversal is deterministic; `--jobs N` adds bounded
+parallel inspection, and streaming modes apply bounded backpressure. The JSON
+document schema is versioned at `1`.
+
+### Change only what can be proven safe
+
+Supported writers read the source before writing, copy through a same-directory
+temporary file, validate the candidate output through the reader, and replace
+the source atomically. Fixed-span writers preserve container layout and reject
+growth when the existing storage cannot hold the new value.
+
+### Embed the model in Rust
+
+The binary is a thin consumer of the public `metra` facade. Library users get
+in-memory reading, configurable parse limits, deterministic batch helpers,
+cooperative cancellation, stable tag identifiers, metadata diffs, a capability
+registry, and format-specific creation/rewrite APIs.
+
+## Feature surface
+
+The capability matrix is the source of truth for the current read/write/create
+surface. `partial` is intentional: it means a format has a bounded, tested
+seam, not that every tag or operation is supported.
+
+| Workflow | Available today |
+| --- | --- |
+| Read | JPEG, TIFF/BigTIFF, PNG, WebP, GIF, SVG, PSD/PSB, DNG and TIFF-like RAW, CR3, RAF, MRW, CRW, X3F, AVI, MKV/WebM, Ogg/Vorbis/Opus, FLAC, WAV/RF64/BW64, MP3/ID3, PDF, XMP, ICC, HEIF/AVIF, MP4/MOV/M4A |
+| Create | Bounded metadata seeds for TIFF/BigTIFF, DNG, JPEG, PNG, WebP, GIF, SVG, PSD, PDF, ICC, XMP, WAV/RF64/BW64, MP3, Ogg Opus, FLAC, AVI, Matroska/WebM, MP4/MOV/M4A, HEIF/AVIF |
+| Edit | Tested narrow writers for existing fields in JPEG, TIFF/RAW, PNG, WebP, GIF, SVG, PSD, AVI, Matroska/WebM, ISO-BMFF/CR3, PDF, ICC, XMP, ID3, FLAC, Ogg, WAV/iXML/ID3/BWF |
+| Operate | `--set`, `--delete`, `--copy`, `--compare`, `--validate`, `--recursive`, `--jobs`, cancellation on Ctrl-C, and configurable metadata/value budgets |
+| Output | Text, JSON, JSON Lines, CSV, TOML, YAML, stable namespace/tag identifiers, structured warnings |
+
+### Working
+
+- bounded signature detection and typed metadata parsing across the registered
+  image, audio, document, media, RAW, XMP, and ICC families;
+- validated creation of small metadata-oriented seeds, with no-overwrite path
+  helpers and output revalidation;
+- lossless or fixed-span rewrites where the format contract supports them,
+  including EXIF/GPS, PNG `tIME`/`pHYs`, XMP, IPTC, ID3, BWF, iXML, INFO, and
+  selected container text fields;
+- a public capability registry and compatibility matrix checked by tests;
+- deterministic batch APIs and CLI output with bounded worker concurrency.
+
+### Experimental or intentionally limited
+
+- MakerNote interpretation is bounded to selected families and retains unknown
+  values rather than guessing;
+- proprietary RAW families such as RAF, MRW, CRW, and X3F are read-only;
+- many writers require existing storage, equal packet length, or a fixed field;
+- the differential corpus harness is opt-in and no corpus is distributed;
+- ExifTool compatibility is represented by a versioned bounded matrix, not a
+  completeness claim.
+
+### Planned
+
+Broader real-world corpus coverage, deeper tag/catalog coverage, more complete
+MakerNote interpretation, broader media structures, and additional creation or
+rewrite seams remain on the roadmap. See [`ROADMAP.md`](ROADMAP.md) for the
+verified delivery snapshot and explicit gates.
+
+## Demo
+
+The real CLI walkthrough is available in the repository and on the project
+site:
+
+[![Watch the Metra demo](https://raw.githubusercontent.com/OthmaneBlial/Metra/main/site/assets/metra-demo-poster.png)](https://github.com/OthmaneBlial/Metra/raw/main/site/assets/metra-demo.mp4)
+
+The MP4 is intentionally a terminal demonstration because Metra is a CLI and
+library, not a graphical application. GitHub may sanitize embedded HTML video,
+so the poster, direct MP4 link, and site player are all provided.
+
+To reproduce the source transcript and temporary synthetic files:
+
+```bash
+cargo build --release
+./demo/record.sh
 ```
 
-Implemented today:
+To rebuild the presentation asset on macOS with FFmpeg and Quick Look:
 
-| Area | Current behavior |
-| --- | --- |
-| JPEG | Magic-byte detection, segment walking, JFIF properties, JPEG comments, EXIF APP1, structured XMP, reassembled typed ICC profiles with common table values, IPTC resources from Photoshop blocks, bounded GoPro APP6 `DEVC`/`STRM` fields, and minimal metadata-container seed creation |
-| TIFF/EXIF | Little- and big-endian classic TIFF and BigTIFF headers, 64-bit IFD counts/offsets, nested EXIF/GPS/Interop directories, bounded multiple `SubIFD` offsets, chained IFD0/IFD1/IFD2 thumbnail directories, common image/exposure/lens tag names, rational values, typed EXIF date-time and GPS date/time values, ASCII/Unicode `UserComment`, common MakerNote container detection with bounded Nikon Type 1/2, Canon, Fujifilm, Panasonic, Olympus, legacy Sony, and Apple IFD fields, bounded Apple runtime binary-plist structures, Samsung STMN header/preview fields and DJI IFD fields, GoPro family detection, retained unknown MakerNote values, unknown tags, thumbnail range checks, and validated decimal GPS latitude/longitude, altitude, direction, time, and speed helpers, safe bounded ASCII deletion, and minimal 1×1 classic TIFF and BigTIFF creation with EXIF ASCII seeds; both TIFF seed variants may also include a validated GPS coordinate and scalar/time/date set |
-| PNG | Chunk walking, IHDR dimensions and encoding parameters, CRC warnings, tEXt/zTXt/iTXt including bounded zlib text, eXIf, tIME, pHYs, structured XMP, bounded ICC profile headers from `iCCP`, lossless validated `tIME` set/delete/copy, and minimal 1×1 RGBA creation with bounded `tEXt` seeds |
-| WebP | RIFF chunk walking, VP8X/VP8/VP8L dimensions, EXIF, structured XMP, typed ICC profiles, and minimal 1x1 lossless seed creation with bounded XMP |
-| GIF | GIF87a/GIF89a headers, logical-screen dimensions, comments, bounded extension validation, and minimal 1x1 creation with comment extensions |
-| ISO-BMFF | HEIF/AVIF/MP4/MOV/M4A brand detection, bounded box walking, `mvhd` movie timing, `tkhd` track IDs/durations/dimensions, `ispe` dimensions, `pixi` channels, `irot`/`imir` orientation, `pasp` aspect ratio, `colr` nclx values, `auxC` auxiliary type, direct and Adobe-UUID XMP/EXIF metadata, QuickTime-style `ilst` text metadata, and validated in-place edits for existing text and XMP payloads |
-| MP3 | ID3v2.2/v2.3/v2.4 text, comments, lyrics, attached-picture metadata, ID3v1 fallback, first MPEG frame properties, and minimal ID3v2.4 seed creation |
-| FLAC | `STREAMINFO`, bounded `SEEKTABLE` seek-point and `CUESHEET` track/index structures, Vorbis comments, embedded-picture properties/data, bounded metadata-block validation, and minimal metadata-only creation with Vorbis comments |
-| Ogg/Vorbis/Opus | Bounded Ogg page walking with metadata-page CRC warnings, Vorbis and Opus stream headers, Vorbis Comments/OpusTags, Ogg-FLAC comments, typed FLAC-in-Ogg `STREAMINFO` fields, and minimal Opus seed creation with bounded comments |
-| PDF | Header/version, bounded Info dictionaries, PDF string decoding, embedded XMP packets when directly available, and minimal xref-valid document creation with Info fields |
-| WAV | RIFF/RF64/BW64 WAVE chunks, `fmt ` audio properties, `LIST/INFO`, and canonical Broadcast Wave `bext` fields (`Description`, `Originator`, `DateTimeOriginal`, `TimeReference`, `BWFVersion`, `BWF_UMID`, and `CodingHistory`) with typed date-time values and fixed-field raw preservation; RF64 `ds64` 64-bit size metadata is resolved without loading audio payloads; existing `LIST/INFO`, `bext`, and iXML packet metadata can be rewritten on RIFF/RF64/BW64 while preserving sentinel-sized audio chunks and payload bytes; iXML replacements are XML-validated and same-size, while deletion removes the existing chunk and recalculates the container size; bounded iXML XML leaves and packet retention, embedded ID3v2 set/delete/copy support, bounded validation, and minimal 1x1 PCM RIFF/RF64/BW64 creation via `WavCreateKind` with bounded `LIST/INFO` or `BWF:bext` seeds |
-| SVG | Bounded XML detection, root dimensions/version/viewBox, title, description, comments, embedded XMP extraction, nesting/text limits, safe document-text rewrites, and minimal 1x1 metadata-seed creation |
-| Standalone XMP/ICC | Signature-based standalone XMP packet and ICC profile readers reuse the bounded XML/profile engines and retain the detected file family; standalone XMP packets and existing ICC text tags can be rewritten within fixed storage, and minimal RGB ICC profiles can also be created and validated as new files |
-| PSD/PSB | Big-endian header and dimensions, bounded Photoshop image resources, XMP/IPTC/ICC/embedded EXIF delegation, resolution and common resource fields, preservation of unknown resources as bytes, and bounded replacement of existing PSD XMP resources |
-| RAW | DNG and TIFF-like CR2/NEF/ARW/ORF/RW2/PEF containers reuse the bounded TIFF/EXIF reader with common DNG tags (version, CFA, levels, matrices, white balance, and camera/lens identity) and safe rewrites of existing TIFF ASCII slots; a bounded 1x1 DNG/TIFF-like seed can be created with DNGVersion, EXIF ASCII fields, and the complete bounded GPS seed; CR3 reuses ISO-BMFF inspection and supports bounded rewrites of existing ISO-BMFF text and XMP slots; RAF exposes its bounded header and proprietary directory fields, MRW exposes bounded PRD/WBG/RIF segments plus embedded TTW TIFF metadata, and X3F exposes its FOVb header, `SECd` directory, Unicode `PROP` fields, and image descriptors without touching pixel payloads; CRW exposes bounded CIFF root and nested directories, common Make/Model and dimensions, while all proprietary RAW writers remain read-only |
-| AVI | RIFF/AVI validation, bounded `avih` dimensions and frame timing, `strh` stream type/codec/rate/duration/frame bounds, video `strf` bitmap properties, audio `strf` format properties, common `LIST/INFO` text fields without decoding media frames, safe rewrites of existing `LIST/INFO` values, and a minimal 1x1 uncompressed-video seed creator |
-| MKV/WebM | EBML signature and document-type detection, bounded `Info`/`Tracks`/`Tags`/`Chapters`/`Cues`/`Attachments` scanning, typed duration, track, title, codec, chapter, cue, and attachment-descriptor values, without decoding clusters or loading attachment payloads, plus safe rewrites of existing `Info` title/app strings and `SimpleTag` strings |
-| Output | Human-readable text, JSON, JSON Lines, CSV, TOML, or YAML; schema version `1` is retained in structured output |
-| Batch | Deterministic path ordering with bounded parallel inspection through `--jobs N`; human, JSON Lines, and CSV modes stream results with a bounded out-of-order buffer |
-| Safety | Checked offsets, bounded reads, recursion and entry limits, deterministic recursive traversal, safe XML entity handling, structured warnings, and platform-aware atomic replacement after output validation |
-
-Broader creation and full PSD/PSB/RAW writing, MakerNote tag
-interpretation beyond the bounded Nikon Type 1/2, Canon, Fujifilm, Panasonic, Olympus, legacy Sony, Apple, Pentax, Samsung, and DJI fields, and full media and
-complete ExifTool compatibility are intentionally not advertised as implemented yet.
-The compatibility layer currently translates a bounded set of legacy query
-aliases (`-json`, `-jsonl`, `-Make`, `-Model`, `-Artist`, `-Copyright`,
-`-Software`, `-ImageDescription`, `-GPSLatitude`, `-GPSLongitude`,
-`-GPSAltitude`, `-GPSLatitudeRef`, `-GPSLongitudeRef`,
-`-GPSAltitudeRef`, `-GPSImgDirection`, `-GPSSpeed`,
-`-GPSSpeedRef`, `-GPSTimeStamp`, `-GPSDateStamp`,
-and `-DateTimeOriginal`) into canonical Metra selection and output; the
-resulting structured output keeps Metra schema version `1`. A
-standalone XMP packet can also be created from caller-supplied XML after the
-same bounded parser validation.
-An existing standalone XMP packet can be replaced through the validated
-equal-byte-length `XMP:Packet` rewrite seam.
-`--delete XMP:Packet` clears the parsed XMP properties while retaining a
-same-length, valid empty RDF packet envelope; the structural `XMP:Packet` tag
-therefore remains present by design.
-Existing standalone ICC `Description`, `Copyright`, `ManufacturerDescription`,
-and `ModelDescription` text tags can be rewritten or cleared within their
-allocated profile payloads.
-The library now supports validated, lossless
-JPEG comment, existing APP1 EXIF ASCII fields, bounded APP1 XMP, and selected IPTC-IIM datasets in Photoshop
-APP13 resources, PNG `tEXt`, uncompressed `iTXt` XMP, existing `tIME`
-modification-time chunks, and fixed `pHYs` resolution chunks, GIF comments, WebP XMP, SVG
-title/description/comments, WAV `LIST/INFO`, FLAC Vorbis Comment, bounded Ogg
-Vorbis/Opus/Ogg-FLAC comment rewrites (including mapping packets), and common ID3v2 text/comment frames, plus existing TIFF/BigTIFF ASCII and ISO-BMFF
-QuickTime text values, existing PDF Info string tokens, and existing PSD XMP
-resources, existing AVI `LIST/INFO` strings, existing Broadcast Wave `bext`
-fixed fields and bounded `CodingHistory` on RIFF/RF64/BW64 containers, and
-embedded ID3v2 text/comment frames on WAV `id3 ` chunks,
-Matroska/WebM `Info` title/app and
-`SimpleTag` strings,
-and TIFF ASCII slots in TIFF-like RAW files through format-specific rewrite APIs,
-and the CLI exposes the same narrow operations through `--set`,
-`--delete`, and `--copy`.
-TIFF ASCII values can also be copied from a TIFF-like source into an existing
-TIFF ASCII field when the target field has enough storage.
-Broadcast Wave `DateTimeOriginal`, `TimeReference`, and `BWFVersion` values can
-also be copied from a validated WAV source into an existing `bext` chunk;
-typed date/time and integer values are converted to canonical text before the
-target rewrite. Existing `WAV:iXML:Packet` values can be replaced at the same
-byte length, deleted by removing the chunk, or copied between WAV files when
-the target packet has the same size. Existing WAV `id3 ` chunks accept the same
-bounded `ID3:<field>` set/delete/copy operations as standalone MP3 ID3v2 tags;
-the audio payload and unrelated chunks remain unchanged.
-Existing ISO-BMFF text values can be cleared or copied between supported
-ISO-BMFF files when the target value slot has enough storage; clearing zero-fills
-the existing slot without changing box sizes.
-Existing direct `xml ` and standard Adobe XMP `uuid` packets can be replaced or
-cleared through `ISOBMFF:XMP` (or `ISOBMFF:UUID:XMP`) when the replacement has
-the exact existing byte length. The writer validates the replacement packet,
-preserves the UUID and box layout, and zero-fills the packet on deletion.
-Existing JPEG EXIF ASCII fields can be rewritten or copied when the target field
-has enough storage; the JPEG segment size and image bytes remain unchanged.
-Typed EXIF date/time values backed by ASCII TIFF slots, including
-`EXIF:DateTimeOriginal`, retain their typed read representation after a fixed-size
-rewrite.
-Existing TIFF GPS latitude and longitude triplets can be set from decimal degrees
-through `GPS:Latitude`/`GPS:Longitude` (and copied between TIFF-like files); the
-writer updates the N/S or E/W reference and keeps the original rational allocation.
-`--delete` zero-fills both the coordinate and reference slots so GPS tombstones are
-omitted on the next read.
-Existing GPS altitude, image direction, and speed rational slots also accept
-bounded decimal edits through `GPS:AltitudeMeters`, `GPS:ImageDirectionDegrees`,
-and `GPS:SpeedMetersPerSecond`; altitude updates `GPSAltitudeRef`, direction is
-limited to 0–360 degrees, and speed is converted from m/s into the existing K/M/N
-GPS unit. These scalar slots are copied or zero-filled without changing the TIFF
-layout.
-Existing `GPS:GPSTimeStamp` slots accept seconds since midnight through
-`GPS:TimeOfDaySeconds`; the writer emits bounded H/M/S rationals and rejects
-values outside one day. Deletion zero-fills the timestamp payload and the typed
-time and derived seconds are omitted on the next read.
-Existing GPSDateStamp slots accept the GPS:Date alias with strict
-YYYY:MM:DD validation; the reader retains its typed date and deletion uses the
-same fixed ASCII slot.
-`--delete GPS:*` clears every existing supported GPS coordinate, scalar, time,
-and date group in one bounded rewrite. Unknown GPS tags and incomplete
-unsupported groups remain untouched; the command fails when no supported GPS
-value is present.
-Repeated IPTC datasets remain typed arrays when read; `--copy` accepts only a
-single-valued source dataset, while `--set` replaces all target occurrences
-with one bounded dataset.
-The public `MetadataEdit::set`/`delete` operations,
-`rewrite_metadata_path`/`rewrite_metadata_to_vec`, and
-`copy_metadata_path` helpers provide the same
-canonical-key surface without requiring callers to depend on a format-specific
-writer enum. They dispatch only to the validated writers available for the
-detected format. `MetadataEdit::set_value` is a fallible typed constructor for
-canonical strings, finite scalar values, GPS date/time values, BWF datetimes,
-and UTF-8 standalone XMP packets; general rational/array/binary mutation and
-creation for other formats remain deferred. `TiffCreateOptions` and `create_tiff_to_vec`/
-`create_tiff_path` provide bounded classic TIFF metadata-seed creation, including
-an optional decimal GPS latitude/longitude pair plus altitude, image direction,
-speed, time-of-day, and date fields encoded into a new GPS IFD;
-`create_bigtiff_to_vec`/`create_bigtiff_path` provide the corresponding
-BigTIFF seed path for EXIF ASCII fields and the same bounded GPS fields encoded
-with 64-bit IFD offsets;
-`WavCreateKind`, `WavCreateOptions::with_kind`, `with_rf64`, and `with_bw64`
-select bounded RIFF, RF64, or BW64 WAV seeds; the CLI accepts the same choice as
-`--create-wav Container=RIFF|RF64|BW64`;
-`WavCreateOptions::with_id3_text`, `with_id3_comment`, and the corresponding
-CLI `--create-wav ID3:...=...` entries add an optional bounded embedded ID3v2
-seed; `WavCreateOptions::with_ixml` and `--create-wav iXML:Packet=...` add an
-optional XML-validated iXML seed while keeping WAV INFO/BWF/ID3 namespaces
-separate;
-the public `CreateRequest` enum with `create_to_vec`/`create_path` provides a
-typed generic dispatch over all currently available creation seams;
-`JpegCreateOptions` and `create_jpeg_to_vec`/`create_jpeg_path` provide a
-minimal SOI/metadata/EOI JPEG container seed with bounded Comment and XMP.
-`PdfCreateEntry`/`PdfCreateOptions` and `create_pdf_to_vec`/`create_pdf_path`
-provide a minimal xref-valid PDF document with bounded Info fields, without
-creating page content.
-`PsdCreateOptions` and `create_psd_to_vec`/`create_psd_path` provide a minimal
-1x1 RGB PSD seed with an optional bounded XMP image resource; PSB and full
-layer/pixel authoring remain outside this seam.
-`DngCreateOptions` and `create_dng_to_vec`/`create_dng_path` provide a bounded
-1x1 DNG/TIFF-like RAW seed with a DNGVersion IFD, EXIF ASCII fields, and the
-same optional GPS coordinate/scalar/time/date fields as TIFF;
-proprietary camera RAW encoding and full RAW authoring remain outside this seam.
-`IsobmffCreateKind`, `IsobmffCreateOptions` and
-`create_isobmff_to_vec`/`create_isobmff_path` provide metadata-only MP4, MOV,
-M4A, HEIF, and AVIF seeds. MP4/MOV/M4A accept bounded QuickTime text items;
-HEIF/AVIF accept bounded image dimensions. Tracks, samples, item locations, and
-media encoding remain outside this seam.
-`XmpEdit` and `rewrite_xmp`/`rewrite_xmp_path` provide bounded replacement or
-property clearing for an existing standalone XMP packet, requiring an equal
-byte length and re-reading the result before replacement. Clearing retains the
-valid packet envelope and removes parsed properties.
-`IccCreateOptions` and `create_icc_to_vec`/`create_icc_path` provide the
-standalone ICC creation seam.
-`IccEdit` and `rewrite_icc`/`rewrite_icc_path` provide bounded replacement and
-deletion for existing ICC text tags stored as `desc`, `text`, or `mluc`
-payloads; `mluc` replacement updates the first locale record when its UTF-16
-value fits the existing allocation.
-`AviCreateOptions` and `create_avi_to_vec`/`create_avi_path` provide a minimal
-1x1 uncompressed-video AVI seed with bounded `LIST/INFO` fields.
-`MatroskaCreateKind`, `MatroskaCreateOptions` and
-`create_matroska_to_vec`/`create_matroska_path` provide bounded MKV or WebM
-metadata seeds with `Info` title/app fields and `SimpleTag` strings; they do not
-encode tracks, clusters, or media payloads.
-`FlacCreateOptions` and `create_flac_to_vec`/`create_flac_path` provide a
-metadata-only FLAC creation seam with bounded UTF-8 Vorbis comments.
-`GifCreateOptions` and `create_gif_to_vec`/`create_gif_path` provide a minimal
-1x1 GIF creation seam with bounded comment extensions.
-`Mp3CreateOptions` and `create_mp3_to_vec`/`create_mp3_path` provide a minimal
-ID3v2.4 MP3 metadata-seed creation seam with bounded text frames and comments.
-`OggCreateOptions` and `create_ogg_to_vec`/`create_ogg_path` provide a minimal
-Ogg Opus metadata-seed creation seam with bounded Vorbis-style comments.
-`SvgCreateOptions` and `create_svg_to_vec`/`create_svg_path` provide a minimal
-1x1 SVG metadata-seed creation seam with bounded title, description, and comments.
-`WebpCreateOptions` and `create_webp_to_vec`/`create_webp_path` provide a minimal
-1x1 lossless WebP metadata-seed creation seam with optional bounded XMP.
-MakerNotes remain partial outside the bounded Nikon Type 1/2, Canon, Fujifilm, Panasonic, Olympus, legacy Sony, Apple, Pentax, Samsung STMN, and DJI fields; GoPro APP6 `DEVC`/`STRM` fields are decoded, while its proprietary MakerNote payload remains detection-only; MP3/ID3,
-Ogg, PDF, WAV, and FLAC remain only partially covered outside their explicit
-writable fields. ID3
-rewrites currently require a supported ID3v2 tag without unsynchronization,
-extended-header, or footer flags. Their boundaries are tracked in
-[`compat/exiftool-compatibility.json`](compat/exiftool-compatibility.json).
-The matrix is checked by `tests/compatibility.rs`, which keeps its format
-entries and six capability statuses synchronized with the public Rust registry;
-metadata-family, MakerNote, and CLI sections are also checked for valid states.
+```bash
+./demo/render.sh
+```
 
 ## Quick start
 
-With Rust 1.95 or newer:
+### Install from source
+
+Metra currently ships as a source release. Rust `1.95` or newer is required;
+the repository pins that toolchain in [`rust-toolchain.toml`](rust-toolchain.toml).
 
 ```bash
-cargo run -- photo.jpg
-cargo run -- --json photo.jpg
-cargo run -- --capabilities
-cargo run -- --capabilities --json
-cargo run -- --jsonl -r photos/
-cargo run -- --jsonl --jobs 4 -r photos/
-cargo run -- --csv -r photos/
-cargo run -- --toml photo.jpg
-cargo run -- --yaml photo.jpg
-cargo run -- --validate --json photo.jpg
-cargo run -- --validate --max-metadata-bytes 1048576 --max-value-bytes 65536 photo.jpg
-cargo run -- --compare reference.jpg target.jpg
-cargo run -- --set 'JPEG:Comment=reviewed' photo.jpg
-cargo run -- --delete JPEG:Comment photo.jpg
-cargo run -- --copy JPEG:Comment=source.jpg target.jpg
-cargo run -- --create-tiff 'EXIF:Make=Metra' --create-tiff 'EXIF:Artist=Othmane' new.tif
-cargo run -- --create-tiff 'GPS:Latitude=-48.8566' --create-tiff 'GPS:Longitude=2.3522' gps.tif
-cargo run -- --create-tiff 'GPS:Latitude=48.8566' --create-tiff 'GPS:Longitude=2.3522' --create-tiff 'GPS:Altitude=-125.5' --create-tiff 'GPS:Speed=10' --create-tiff 'GPS:Date=2026:09:14' gps-full.tif
-cargo run -- --create-bigtiff 'EXIF:Make=Metra' --create-bigtiff 'Software=BigTIFF' new.btf
-cargo run -- --create-dng 'DNG:Make=Metra' --create-dng 'Artist=Othmane' new.dng
-cargo run -- --create-dng 'GPS:Latitude=48.8566' --create-dng 'GPS:Longitude=2.3522' --create-dng 'GPS:Altitude=-125.5' --create-dng 'GPS:Date=2026:09:14' gps.dng
-cargo run -- --create-wav 'Container=RF64' --create-wav 'Title=Metra' new.rf64.wav
-cargo run -- --create-jpeg 'Comment=Metra' --create-jpeg 'XMP=<x:xmpmeta><rdf:RDF/></x:xmpmeta>' new.jpg
-cargo run -- --create-pdf 'Title=Metra' --create-pdf 'Author=Othmane' new.pdf
-cargo run -- --create-psd 'PSD:XMP=<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF/></x:xmpmeta>' new.psd
-cargo run -- --create-mp4 'ISOBMFF:Title=Metra' --create-mp4 'Artist=Othmane' new.mp4
-cargo run -- --create-mov 'Title=Metra' new.mov
-cargo run -- --create-m4a 'Album=Metra' new.m4a
-cargo run -- --create-heif 'ISOBMFF:ImageWidth=1920' --create-heif 'ImageHeight=1080' new.heic
-cargo run -- --create-avif 'ImageWidth=1920' --create-avif 'ImageHeight=1080' new.avif
-cargo run -- --create-png 'Comment=Metra' --create-png 'Author=Othmane' new.png
-cargo run -- --create-xmp '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF/></x:xmpmeta>' new.xmp
-cargo run -- --create-wav 'Title=Metra' --create-wav 'Artist=Othmane' \
-  --create-wav 'BWF:Description=Metra take' \
-  --create-wav 'BWF:DateTimeOriginal=2026:09:14 12:34:56' new.wav
-cargo run -- --create-icc 'Description=Metra sRGB' --create-icc 'Copyright=Othmane' new.icc
-cargo run -- --create-avi 'AVI:Title=Metra' --create-avi 'Software=Metra' new.avi
-cargo run -- --create-mkv 'Matroska:Title=Metra' --create-mkv 'Matroska:Tag:TITLE=Metra' new.mkv
-cargo run -- --create-webm 'WritingApp=Metra' --create-webm 'Tag:TITLE=Metra' new.webm
-cargo run -- --create-flac 'TITLE=Metra' --create-flac 'ARTIST=Othmane' new.flac
-cargo run -- --create-gif 'Metra' --create-gif 'Othmane' new.gif
-cargo run -- --create-mp3 'Title=Metra' --create-mp3 'Artist=Othmane' --create-mp3 'Comment=reviewed' new.mp3
-cargo run -- --create-ogg 'TITLE=Metra' --create-ogg 'ARTIST=Othmane' new.ogg
-cargo run -- --create-svg 'Title=Metra' --create-svg 'Description=metadata seed' new.svg
-cargo run -- --create-webp-xmp '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF/></x:xmpmeta>' new.webp
-cargo run -- --set 'XMP:Packet=<x:xmpmeta>...</x:xmpmeta>' packet.xmp
-cargo run -- --copy XMP:Packet=source.xmp target.xmp
-cargo run -- --set 'ICC:Description=reviewed' profile.icc
-cargo run -- --delete ICC:Description profile.icc
-cargo run -- --copy ICC:Description=source.icc target.icc
-cargo run -- -Make photo.jpg
-cargo run -- -json photo.jpg
-cargo run -- --set 'JPEG:EXIF:Make=Sony' photo.jpg
-cargo run -- --copy JPEG:EXIF:Make=source.jpg target.jpg
-cargo run -- --copy TIFF:EXIF:Make=source.tif target.tif
-cargo run -- --set 'ISOBMFF:Title=reviewed' movie.mp4
-cargo run -- --copy ISOBMFF:Title=source.mp4 target.mp4
-cargo run -- --set 'PDF:Title=reviewed' document.pdf
-cargo run -- --delete PDF:Title document.pdf
-cargo run -- --copy PDF:Title=source.pdf target.pdf
-cargo run -- --set 'PSD:XMP=<x:xmpmeta>...</x:xmpmeta>' design.psd
-cargo run -- --delete PSD:XMP design.psd
-cargo run -- --copy PSD:XMP=source.psd target.psd
-cargo run -- --set 'AVI:Title=reviewed' video.avi
-cargo run -- --copy AVI:Title=source.avi target.avi
-cargo run -- --set 'Matroska:Title=reviewed' video.webm
-cargo run -- --copy Matroska:Title=source.webm target.webm
-cargo run -- --set 'Matroska:Tag:TITLE=reviewed' video.webm
-cargo run -- --copy Matroska:Tag:TITLE=source.webm target.webm
-cargo run -- --set 'TIFF:EXIF:Make=reviewed' capture.dng
-cargo run -- --copy TIFF:EXIF:Make=source.dng target.dng
-cargo run -- --set 'ISOBMFF:Title=reviewed' capture.cr3
-cargo run -- --copy ISOBMFF:Title=source.cr3 target.cr3
-cargo run -- --set 'JPEG:XMP=<x:xmpmeta>...</x:xmpmeta>' photo.jpg
-cargo run -- --delete JPEG:XMP photo.jpg
-cargo run -- --copy JPEG:XMP=source.jpg target.jpg
-cargo run -- --set 'IPTC:CaptionAbstract=reviewed' photo.jpg
-cargo run -- --delete IPTC:Keywords photo.jpg
-cargo run -- --copy IPTC:CaptionAbstract=source.jpg target.jpg
-cargo run -- --set 'PNG:Text:Comment=reviewed' image.png
-cargo run -- --set 'PNG:XMP=<x:xmpmeta>...</x:xmpmeta>' image.png
-cargo run -- --set 'PNG:ModificationTime=2026-09-15 01:02:03' image.png
-cargo run -- --delete PNG:ModificationTime image.png
-cargo run -- --copy PNG:ModificationTime=source.png target.png
-cargo run -- --set 'WAV:Title=reviewed' audio.wav
-cargo run -- --copy WAV:DateTimeOriginal=source.wav target.wav
-cargo run -- --set 'WAV:iXML:Packet=<BWFXML><PROJECT>reviewed</PROJECT></BWFXML>' audio.wav
-cargo run -- --delete WAV:iXML:Packet audio.wav
-cargo run -- --copy WAV:iXML:Packet=source.wav target.wav
-cargo run -- --set 'ID3:Title=reviewed' audio.wav
-cargo run -- --set 'FLAC:Title=reviewed' audio.flac
-cargo run -- --set 'ID3:Title=reviewed' audio.mp3
-cargo run -- --set 'GIF:Comment=reviewed' animation.gif
-cargo run -- --set 'WebP:XMP=<x:xmpmeta>...</x:xmpmeta>' image.webp
-cargo run -- --set 'SVG:Title=reviewed' drawing.svg
-```
-
-Standalone XMP edits target an existing `XMP:Packet`; replacements must have
-the same byte length as the original packet so the file layout remains fixed.
-The public `XmpEdit` API and the generic `rewrite_metadata_*`/`copy_metadata_*`
-helpers expose the same bounded operation.
-
-Standalone ICC edits target an existing text tag and preserve the profile
-layout. `desc` and `text` payloads accept printable ASCII replacements that fit
-their existing storage; `mluc` replacement updates the first locale record when
-its UTF-16 value fits. Deletion zero-fills the payload so the tag disappears on
-read; additional localized `mluc` records remain untouched.
-
-PDF Info edits target an existing field and preserve the document byte layout;
-the replacement must have the same encoded length as the original value token.
-`--delete` replaces an existing sufficiently sized Info value token with a
-padded `null` object, so the field disappears on read without moving xref data.
-PSD XMP edits target an existing image resource and replacements require an
-equal packet length so Photoshop section boundaries remain unchanged.
-`--delete` zero-fills the existing XMP resource payload at the same length;
-the reader treats that explicit tombstone as absent without touching image data.
-PSD creation emits a minimal 1x1 RGB document with an optional XMP resource;
-it does not author PSB files, layers, or general pixel content.
-ISO-BMFF creation emits either a metadata-only `ftyp`/`moov` seed with an
-`mvhd` clock and optional QuickTime-style text items, or a HEIF/AVIF `ftyp`/`meta`
-seed with bounded `hdlr`/`pitm`/`ispe`/`pixi` properties. It deliberately
-contains no tracks, samples, item locations, or encoded media and is intended
-as a validated metadata seed.
-AVI INFO edits target an existing text chunk and preserve the RIFF layout;
-the replacement must fit its existing payload. `--delete` zero-fills the
-selected payload without changing the chunk size.
-
-AVI creation emits a minimal 1x1, 24-bit uncompressed-video seed with one DIB
-frame, a small index, and optional bounded `LIST/INFO` fields. It is a metadata
-seed and not a general-purpose video encoder.
-Matroska/WebM edits target existing `Info` title/app strings or `SimpleTag`
-strings and preserve the EBML layout; replacements fit their existing payloads,
-and `--delete` zero-fills the selected payload so the field disappears on read.
-The creation API and `--create-mkv`/`--create-webm` commands emit only a
-validated metadata seed with a known-size EBML `Segment`; media tracks and
-clusters remain outside this bounded seam.
-TIFF edits target existing TIFF/BigTIFF ASCII or GPS rational slots; `--delete`
-zero-fills those slots without changing the IFD layout; `--delete GPS:*` applies
-the same rule to all complete supported GPS groups. DNG, CR2, NEF, ARW, ORF, RW2, and
-PEF use the same bounded behavior. CR3 edits target existing ISO-BMFF text
-slots through the same bounded rewrite rules, while RAF, CRW, MRW, and X3F
-remain read-only.
-
-Install the local CLI:
-
-```bash
+git clone https://github.com/OthmaneBlial/Metra.git
+cd Metra
 cargo install --path .
-metra --json photo.jpg
+metra --version
 ```
 
-The filename extension is not used as the primary detector. A file with an
-unknown signature exits with a clear error; malformed embedded metadata is
-reported as a warning when the surrounding container can still be inspected.
+### Inspect a file
+
+```bash
+metra photo.jpg
+metra --json photo.jpg
+metra --jsonl --jobs 4 -r photos/
+metra --tag EXIF:Make --tag EXIF:DateTimeOriginal photo.jpg
+metra --validate photo.jpg
+metra --compare reference.jpg target.jpg
+```
+
+### Create a small seed and edit it
+
+```bash
+metra --create-png 'Comment=Metra demo' demo.png
+metra --set 'PNG:ModificationTime=2026-09-14 12:34:56' demo.png
+metra --tag PNG:ModificationTime demo.png
+
+metra --create-tiff 'EXIF:Make=Metra' camera.tif
+metra --create-wav 'Title=Metra' --create-wav 'Artist=Metra' take.wav
+metra --create-xmp '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF/></x:xmpmeta>' packet.xmp
+```
+
+For a complete list of creation flags and accepted canonical keys:
+
+```bash
+metra --help
+metra --capabilities --json
+```
+
+## Download and release status
+
+The current public release is [`v0.1.0`](https://github.com/OthmaneBlial/Metra/releases/tag/v0.1.0),
+an experimental pre-1.0 source release. It includes the validated library and
+CLI described above.
+
+No prebuilt platform binaries are attached yet. Build from source with Cargo
+for Linux, macOS, or Windows. Platform CI is manual by design, so a push does
+not start a workflow; the same workflow can be deliberately dispatched for a
+release check.
 
 ## Library API
 
-The root crate exposes the same API used by the binary:
+The root crate exposes the same model used by the CLI:
 
 ```rust
 let metadata = metra::read("photo.jpg")?;
@@ -380,178 +207,85 @@ if let Some(make) = metadata.find("EXIF:Make") {
     println!("camera = {}", make.display_value());
 }
 
-if let Some(make) = metadata.find_by_id("EXIF", 0x010F) {
-    println!("stable tag = {}", make.identifier().name);
-}
-
-for keyword in metadata.find_all("IPTC:Keywords") {
-    println!("keyword = {}", keyword.display_value());
-}
+let changed = metadata.diff(&other_metadata);
+println!("{} metadata differences", changed.changes.len());
 ```
 
-The same detection and format dispatch is available for in-memory or custom
-seekable readers through `metra::read_from` and
-`metra::read_from_with_limits`; the caller supplies a diagnostic path and
-declared byte length in `FileInfo`.
+For larger jobs, use `read_from`, `read_with_limits`, `read_many`, or
+`read_many_streaming`. Use `find_all` for repeated datasets and
+`find_by_id(namespace, id)` when a numeric tag identifier is available. The
+public `MetadataEdit`, `CreateRequest`, `FormatHandler`, and format-specific
+helpers expose validated creation and rewrite paths without requiring the CLI.
 
-For collections, `metra::read_many` returns deterministic results with bounded
-worker concurrency, while `metra::read_many_streaming` emits results in input
-order with bounded backpressure for large batches.
-Long-running callers can pass a `CancellationToken` to the corresponding
-`*_with_cancellation` helpers; the CLI maps Ctrl+C to cooperative cancellation
-and exits with status 130 after bounded in-flight reads finish.
-
-The model keeps namespaces explicit (`EXIF`, `GPS`, `PNG`, `WebP`, `Ogg`, `JFIF`,
-`XMP`, `IPTC`, `ICC`, and `ISOBMFF`),
-retains bounded raw bytes, represents rational and array values without
-flattening them into strings, and exposes warnings separately from tags.
-
-The JSON schema is versioned at the document level:
-
-```json
-{
-  "schema_version": 1,
-  "file_info": { "format": "JPEG" },
-  "tags": [],
-  "warnings": []
-}
-```
-
-Consumers should use `namespace` plus canonical `name` (for example
-`EXIF:DateTimeOriginal`) or `find_by_id` when a format-level numeric identifier
-is available, rather than relying on human display text. Use `find_all` or
-`find_all_by_id` when a file can contain repeated blocks or datasets. The shared tag catalog
-is intentionally partial and can be expanded by editing the versioned source
-data and rebuilding. IPTC-IIM
-tags retain their numeric dataset identifiers, so `find_by_id("IPTC", 25)` and
-structured output remain stable even when repeated values are represented as arrays.
-
-Format support is also available programmatically through
-`format_capabilities(format)` and `format_capabilities_all()`. Each entry
-reports independent `read`, `write`, `create`, `delete`, `lossless_rewrite`,
-and `streaming` statuses instead of implying full support from detection alone.
-The CLI exposes the same registry with `--capabilities`; add `--json` for a
-machine-readable array. This command accepts no input file and does not invoke
-any parser.
-
-## Architecture
+## How it works
 
 ```text
-src/main.rs                 CLI argument and output layer
-src/lib.rs                  public `metra` facade
-crates/metra-core           model, generated tag catalog, limits, and structured errors
-crates/metra-formats        signature detection and format readers
+CLI (`src/main.rs`)       Rust API (`src/lib.rs`)
+          \                      /
+           v                    v
+     detection + format handler registry
+                       |
+                       v
+       bounded readers / typed metadata model
+                       |
+       set/delete/copy -> validate -> atomic replace
 ```
 
-Each reader receives a `FileInfo`, a `Read + Seek` source, and explicit
-`ParseLimits`. It can add typed tags and non-fatal warnings to the shared model.
-The TIFF reader uses checked arithmetic and random access, so a large container
-does not need to be copied wholesale into memory. The JPEG, PNG, and WebP
-readers only materialize bounded metadata chunks.
+The workspace is split into small responsibilities:
 
-The tag catalog is maintained as tab-separated source data in
-`crates/metra-core/data/tag-definitions.tsv`; `metra-core/build.rs` validates
-its fields and identifiers, then generates the compact Rust lookup table at
-build time. The public `FormatHandler` registry now gives each detected format
-an explicit read/write contract and capability report. Additional manufacturer-specific
-MakerNote readers beyond the bounded Nikon Type 1/2, Canon, Fujifilm, Panasonic,
-Olympus, legacy Sony, Apple, Samsung STMN, and DJI readers, deeper media metadata support, and a generalized
-rewrite/create capability layer remain deferred.
-The current format-specific writers remain intentionally narrow and independently
-tested; PSD XMP rewrites preserve the resource section size, AVI INFO rewrites
-preserve chunk sizes, WAV RF64/BW64 rewrites update only the bounded `ds64`
-container-size descriptor, and Matroska/WebM rewrites preserve element sizes,
-then validate the result through their readers.
+- `metra-core` owns the typed model, tag catalog, schema version, capabilities,
+  limits, warnings, and structured errors;
+- `metra-formats` owns signature detection, defensive readers, creators, and
+  narrow format writers;
+- the root `metra` crate provides the public facade and CLI consumer;
+- `compat/exiftool-compatibility.json` records bounded compatibility evidence;
+- `tests/` exercises parser safety, round trips, CLI behavior, registry
+  contracts, and the opt-in corpus harness.
 
-## Validation
+## Security and privacy
+
+Metra is designed for local processing. Runtime readers do not invoke Perl,
+Python, Node, ExifTool, or another external metadata process, and they do not
+send files to a service. Untrusted input is handled with checked offsets,
+allocation budgets, recursion and entry limits, decompression limits, safe XML
+rules, and structured warnings.
+
+Writes are conservative: the source is read before mutation, the candidate is
+written through a same-directory temporary file, the result is re-read and
+validated, and replacement happens only after that validation. A failed write
+removes its temporary output and leaves the source untouched. These guarantees
+reduce risk; they are not a substitute for backups or review of untrusted
+content.
+
+Read the full policy in [`docs/SECURITY.md`](docs/SECURITY.md).
+
+## Building from source
 
 ```bash
+rustup show active-toolchain
 cargo fmt --all -- --check
-cargo test --workspace
-cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace --all-targets --all-features
+cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo bench --bench throughput --no-run
+cargo build --release
 ```
 
-The tests generate small synthetic files at runtime, covering signatures,
-little-endian nested EXIF, malformed offsets, JPEG segments, structured XMP,
-IPTC/ICC resources, PNG CRC behavior, WebP dimensions, GIF extensions, ISO-BMFF
-boxes and bounded UUID XMP/EXIF payloads, PSD/PSB headers and image resources,
-RAW container delegation, AVI RIFF lists, Matroska/WebM EBML elements, Ogg pages
-and Vorbis/Opus comments, bounded PNG zlib expansion, legacy RAW signatures, and
-CLI JSON/human output. Real-world corpus and differential
-compatibility tests are separate follow-up gates; passing these local tests does
-not claim complete ExifTool compatibility.
+The corpus and differential tests are intentionally ignored unless a reviewed
+local corpus and oracle are supplied. Passing the local suite does not establish
+complete ExifTool compatibility.
 
-The opt-in corpus checks live in [`tests/corpus.rs`](tests/corpus.rs) and require
-an explicit local corpus and oracle; no corpus is bundled in the repository. The
-differential check reports compared files, Metra read failures and panics,
-oracle key totals and oracle-only keys, stable-key matches and misses, and
-typed-value matches and mismatches. Set `METRA_CORPUS_INSPECTION_REPORT` or
-`METRA_CORPUS_DIFFERENTIAL_REPORT` to write an aggregate JSON report, and
-`METRA_ORACLE_STRICT=1` to fail on missing Metra keys, panics, or mismatched
-values. Add `METRA_ORACLE_REQUIRE_ALL=1` in strict mode to also fail when the
-oracle exposes keys that Metra did not match. A local 194-file run completed
-without panics: 89 files were recognized, with 3,303 Metra tags compared to the
-oracle, 1,857 stable-key matches, and 1,435 typed-value matches. The corpus axis
-remains conservative because 105 files were outside the current format surface
-and the differential test is opt-in; these reports do not establish complete
-ExifTool compatibility.
+## Contributing
 
-For batch output, human-readable, JSON Lines, and CSV modes render as results
-arrive while preserving deterministic input-path order. The parallel streaming
-path uses a bounded in-flight work window so a slow early file cannot retain an
-unbounded completed-result map. Ctrl+C requests cooperative cancellation;
-bounded in-flight reads finish, remaining paths are reported as cancelled, and
-the CLI exits with status 130. JSON, TOML, and YAML
-need a complete document or collection, so they intentionally retain their
-successful results until serialization.
+Start with [`CONTRIBUTING.md`](CONTRIBUTING.md), then open an issue for a new
+format, tag family, writer seam, or safety concern. New format behavior should
+include focused synthetic fixtures, malformed-input coverage, round-trip tests
+for writes, capability-matrix updates, and documentation that distinguishes
+working, experimental, and planned behavior.
 
-`--validate` keeps the normal metadata output but exits non-zero when a file
-produces one or more recoverable parser warnings, which makes corruption checks
-usable in scripts without hiding the parsed evidence.
-`--compare reference target` reports added, removed, and changed metadata values;
-it returns zero for equality and one when a difference or read failure is found.
-Use `--max-metadata-bytes` and `--max-value-bytes` to tighten per-file safety
-budgets; the same limits are applied to source and output validation during edits.
-
-GitHub Actions automatic push and pull-request triggers are currently disabled;
-the workflow remains available for a deliberate manual run. The commands above
-are the local validation gate.
-
-The Rust benchmark target `throughput` covers a bounded stream read and an
-optional real-corpus pass. Set `METRA_BENCH_CORPUS` to a reviewed local corpus
-to measure collection throughput; the corpus is never required to build or
-test Metra and benchmark numbers remain machine-specific.
-
-## Roadmap
-
-Avancement global vérifié : **90 %**. Ce chiffre est une moyenne indicative des
-huit axes ci-dessous, arrondie à partir de 90,1 %, calculée uniquement sur le code
-et les tests présents ; il ne représente pas un pourcentage de compatibilité ExifTool.
-
-1. **100 %** — Étendre le modèle de lecture et les définitions de tags sans perdre les données brutes ; le parseur TIFF couvre maintenant les en-têtes classic et BigTIFF, les offsets/compteurs 64 bits et les valeurs LONG8/SLONG8/IFD8, les offsets multiples `SubIFDs` et les chaînes IFD1/IFD2 de thumbnails restent groupés explicitement sans décoder les pixels, les dates EXIF et les dates/heures GPS sont maintenant des valeurs structurées après validation des composants, tandis que les dérivés GPS valident les références, les plages et les conversions altitude/direction/temps/vitesse, les datasets IPTC-IIM lus conservent leur identifiant numérique stable, `EXIF:UserComment` décode les préfixes ASCII/Unicode sans perdre les octets bruts, les tags TIFF/EXIF d’image, de sensibilité, de capture et d’objectif ont des noms canoniques, les champs Nikon Type 1/2, Fujifilm, Panasonic, Olympus, Sony, Apple et Pentax bornés sont résolus par le catalogue partagé, Apple décode les structures binaires plist de runtime sous limites, les champs d’en-tête et de preview Samsung STMN ainsi que les champs IFD DJI sont bornés et conservés, GoPro APP6 `DEVC`/`STRM` expose ses champs bornés tandis que son MakerNote propriétaire reste non décodé, les profils ICC/XMP autonomes réutilisent le modèle typé, Ogg expose des commentaires Vorbis/Opus et des champs FLAC `STREAMINFO` typés sous namespace explicite, PNG expose son `IHDR` sous forme de tags typés bornés, WAV expose les feuilles iXML et les tags ID3 embarqués sous limites strictes, SVG extrait maintenant les paquets XMP embarqués sous limites, et le catalogue de tags est généré à la compilation depuis une source versionnée avec contrôle des doublons.
-2. **52 %** — Ajouter des corpus réels et des tests différentiels JPEG/TIFF/PNG/WebP/Ogg ; le harnais opt-in a été exécuté sur un corpus local de 194 fichiers sans panic, avec 89 fichiers reconnus, 3 303 tags Metra, 1 857 clés et 1 435 valeurs typées alignées, mais 105 fichiers restent hors surface et aucune preuve n’est embarquée dans le dépôt.
-3. **99 %** — Approfondir HEIF/AVIF et les conteneurs média, puis couvrir les lecteurs restants ; les lecteurs ISO-BMFF exposent maintenant les timings `mvhd` et les identifiants/dimensions de pistes `tkhd` en plus des propriétés image bornées courantes, WebP lit les dimensions des bitstreams VP8X, VP8 et VP8L sans décoder les pixels, les lecteurs XMP/ICC autonomes et Ogg/Vorbis/Opus sont disponibles avec détection de signature bornée, FLAC et Ogg-FLAC exposent maintenant `STREAMINFO`, `SEEKTABLE` et `CUESHEET` sous forme structurée, WAV décode maintenant les feuilles iXML, les chunks ID3v2 embarqués et les conteneurs RF64/BW64 `ds64` au parseur borné sans activer les entités externes, AVI expose maintenant les descripteurs `strh` et `strf` bornés sans décoder les frames, les conteneurs Matroska/WebM exposent maintenant chapitres, cues et descripteurs de pièces jointes sans charger leurs payloads, RAF décode maintenant son en-tête fixe et son répertoire Fuji sous limites, MRW décode maintenant ses segments PRD/WBG/RIF et délègue les blocs TTW TIFF sous limites, X3F décode maintenant son en-tête FOVb, son répertoire `SECd`, ses propriétés `PROP` et ses descripteurs image sous limites, CRW décode maintenant ses répertoires CIFF racine et imbriqués ainsi que ses champs communs sous limites ; les lecteurs PSD/PSB et RAW couvrent leurs en-têtes et métadonnées courantes sans décoder les pixels ou les flux vidéo.
-4. **99 %** — Étendre XMP/IPTC/ICC/ID3 et isoler les espaces MakerNote ; XMP est maintenant réécrit de façon bornée pour JPEG APP1, WebP, PNG et les paquets autonomes `XMP:Packet`, les tags texte ICC autonomes existants (`Description`, `Copyright`, `ManufacturerDescription`, `ModelDescription`) sont réécrits dans leur stockage `desc`/`text`/`mluc` avec mise à jour bornée de la première locale `mluc`, les datasets IPTC-IIM connus peuvent être réécrits dans les ressources Photoshop APP13, les profils ICC fragmentés JPEG, PNG `iCCP` et WebP `ICCP` sont inspectés sous limites avec descriptions texte et valeurs XYZ courantes, les références XML sûres sont décodées sans entités personnalisées, les textes PNG compressés sont déployés sous budget, les champs texte/commentaires ID3v2 courants restent sous limites explicites, SVG extrait les paquets XMP embarqués avec le même parseur borné, et les conteneurs MakerNote courants sont identifiés ; des IFD Nikon Type 1/2, Canon, Fujifilm, Panasonic, Olympus, legacy Sony, Apple et Pentax bornés exposent maintenant leurs champs connus, Apple structure son runtime binary plist, Samsung STMN expose ses champs d’en-tête/preview et conserve son payload sous budget, DJI expose ses champs IFD connus avec sélection d’endianness bornée, et GoPro expose maintenant ses champs APP6 `DEVC`/`STRM` sous limites, tandis que son MakerNote propriétaire reste detection-only.
-5. **90 %** — Concevoir l’écriture read-modify-write avec validation et remplacement atomique ; dix-huit writers bornés couvrent maintenant JPEG, TIFF/BigTIFF, PNG, GIF, WebP, SVG, WAV, FLAC, Ogg Vorbis/Opus/Ogg-FLAC, ID3v2, les champs texte ISO-BMFF existants (y compris CR3 après validation de sa variante RAW), les chaînes Info PDF existantes avec suppression par `null` paddé, les ressources XMP PSD existantes, les paquets XMP autonomes existants, les tags texte ICC autonomes `desc`/`text`/`mluc`, les chaînes AVI `LIST/INFO`, les chaînes `Info` et `SimpleTag` Matroska/WebM et les slots TIFF ASCII des RAW TIFF-like, avec effacement borné de slots TIFF/RAW et réécriture JPEG EXIF ASCII dans des slots existants ; WAV réécrit aussi ses champs `LIST/INFO`, `bext`, les paquets iXML existants et les chunks ID3v2 embarqués dans les conteneurs RIFF/RF64/BW64, avec validation XML/ID3, conservation de l’audio et recalcul borné de `ds64.RIFFSize64`, et ses seeds peuvent maintenant cibler RIFF, RF64 ou BW64 avec INFO/BWF, iXML et ID3v2 embarqué ; des créations classic TIFF/BigTIFF, PNG, XMP, WAV, ICC, FLAC, GIF, MP3/ID3v2.4, Ogg Opus, SVG, WebP lossless, JPEG metadata-container, PDF xref-valid et DNG/TIFF-like RAW minimales permettent maintenant d’amorcer des fichiers avec des métadonnées bornées ; les writers PDF, PSD et XMP autonome conservent les offsets ou la taille du paquet en exigeant une substitution de longueur encodée identique, tandis que les writers AVI, ICC, Matroska/WebM, RAW TIFF-like, DNG et CR3 conservent les tailles de chunks/éléments/slots ou la taille des payloads ; le registre `FormatHandler::write_metadata` expose ce dispatch sur flux seekable en réutilisant les mêmes validations ; les budgets metadata/valeur sont configurables depuis le CLI. La création générique et la restructuration des autres conteneurs restent planifiées.
-Les créateurs TIFF classique/BigTIFF, AVI, PSD, ISO-BMFF, DNG et Matroska/WebM ajoutent désormais des seeds
-bornés avec validation de sortie et refus d’écrasement : AVI émet une frame DIB
-1x1, PSD un document RGB 1x1 avec ressource XMP optionnelle, ISO-BMFF un
-`ftyp`/`moov` metadata-only pour MP4/MOV/M4A ou `ftyp`/`meta` dimensionné pour
-HEIF/AVIF, DNG un conteneur TIFF-like 1x1 avec `DNGVersion` et champs EXIF
-ASCII, et Matroska/WebM un `Segment` EBML metadata-only avec `Info`/`SimpleTag` ;
-les seeds TIFF classique et BigTIFF acceptent aussi une paire GPS décimale
-encodée en DMS et les champs GPS optionnels altitude/direction/vitesse/heure/date,
-avec offsets 32 bits pour le premier et 64 bits pour le second ;
-l’encodage vidéo général, les tracks/samples/item
-locations/clusters, les calques/PSB et la création arbitraire de chunks restent
-planifiés.
-Le writer PNG couvre maintenant aussi les champs fixes `tIME` et `pHYs` avec
-validation, CRC régénéré, insertion/suppression bornée et copie des chunks image.
-6. **99 %** — Ajouter `set`/`delete`/`copy` et comparer après les tests round-trip ; les opérations couvrent maintenant JPEG `Comment`/EXIF ASCII existant/`XMP` et datasets IPTC-IIM connus, PNG `tEXt`/`XMP`, GIF `Comment`, WebP `XMP`, paquets XMP autonomes `XMP:Packet` avec effacement borné de leurs propriétés, tags texte ICC autonomes, SVG `Title`/`Description`/`Comment`, WAV `LIST/INFO`, Broadcast Wave `bext`, paquets iXML à taille fixe et chunks ID3v2 embarqués avec copie des champs date/entiers typés, FLAC et Ogg Vorbis/Opus/Ogg-FLAC Comments, ID3v2 texte/commentaire, les champs texte ISO-BMFF existants y compris CR3 avec effacement borné, les champs Info PDF existants avec suppression de tokens Info existants, les ressources XMP PSD existantes, les chaînes AVI `LIST/INFO` avec effacement borné, les chaînes `Info` et `SimpleTag` Matroska/WebM avec effacement borné, les slots TIFF ASCII des RAW TIFF-like avec effacement borné et la copie de champs ASCII TIFF existants via API et CLI, avec comparaison déterministe des valeurs ; l’API publique ajoute aussi des opérations canoniques `MetadataEdit` qui dispatchent vers ces writers validés.
-7. **82 %** — Ajouter le traitement parallèle contrôlé et le rendu en flux borné ; le scheduler est partagé par l’API Rust et le CLI, conserve l’ordre déterministe, borne les workers et la fenêtre de résultats hors ordre, applique une contre-pression au flux parallèle et gère l’annulation coopérative Ctrl+C avec le code 130. Le benchmark réel du corpus mesure environ 20,6 MiB/s en séquentiel, 106 MiB/s avec quatre workers et 89 MiB/s en streaming borné sur cette machine ; les baselines multi-plateformes et le profiling restent à faire.
-8. **100 %** — Étendre les sorties structurées avec CSV, TOML et YAML versionnés.
+The GitHub Actions workflow is manual-only. Run the local validation commands
+above before opening a pull request, and dispatch the workflow deliberately
+when a remote multi-platform check is useful.
 
 ## License
 
-Metra is distributed under the MIT license; see [`LICENSE`](LICENSE).
+Metra is distributed under the [MIT License](LICENSE).

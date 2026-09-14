@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <rect width="1280" height="720" fill="#091013"/>
+  <path d="M0 124H1280" stroke="#223d42"/><path d="M72 124V650" stroke="#223d42"/>
+  <text x="72" y="78" fill="#8baba4" font-family="SF Mono,Menlo,monospace" font-size="19" letter-spacing="4">02 / CREATE A SEED</text>
+  <text x="108" y="192" fill="#eef5ec" font-family="Avenir Next,Helvetica,sans-serif" font-size="38">Start with a small, valid container.</text>
+  <text x="108" y="244" fill="#9ab6b0" font-family="Avenir Next,Helvetica,sans-serif" font-size="22">Useful for fixtures, pipelines, tests, and repeatable metadata jobs.</text>
+  <rect x="108" y="304" width="1060" height="220" rx="14" fill="#101e22" stroke="#36555a"/>
+  <text x="148" y="364" fill="#d7ff63" font-family="SF Mono,Menlo,monospace" font-size="23">$ ./metra --create-png 'Comment=Metra demo' demo.png</text>
+  <text x="148" y="420" fill="#e9f1e8" font-family="SF Mono,Menlo,monospace" font-size="25">created: demo.png</text>
+  <text x="148" y="474" fill="#8baba4" font-family="SF Mono,Menlo,monospace" font-size="21">1x1 RGBA seed  ·  98 bytes  ·  output revalidated</text>
+  <rect x="950" y="580" width="218" height="48" rx="24" fill="#d7ff63"/>
+  <text x="986" y="611" fill="#091013" font-family="SF Mono,Menlo,monospace" font-size="18" font-weight="700">CREATE / VALIDATE</text>
+</svg>
