@@ -34,10 +34,9 @@ fn bench_stream_read(c: &mut Criterion) {
 }
 
 fn bench_local_corpus(c: &mut Criterion) {
-    let Some(root) = std::env::var_os("METRA_BENCH_CORPUS").map(PathBuf::from) else {
-        eprintln!("METRA_BENCH_CORPUS is not set; skipping corpus benchmark");
-        return;
-    };
+    let root = std::env::var_os("METRA_BENCH_CORPUS")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/corpus"));
     let mut files = Vec::new();
     collect_files(&root, &mut files).expect("benchmark corpus should be traversable");
     files.sort();

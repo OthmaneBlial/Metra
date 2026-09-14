@@ -281,7 +281,10 @@ fn read_many_streaming_internal<F>(
     let shared_paths = Arc::new(paths.to_vec());
     let (job_sender, job_receiver) = mpsc::sync_channel::<(usize, PathBuf)>(worker_count);
     let job_receiver = Arc::new(Mutex::new(job_receiver));
-    let (result_sender, receiver) = mpsc::channel();
+    // Keep completed-but-not-yet-emittable results bounded. The ordered
+    // emitter may wait for an earlier file, so an unbounded result channel
+    // could otherwise retain the entire batch in memory.
+    let (result_sender, receiver) = mpsc::sync_channel(worker_count);
     let mut pending = BTreeMap::new();
     let mut next_to_emit = 0_usize;
     let mut next_to_schedule = worker_count;

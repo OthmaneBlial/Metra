@@ -1,5 +1,6 @@
 use std::fs;
 use std::io::{self, Cursor, Read, Seek, SeekFrom};
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 struct ShortReader {
@@ -2108,6 +2109,30 @@ fn public_batch_api_keeps_input_order_and_supports_streaming() {
         streamed_paths.push(item.path);
     });
     assert_eq!(streamed_paths, paths);
+}
+
+#[test]
+fn public_batch_streaming_reads_the_checked_in_corpus() {
+    let corpus = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/corpus");
+    let mut paths = fs::read_dir(&corpus)
+        .expect("checked-in corpus should be readable")
+        .map(|entry| entry.expect("corpus entry should be readable").path())
+        .collect::<Vec<_>>();
+    paths.sort();
+
+    let options = metra::BatchOptions {
+        jobs: 4,
+        limits: metra::ParseLimits::default(),
+    };
+    let mut streamed = Vec::new();
+    metra::read_many_streaming(&paths, options, |item| streamed.push(item));
+
+    assert_eq!(streamed.len(), paths.len());
+    assert_eq!(
+        streamed.iter().map(|item| &item.path).collect::<Vec<_>>(),
+        paths.iter().collect::<Vec<_>>()
+    );
+    assert!(streamed.iter().all(|item| item.result.is_ok()));
 }
 
 #[test]

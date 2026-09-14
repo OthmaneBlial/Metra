@@ -4,18 +4,18 @@ Metra is a pre-1.0 Rust metadata toolkit. The status below is an implementation
 snapshot derived from code and tests in the repository; it is not a percentage
 of ExifTool compatibility.
 
-**Verified implementation snapshot: 90%** across the current eight-axis plan
-(90.1% before rounding).
+**Verified implementation snapshot: 93%** across the current eight-axis plan
+(92.8% before rounding).
 
 | Axis | Status | Evidence / next gate |
 | --- | ---: | --- |
 | Typed model and tag catalog | 100% | Bounded readers, stable identifiers, generated catalog, structured values. |
-| Real corpus and differential coverage | 52% | Opt-in harness is present; broader redistributable corpus evidence is next. |
+| Real corpus and differential coverage | 65% | A manifest-checked synthetic corpus now covers all 24 creatable fixture files; a licensed real-world corpus and oracle differential report are next. |
 | Media and RAW readers | 99% | Broad bounded detection/read surface; deeper structures and proprietary writes remain limited. |
 | XMP, IPTC, ICC, ID3, and MakerNotes | 99% | Selected families are covered; unknown/proprietary payloads remain conservative. |
 | Safe writing and creation | 90% | Validated atomic writers and bounded seeds exist; broader restructure/create seams remain planned. |
 | `set`, `delete`, `copy`, and compare | 99% | CLI/API round-trip coverage is present for the supported writable surface. |
-| Parallel and streaming processing | 82% | Deterministic bounded workers, streaming backpressure, and cancellation are implemented; broader baselines remain. |
+| Parallel and streaming processing | 90% | Bounded workers, bounded result buffering, deterministic streaming, cancellation, corpus regression coverage, and local throughput baselines are implemented; broader platform baselines remain. |
 | Structured output | 100% | Text, JSON, JSON Lines, CSV, TOML, and YAML are versioned and tested. |
 
 ## Working now
