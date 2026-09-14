@@ -230,6 +230,13 @@ Standalone XMP creation exposes `create_xmp_to_vec` and `create_xmp_path`.
 Callers provide the XML packet directly; Metra applies the same bounded XML
 reader and only creates a new destination after successful validation.
 
+PDF creation exposes `PdfCreateEntry`, `PdfCreateOptions`,
+`create_pdf_to_vec`, `create_pdf_path`, and the CLI `--create-pdf KEY=VALUE`.
+It emits a minimal valid PDF container with Catalog, Pages, and Info objects,
+calculates the xref offsets, validates the Info dictionary through the PDF
+reader, and refuses to overwrite an existing destination. Page content and
+graphics remain outside this creation seam.
+
 The WAV creation seam exposes `WavCreateOptions`, `create_wav_to_vec`,
 `create_wav_path`, and `--create-wav KEY=VALUE`. It emits a fixed 1x1 PCM
 RIFF/WAVE seed with optional bounded `LIST/INFO` fields, validates the output
