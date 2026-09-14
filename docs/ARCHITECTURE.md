@@ -152,6 +152,7 @@ EXIF ASCII value slots, JPEG COM segments, APP1
 XMP packets, and known IPTC-IIM datasets inside Photoshop APP13 resources, PNG
 `tEXt` chunks and uncompressed `iTXt` XMP chunks, GIF comment extensions, WebP `XMP ` chunks,
 and existing standalone XMP packets,
+and existing standalone ICC `desc`/`text` payloads,
 SVG title/description/comment nodes, WAV `LIST/INFO` fields, FLAC Vorbis
 Comment key/value pairs, Ogg Vorbis/Opus comment packets, common ID3v2 text/comment frames,
 and existing PDF Info literal or hexadecimal string tokens, existing Matroska/WebM
@@ -187,6 +188,11 @@ The standalone XMP writer accepts only one `XMP:Packet` replacement for an
 existing packet. It validates the replacement with the bounded XML reader and
 requires an exactly equal byte length, so the packet file is not resized or
 restructured.
+The standalone ICC writer accepts existing `Description`, `Copyright`,
+`ManufacturerDescription`, and `ModelDescription` tags when their payload uses
+`desc` or `text` storage. Replacements fit the existing payload and deletion
+zero-fills it; `mluc` replacement and profile tag-table restructuring remain
+deferred.
 The AVI writer accepts existing known `LIST/INFO` string chunks, writes only
 within their allocated payloads, preserves a NUL terminator when space exists,
 and never changes RIFF chunk sizes or media data. Delete operations zero-fill
