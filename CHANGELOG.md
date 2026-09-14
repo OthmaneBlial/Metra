@@ -18,6 +18,8 @@ Initial read-first foundation with narrow validated rewrites:
   remain untouched and CRW writes remain unsupported;
 - bounded CRW nested-directory traversal with one global entry budget and
   regression coverage against multiplicative hostile directory graphs;
+- corrected RAW dispatch to recognize little-endian MRW (`\0MRI`) containers,
+  with a dedicated endian regression test;
 - added bounded RAF header and Fuji-directory decoding with firmware, preview
   and directory offsets, selected raw-image/zoom fields, raw-value retention,
   range/entry/resource-limit checks, truncated-structure warnings, generic
