@@ -100,7 +100,7 @@
       "read": "partial",
       "write": "partial",
       "create": "partial",
-      "delete": "planned",
+      "delete": "partial",
       "lossless_rewrite": "partial",
       "streaming": "partial"
     },

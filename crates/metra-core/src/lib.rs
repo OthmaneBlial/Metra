@@ -324,7 +324,7 @@ const FORMAT_CAPABILITIES: &[FormatCapabilities] = &[
         read: CapabilityStatus::Partial,
         write: CapabilityStatus::Partial,
         create: CapabilityStatus::Partial,
-        delete: CapabilityStatus::Planned,
+        delete: CapabilityStatus::Partial,
         lossless_rewrite: CapabilityStatus::Partial,
         streaming: CapabilityStatus::Partial,
     },
@@ -1136,6 +1136,10 @@ mod tests {
         );
         assert_eq!(
             format_capabilities(FileFormat::Webm).create,
+            CapabilityStatus::Partial
+        );
+        assert_eq!(
+            format_capabilities(FileFormat::Xmp).delete,
             CapabilityStatus::Partial
         );
         assert_eq!(format_capabilities_all().len(), 23);
