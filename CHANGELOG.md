@@ -11,6 +11,8 @@ Initial read-first foundation with narrow validated rewrites:
   matrix synchronized with the public format capability registry;
 - exposed the public format capability registry through human-readable and JSON
   `--capabilities` CLI output, without requiring an input file;
+- expanded the bounded legacy query compatibility layer with GPS reference,
+  direction, speed, timestamp, and date aliases;
 - added bounded TIFF GPS latitude/longitude decimal rewrites, reference-field
   updates, zero-fill deletion tombstones, generic API aliases, CLI set/delete/
   copy support, and round-trip coverage for positive and negative coordinates;

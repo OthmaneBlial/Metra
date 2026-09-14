@@ -53,8 +53,11 @@ complete ExifTool compatibility are intentionally not advertised as implemented 
 The compatibility layer currently translates a bounded set of legacy query
 aliases (`-json`, `-jsonl`, `-Make`, `-Model`, `-Artist`, `-Copyright`,
 `-Software`, `-ImageDescription`, `-GPSLatitude`, `-GPSLongitude`,
-`-GPSAltitude`, and `-DateTimeOriginal`) into canonical Metra selection and
-output; the resulting structured output keeps Metra schema version `1`. A
+`-GPSAltitude`, `-GPSLatitudeRef`, `-GPSLongitudeRef`,
+`-GPSAltitudeRef`, `-GPSImgDirection`, `-GPSSpeed`,
+`-GPSSpeedRef`, `-GPSTimeStamp`, `-GPSDateStamp`,
+and `-DateTimeOriginal`) into canonical Metra selection and output; the
+resulting structured output keeps Metra schema version `1`. A
 standalone XMP packet can also be created from caller-supplied XML after the
 same bounded parser validation.
 An existing standalone XMP packet can be replaced through the validated
