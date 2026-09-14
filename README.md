@@ -106,8 +106,9 @@ creating page content.
 layer/pixel authoring remain outside this seam.
 `IsobmffCreateKind`, `IsobmffCreateOptions` and
 `create_isobmff_to_vec`/`create_isobmff_path` provide metadata-only MP4, MOV,
-and M4A seeds with bounded QuickTime text items; tracks, samples, and media
-encoding remain outside this seam.
+M4A, HEIF, and AVIF seeds. MP4/MOV/M4A accept bounded QuickTime text items;
+HEIF/AVIF accept bounded image dimensions. Tracks, samples, item locations, and
+media encoding remain outside this seam.
 `XmpEdit` and `rewrite_xmp`/`rewrite_xmp_path` provide bounded replacement or
 property clearing for an existing standalone XMP packet, requiring an equal
 byte length and re-reading the result before replacement. Clearing retains the
@@ -168,6 +169,8 @@ cargo run -- --create-psd 'PSD:XMP=<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF/
 cargo run -- --create-mp4 'ISOBMFF:Title=Metra' --create-mp4 'Artist=Othmane' new.mp4
 cargo run -- --create-mov 'Title=Metra' new.mov
 cargo run -- --create-m4a 'Album=Metra' new.m4a
+cargo run -- --create-heif 'ISOBMFF:ImageWidth=1920' --create-heif 'ImageHeight=1080' new.heic
+cargo run -- --create-avif 'ImageWidth=1920' --create-avif 'ImageHeight=1080' new.avif
 cargo run -- --create-png 'Comment=Metra' --create-png 'Author=Othmane' new.png
 cargo run -- --create-xmp '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF/></x:xmpmeta>' new.xmp
 cargo run -- --create-wav 'Title=Metra' --create-wav 'Artist=Othmane' new.wav
@@ -246,9 +249,11 @@ equal packet length so Photoshop section boundaries remain unchanged.
 the reader treats that explicit tombstone as absent without touching image data.
 PSD creation emits a minimal 1x1 RGB document with an optional XMP resource;
 it does not author PSB files, layers, or general pixel content.
-ISO-BMFF creation emits a metadata-only `ftyp`/`moov` seed with an `mvhd`
-clock and optional QuickTime-style text items. It deliberately contains no
-tracks, samples, or encoded media and is intended as a validated metadata seed.
+ISO-BMFF creation emits either a metadata-only `ftyp`/`moov` seed with an
+`mvhd` clock and optional QuickTime-style text items, or a HEIF/AVIF `ftyp`/`meta`
+seed with bounded `hdlr`/`pitm`/`ispe`/`pixi` properties. It deliberately
+contains no tracks, samples, item locations, or encoded media and is intended
+as a validated metadata seed.
 AVI INFO edits target an existing text chunk and preserve the RIFF layout;
 the replacement must fit its existing payload. `--delete` zero-fills the
 selected payload without changing the chunk size.
@@ -433,10 +438,11 @@ et les tests présents ; il ne représente pas un pourcentage de compatibilité 
 Les créateurs AVI, PSD, ISO-BMFF et Matroska/WebM ajoutent désormais des seeds
 bornés avec validation de sortie et refus d’écrasement : AVI émet une frame DIB
 1x1, PSD un document RGB 1x1 avec ressource XMP optionnelle, ISO-BMFF un
-`ftyp`/`moov` metadata-only pour MP4/MOV/M4A, et Matroska/WebM un `Segment` EBML
-metadata-only avec `Info`/`SimpleTag` ; l’encodage vidéo général, les
-tracks/samples/clusters, les calques/PSB et la création arbitraire de chunks
-restent planifiés.
+`ftyp`/`moov` metadata-only pour MP4/MOV/M4A ou `ftyp`/`meta` dimensionné pour
+HEIF/AVIF, et Matroska/WebM un `Segment` EBML metadata-only avec
+`Info`/`SimpleTag` ; l’encodage vidéo général, les tracks/samples/item
+locations/clusters, les calques/PSB et la création arbitraire de chunks restent
+planifiés.
 6. **99 %** — Ajouter `set`/`delete`/`copy` et comparer après les tests round-trip ; les opérations couvrent maintenant JPEG `Comment`/EXIF ASCII existant/`XMP` et datasets IPTC-IIM connus, PNG `tEXt`/`XMP`, GIF `Comment`, WebP `XMP`, paquets XMP autonomes `XMP:Packet` avec effacement borné de leurs propriétés, tags texte ICC autonomes, SVG `Title`/`Description`/`Comment`, WAV `LIST/INFO`, FLAC et Ogg Vorbis/Opus/Ogg-FLAC Comments, ID3v2 texte/commentaire, les champs texte ISO-BMFF existants y compris CR3 avec effacement borné, les champs Info PDF existants avec suppression de tokens Info existants, les ressources XMP PSD existantes, les chaînes AVI `LIST/INFO` avec effacement borné, les chaînes `Info` et `SimpleTag` Matroska/WebM avec effacement borné, les slots TIFF ASCII des RAW TIFF-like avec effacement borné et la copie de champs ASCII TIFF existants via API et CLI, avec comparaison déterministe des valeurs ; l’API publique ajoute aussi des opérations canoniques `MetadataEdit` qui dispatchent vers ces writers validés.
 7. **82 %** — Ajouter le traitement parallèle contrôlé et le rendu en flux borné ; le scheduler est partagé par l’API Rust et le CLI, conserve l’ordre déterministe, borne les workers et la fenêtre de résultats hors ordre, applique une contre-pression au flux parallèle et gère l’annulation coopérative Ctrl+C avec le code 130. Le benchmark réel du corpus mesure environ 20,6 MiB/s en séquentiel, 106 MiB/s avec quatre workers et 89 MiB/s en streaming borné sur cette machine ; les baselines multi-plateformes et le profiling restent à faire.
 8. **100 %** — Étendre les sorties structurées avec CSV, TOML et YAML versionnés.

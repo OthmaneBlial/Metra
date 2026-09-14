@@ -36,6 +36,8 @@ Initial read-first foundation with narrow validated rewrites:
   `ftyp`/`moov`/`mvhd` and QuickTime text items, output revalidation,
   no-overwrite atomic path creation, generic registry dispatch, and CLI
   `--create-mp4`/`--create-mov`/`--create-m4a` coverage;
+- extended ISO-BMFF seed creation to metadata-only HEIF and AVIF `meta` boxes
+  with bounded dimensions and CLI `--create-heif`/`--create-avif` coverage;
 - added the public `CreateRequest` creation registry with `create_to_vec` and
   `create_path` dispatch over the currently validated format-specific creators;
 - added an isolated legacy-query normalizer for bounded `-json`/`-jsonl` and
