@@ -4,6 +4,10 @@
 
 Initial read-first foundation with narrow validated rewrites:
 
+- added bounded DNG/TIFF-like RAW seed creation with a DNGVersion IFD,
+  optional EXIF ASCII fields, output revalidation, no-overwrite atomic path
+  creation, generic registry dispatch, and CLI `--create-dng KEY=VALUE`
+  coverage; proprietary camera RAW encoding remains outside this seam;
 - added standalone XMP property clearing through a same-length empty RDF
   envelope, with generic API, registry, atomic path, and CLI `--delete` coverage;
 - added bounded standalone XMP packet replacement with equal-byte-length XML
