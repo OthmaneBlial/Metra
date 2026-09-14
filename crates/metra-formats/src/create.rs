@@ -3,11 +3,12 @@ use std::path::Path;
 use metra_core::{ParseLimits, Result};
 
 use crate::{
-    AviCreateOptions, FlacCreateOptions, GifCreateOptions, IccCreateOptions, IsobmffCreateOptions,
-    JpegCreateOptions, MatroskaCreateOptions, Mp3CreateOptions, OggCreateOptions, PdfCreateOptions,
-    PngCreateOptions, PsdCreateOptions, SvgCreateOptions, TiffCreateOptions, WavCreateOptions,
-    WebpCreateOptions, create_avi_path, create_avi_to_vec, create_flac_path, create_flac_to_vec,
-    create_gif_path, create_gif_to_vec, create_icc_path, create_icc_to_vec, create_isobmff_path,
+    AviCreateOptions, DngCreateOptions, FlacCreateOptions, GifCreateOptions, IccCreateOptions,
+    IsobmffCreateOptions, JpegCreateOptions, MatroskaCreateOptions, Mp3CreateOptions,
+    OggCreateOptions, PdfCreateOptions, PngCreateOptions, PsdCreateOptions, SvgCreateOptions,
+    TiffCreateOptions, WavCreateOptions, WebpCreateOptions, create_avi_path, create_avi_to_vec,
+    create_dng_path, create_dng_to_vec, create_flac_path, create_flac_to_vec, create_gif_path,
+    create_gif_to_vec, create_icc_path, create_icc_to_vec, create_isobmff_path,
     create_isobmff_to_vec, create_jpeg_path, create_jpeg_to_vec, create_matroska_path,
     create_matroska_to_vec, create_mp3_path, create_mp3_to_vec, create_ogg_path, create_ogg_to_vec,
     create_pdf_path, create_pdf_to_vec, create_png_path, create_png_to_vec, create_psd_path,
@@ -20,6 +21,7 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CreateRequest {
     Avi(AviCreateOptions),
+    Dng(DngCreateOptions),
     Isobmff(IsobmffCreateOptions),
     Matroska(MatroskaCreateOptions),
     Jpeg(JpegCreateOptions),
@@ -42,6 +44,7 @@ pub enum CreateRequest {
 pub fn create_to_vec(request: &CreateRequest, limits: ParseLimits) -> Result<Vec<u8>> {
     match request {
         CreateRequest::Avi(options) => create_avi_to_vec(options, limits),
+        CreateRequest::Dng(options) => create_dng_to_vec(options, limits),
         CreateRequest::Isobmff(options) => create_isobmff_to_vec(options, limits),
         CreateRequest::Matroska(options) => create_matroska_to_vec(options, limits),
         CreateRequest::Jpeg(options) => create_jpeg_to_vec(options, limits),
@@ -69,6 +72,7 @@ pub fn create_path(
 ) -> Result<()> {
     match request {
         CreateRequest::Avi(options) => create_avi_path(path, options, limits),
+        CreateRequest::Dng(options) => create_dng_path(path, options, limits),
         CreateRequest::Isobmff(options) => create_isobmff_path(path, options, limits),
         CreateRequest::Matroska(options) => create_matroska_path(path, options, limits),
         CreateRequest::Jpeg(options) => create_jpeg_path(path, options, limits),
