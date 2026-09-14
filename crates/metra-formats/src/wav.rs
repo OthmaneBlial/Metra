@@ -725,6 +725,126 @@ fn parse_ixml(data: &[u8], offset: u64, limits: ParseLimits, metadata: &mut Meta
     }
 }
 
+pub(crate) fn validate_ixml_packet(data: &[u8], limits: ParseLimits) -> Result<()> {
+    if data.len() > limits.max_value_bytes {
+        return Err(MetraError::ResourceLimitExceeded {
+            resource: "WAV iXML packet".to_owned(),
+            limit: limits.max_value_bytes,
+        });
+    }
+    if data.contains(&0) {
+        return Err(MetraError::InvalidTag {
+            context: "WAV iXML".to_owned(),
+            message: "iXML packets may not contain NUL bytes".to_owned(),
+        });
+    }
+
+    let mut reader = Reader::from_reader(data);
+    reader.config_mut().trim_text(true);
+    let mut buffer = Vec::new();
+    let mut stack: Vec<Vec<u8>> = Vec::new();
+    let mut element_count = 0_usize;
+    let mut text_bytes = 0_usize;
+    loop {
+        let event =
+            reader
+                .read_event_into(&mut buffer)
+                .map_err(|error| MetraError::InvalidTag {
+                    context: "WAV iXML".to_owned(),
+                    message: format!("invalid iXML XML: {error}"),
+                })?;
+        match event {
+            Event::Start(element) => {
+                if stack.len() >= limits.max_recursion_depth {
+                    return Err(MetraError::ResourceLimitExceeded {
+                        resource: "WAV iXML nesting".to_owned(),
+                        limit: limits.max_recursion_depth,
+                    });
+                }
+                element_count = element_count.saturating_add(1);
+                if element_count > limits.max_jpeg_segments {
+                    return Err(MetraError::ResourceLimitExceeded {
+                        resource: "WAV iXML elements".to_owned(),
+                        limit: limits.max_jpeg_segments,
+                    });
+                }
+                stack.push(element.name().as_ref().to_vec());
+            }
+            Event::Empty(_) => {
+                element_count = element_count.saturating_add(1);
+                if element_count > limits.max_jpeg_segments {
+                    return Err(MetraError::ResourceLimitExceeded {
+                        resource: "WAV iXML elements".to_owned(),
+                        limit: limits.max_jpeg_segments,
+                    });
+                }
+            }
+            Event::Text(text) => {
+                let decoded = text.decode().map_err(|error| MetraError::InvalidTag {
+                    context: "WAV iXML".to_owned(),
+                    message: format!("invalid iXML text: {error}"),
+                })?;
+                let unescaped = quick_xml::escape::unescape(decoded.as_ref()).map_err(|error| {
+                    MetraError::InvalidTag {
+                        context: "WAV iXML".to_owned(),
+                        message: format!("invalid iXML entity: {error}"),
+                    }
+                })?;
+                text_bytes = text_bytes.saturating_add(unescaped.len());
+                if text_bytes > limits.max_value_bytes {
+                    return Err(MetraError::ResourceLimitExceeded {
+                        resource: "WAV iXML text".to_owned(),
+                        limit: limits.max_value_bytes,
+                    });
+                }
+            }
+            Event::CData(text) => {
+                let decoded = text.decode().map_err(|error| MetraError::InvalidTag {
+                    context: "WAV iXML".to_owned(),
+                    message: format!("invalid iXML CDATA: {error}"),
+                })?;
+                text_bytes = text_bytes.saturating_add(decoded.len());
+                if text_bytes > limits.max_value_bytes {
+                    return Err(MetraError::ResourceLimitExceeded {
+                        resource: "WAV iXML text".to_owned(),
+                        limit: limits.max_value_bytes,
+                    });
+                }
+            }
+            Event::End(element) => {
+                let Some(expected) = stack.pop() else {
+                    return Err(MetraError::InvalidTag {
+                        context: "WAV iXML".to_owned(),
+                        message: "unexpected iXML closing element".to_owned(),
+                    });
+                };
+                if element.name().as_ref() != expected.as_slice() {
+                    return Err(MetraError::InvalidTag {
+                        context: "WAV iXML".to_owned(),
+                        message: "iXML closing element does not match".to_owned(),
+                    });
+                }
+            }
+            Event::DocType(_) => {
+                return Err(MetraError::InvalidTag {
+                    context: "WAV iXML".to_owned(),
+                    message: "DOCTYPE is not allowed in iXML packets".to_owned(),
+                });
+            }
+            Event::Eof => break,
+            Event::Decl(_) | Event::Comment(_) | Event::PI(_) | Event::GeneralRef(_) => {}
+        }
+        buffer.clear();
+    }
+    if !stack.is_empty() {
+        return Err(MetraError::InvalidTag {
+            context: "WAV iXML".to_owned(),
+            message: "iXML ended with unclosed elements".to_owned(),
+        });
+    }
+    Ok(())
+}
+
 fn parse_list_info(data: &[u8], offset: u64, limits: ParseLimits, metadata: &mut Metadata) {
     if data.len() < 4 || &data[..4] != b"INFO" {
         return;

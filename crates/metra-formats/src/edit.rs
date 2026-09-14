@@ -90,7 +90,7 @@ fn typed_value_text(key: &str, value: &TagValue) -> Result<String> {
         } if key == "WAV:DateTimeOriginal" => Ok(format!(
             "{year:04}:{month:02}:{day:02} {hour:02}:{minute:02}:{second:02}"
         )),
-        TagValue::Bytes(value) if key == "XMP:Packet" => {
+        TagValue::Bytes(value) if matches!(key, "XMP:Packet" | "WAV:iXML:Packet") => {
             String::from_utf8(value.clone()).map_err(|_| invalid())
         }
         _ => Err(invalid()),
@@ -270,7 +270,9 @@ pub fn copy_metadata_path(
         })?;
     let value = match (&tag.value, lookup_key == "XMP:Packet") {
         (metra_core::TagValue::String(value), _) => value.clone(),
-        (metra_core::TagValue::Bytes(value), true) => {
+        (metra_core::TagValue::Bytes(value), _)
+            if matches!(lookup_key, "XMP:Packet" | "WAV:iXML:Packet") =>
+        {
             String::from_utf8(value.clone()).map_err(|_| MetraError::InvalidTag {
                 context: "metadata copy".to_owned(),
                 message: format!("source value {key} is not valid UTF-8"),
@@ -799,6 +801,10 @@ pub(crate) fn collect_wav(
                         name: name.to_owned(),
                         value: value.clone(),
                     })
+                } else if wav_ixml_key(key) {
+                    Ok(crate::WavEdit::SetIxml {
+                        value: value.clone(),
+                    })
                 } else {
                     Err(unsupported_edit(format, key))
                 }
@@ -812,6 +818,8 @@ pub(crate) fn collect_wav(
                     Ok(crate::WavEdit::DeleteBext {
                         name: name.to_owned(),
                     })
+                } else if wav_ixml_key(key) {
+                    Ok(crate::WavEdit::DeleteIxml)
                 } else {
                     Err(unsupported_edit(format, key))
                 }
@@ -1048,6 +1056,10 @@ fn wav_bext_name(key: &str) -> Option<&str> {
             | "CodingHistory"
     )
     .then_some(name)
+}
+
+fn wav_ixml_key(key: &str) -> bool {
+    matches!(key, "WAV:iXML:Packet" | "WAV:IXML:Packet")
 }
 
 fn flac_comment_name(key: &str) -> Option<&str> {
@@ -1338,6 +1350,11 @@ mod tests {
                 name: "DateTimeOriginal".to_owned(),
                 value: "2026:09:14 01:02:03".to_owned(),
             }]
+        );
+        assert_eq!(
+            MetadataEdit::set_value("WAV:iXML:Packet", TagValue::Bytes(b"<BWFXML/>".to_vec()),)
+                .unwrap(),
+            MetadataEdit::set("WAV:iXML:Packet", "<BWFXML/>")
         );
     }
 

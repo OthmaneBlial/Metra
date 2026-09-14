@@ -17,6 +17,8 @@ pub enum WavEdit {
     DeleteInfo { name: String },
     SetBext { name: String, value: String },
     DeleteBext { name: String },
+    SetIxml { value: String },
+    DeleteIxml,
 }
 
 pub fn rewrite_wav<R: Read + Seek, W: Write + Seek>(
@@ -136,6 +138,12 @@ enum BextAction {
 }
 
 #[derive(Debug)]
+enum IxmlAction {
+    Set(Vec<u8>),
+    Delete,
+}
+
+#[derive(Debug)]
 struct Rf64WriteInfo {
     riff_size: u64,
     data_size: u64,
@@ -165,6 +173,7 @@ fn rewrite_wav_stream<R: Read, W: Write + Seek>(
 ) -> Result<()> {
     let action = info_action(edits, limits)?;
     let bext_actions = bext_actions(edits, limits)?;
+    let ixml_action = ixml_action(edits, limits)?;
     let mut header = [0_u8; 12];
     read_exact(reader, &mut header, path)?;
     let container_kind = &header[..4];
@@ -204,6 +213,7 @@ fn rewrite_wav_stream<R: Read, W: Write + Seek>(
     let mut chunk_count = 0_usize;
     let mut inserted = false;
     let mut bext_found = false;
+    let mut ixml_found = false;
     while input_offset < declared_end {
         if chunk_count >= limits.max_jpeg_segments {
             return Err(MetraError::ResourceLimitExceeded {
@@ -349,6 +359,43 @@ fn rewrite_wav_stream<R: Read, W: Write + Seek>(
             let rewritten = rewrite_bext(&data, &bext_actions, limits)?;
             bext_found = true;
             write_chunk(writer, &kind, &rewritten)?;
+        } else if &kind == b"iXML" && ixml_action.is_some() {
+            let length =
+                usize::try_from(length).map_err(|_| MetraError::ResourceLimitExceeded {
+                    resource: "WAV iXML chunk during rewrite".to_owned(),
+                    limit: limits.max_metadata_bytes,
+                })?;
+            if length > limits.max_metadata_bytes {
+                return Err(MetraError::ResourceLimitExceeded {
+                    resource: "WAV iXML chunk during rewrite".to_owned(),
+                    limit: limits.max_metadata_bytes,
+                });
+            }
+            let mut data = vec![0_u8; length];
+            read_exact(reader, &mut data, path)?;
+            if length % 2 == 1 {
+                let mut padding = [0_u8; 1];
+                read_exact(reader, &mut padding, path)?;
+            }
+            if is_rf64 && stored_length == u32::MAX {
+                return Err(MetraError::WriteFailure {
+                    message: "WAV iXML edits do not support RF64 sentinel-sized iXML chunks"
+                        .to_owned(),
+                });
+            }
+            ixml_found = true;
+            match ixml_action.as_ref().expect("iXML action is present") {
+                IxmlAction::Set(value) => {
+                    if value.len() != data.len() {
+                        return Err(MetraError::WriteFailure {
+                            message: "WAV iXML replacement must keep the existing packet size"
+                                .to_owned(),
+                        });
+                    }
+                    write_chunk(writer, &kind, value)?;
+                }
+                IxmlAction::Delete => {}
+            }
         } else {
             write_all(writer, &chunk_header)?;
             copy_exact(reader, writer, length, path)?;
@@ -367,6 +414,11 @@ fn rewrite_wav_stream<R: Read, W: Write + Seek>(
     if !bext_actions.is_empty() && !bext_found {
         return Err(MetraError::WriteFailure {
             message: "WAV bext edits require an existing bext chunk".to_owned(),
+        });
+    }
+    if ixml_action.is_some() && !ixml_found {
+        return Err(MetraError::WriteFailure {
+            message: "WAV iXML edits require an existing iXML chunk".to_owned(),
         });
     }
 
@@ -497,7 +549,10 @@ fn info_action(edits: &[WavEdit], limits: ParseLimits) -> Result<Option<InfoActi
                 })?;
                 action = Some(InfoAction::Delete { kind });
             }
-            WavEdit::SetBext { .. } | WavEdit::DeleteBext { .. } => {}
+            WavEdit::SetBext { .. }
+            | WavEdit::DeleteBext { .. }
+            | WavEdit::SetIxml { .. }
+            | WavEdit::DeleteIxml => {}
         }
     }
     Ok(action)
@@ -516,9 +571,31 @@ fn bext_actions(edits: &[WavEdit], limits: ParseLimits) -> Result<Vec<BextAction
             WavEdit::DeleteBext { name } => {
                 Some(validate_bext_name(name).map(|()| BextAction::Delete { name: name.clone() }))
             }
-            WavEdit::SetInfo { .. } | WavEdit::DeleteInfo { .. } => None,
+            WavEdit::SetInfo { .. }
+            | WavEdit::DeleteInfo { .. }
+            | WavEdit::SetIxml { .. }
+            | WavEdit::DeleteIxml => None,
         })
         .collect()
+}
+
+fn ixml_action(edits: &[WavEdit], limits: ParseLimits) -> Result<Option<IxmlAction>> {
+    let mut action = None;
+    for edit in edits {
+        match edit {
+            WavEdit::SetIxml { value } => {
+                let value = value.as_bytes().to_vec();
+                crate::wav::validate_ixml_packet(&value, limits)?;
+                action = Some(IxmlAction::Set(value));
+            }
+            WavEdit::DeleteIxml => action = Some(IxmlAction::Delete),
+            WavEdit::SetInfo { .. }
+            | WavEdit::DeleteInfo { .. }
+            | WavEdit::SetBext { .. }
+            | WavEdit::DeleteBext { .. } => {}
+        }
+    }
+    Ok(action)
 }
 
 pub(crate) fn encode_bext_value(name: &str, value: &str, limits: ParseLimits) -> Result<Vec<u8>> {
@@ -1020,6 +1097,25 @@ mod tests {
         bytes
     }
 
+    fn wav_with_ixml(project: &str) -> Vec<u8> {
+        let mut fmt = Vec::new();
+        fmt.extend_from_slice(&1_u16.to_le_bytes());
+        fmt.extend_from_slice(&1_u16.to_le_bytes());
+        fmt.extend_from_slice(&8_000_u32.to_le_bytes());
+        fmt.extend_from_slice(&8_000_u32.to_le_bytes());
+        fmt.extend_from_slice(&1_u16.to_le_bytes());
+        fmt.extend_from_slice(&8_u16.to_le_bytes());
+        let packet = format!("<BWFXML><PROJECT>{project}</PROJECT></BWFXML>");
+        let mut body = chunk(b"fmt ", &fmt);
+        body.extend(chunk(b"iXML", packet.as_bytes()));
+        body.extend(chunk(b"data", &[9, 8, 7, 6]));
+        let mut bytes = b"RIFF".to_vec();
+        bytes.extend_from_slice(&((4 + body.len()) as u32).to_le_bytes());
+        bytes.extend_from_slice(b"WAVE");
+        bytes.extend(body);
+        bytes
+    }
+
     fn rf64_with_bext() -> Vec<u8> {
         let riff = wav_with_bext();
         let old_body = &riff[12..];
@@ -1184,6 +1280,80 @@ mod tests {
                 .windows(12)
                 .any(|window| window == [b'd', b'a', b't', b'a', 4, 0, 0, 0, 9, 8, 7, 6])
         );
+    }
+
+    #[test]
+    fn rewrites_and_deletes_existing_ixml_without_touching_audio() {
+        let bytes = wav_with_ixml("before");
+        let output = rewrite_wav_to_vec(
+            &bytes,
+            info(bytes.len()),
+            ParseLimits::default(),
+            &[WavEdit::SetIxml {
+                value: "<BWFXML><PROJECT>change</PROJECT></BWFXML>".to_owned(),
+            }],
+        )
+        .unwrap();
+        let parsed = read_wav(
+            &mut Cursor::new(output.clone()),
+            info(output.len()),
+            ParseLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            parsed
+                .find("WAV:iXML:BWFXML.PROJECT")
+                .unwrap()
+                .display_value(),
+            "change"
+        );
+        assert!(
+            output
+                .windows(12)
+                .any(|window| window == [b'd', b'a', b't', b'a', 4, 0, 0, 0, 9, 8, 7, 6])
+        );
+
+        let deleted = rewrite_wav_to_vec(
+            &output,
+            info(output.len()),
+            ParseLimits::default(),
+            &[WavEdit::DeleteIxml],
+        )
+        .unwrap();
+        let parsed = read_wav(
+            &mut Cursor::new(deleted.clone()),
+            info(deleted.len()),
+            ParseLimits::default(),
+        )
+        .unwrap();
+        assert!(parsed.find("WAV:iXML:Packet").is_none());
+        assert!(deleted.len() < output.len());
+    }
+
+    #[test]
+    fn rejects_invalid_or_resized_ixml_replacements() {
+        let bytes = wav_with_ixml("before");
+        let invalid = rewrite_wav_to_vec(
+            &bytes,
+            info(bytes.len()),
+            ParseLimits::default(),
+            &[WavEdit::SetIxml {
+                value: "<BWFXML><PROJECT>broken</BWFXML>".to_owned(),
+            }],
+        )
+        .unwrap_err();
+        assert!(invalid.to_string().contains("WAV iXML"));
+
+        let resized = rewrite_wav_to_vec(
+            &bytes,
+            info(bytes.len()),
+            ParseLimits::default(),
+            &[WavEdit::SetIxml {
+                value: "<BWFXML><PROJECT>replacement is longer</PROJECT></BWFXML>".to_owned(),
+            }],
+        )
+        .unwrap_err();
+        assert!(resized.to_string().contains("existing packet size"));
     }
 
     fn rewrite_rf64_variant(signature: &[u8; 4]) {

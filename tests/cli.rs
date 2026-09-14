@@ -517,6 +517,25 @@ fn minimal_wav_with_bext() -> Vec<u8> {
     bytes
 }
 
+fn minimal_wav_with_ixml(project: &str) -> Vec<u8> {
+    let mut fmt = Vec::new();
+    fmt.extend_from_slice(&1_u16.to_le_bytes());
+    fmt.extend_from_slice(&1_u16.to_le_bytes());
+    fmt.extend_from_slice(&8_000_u32.to_le_bytes());
+    fmt.extend_from_slice(&8_000_u32.to_le_bytes());
+    fmt.extend_from_slice(&1_u16.to_le_bytes());
+    fmt.extend_from_slice(&8_u16.to_le_bytes());
+    let packet = format!("<BWFXML><PROJECT>{project}</PROJECT></BWFXML>");
+    let mut body = wav_chunk(b"fmt ", &fmt);
+    body.extend(wav_chunk(b"iXML", packet.as_bytes()));
+    body.extend(wav_chunk(b"data", &[9, 8, 7, 6]));
+    let mut bytes = b"RIFF".to_vec();
+    bytes.extend_from_slice(&((4 + body.len()) as u32).to_le_bytes());
+    bytes.extend_from_slice(b"WAVE");
+    bytes.extend(body);
+    bytes
+}
+
 fn flac_block(last: bool, kind: u8, data: &[u8]) -> Vec<u8> {
     let length = u32::try_from(data.len()).expect("fixture block should fit");
     let mut block = vec![if last { 0x80 | kind } else { kind }];
@@ -3917,6 +3936,68 @@ fn cli_can_copy_broadcast_wave_bext_fields() {
     assert_eq!(
         metadata.find("WAV:TimeReference").unwrap().display_value(),
         "17"
+    );
+}
+
+#[test]
+fn cli_can_edit_copy_and_delete_wav_ixml_packet() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.file("source.wav", &minimal_wav_with_ixml("source"));
+    let target = directory.file("target.wav", &minimal_wav_with_ixml("target"));
+
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "WAV:iXML:Packet=<BWFXML><PROJECT>change</PROJECT></BWFXML>",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("WAV:iXML:BWFXML.PROJECT")
+            .unwrap()
+            .display_value(),
+        "change"
+    );
+
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            &format!(
+                "WAV:iXML:Packet={}",
+                source.to_str().expect("UTF-8 test path")
+            ),
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("WAV:iXML:BWFXML.PROJECT")
+            .unwrap()
+            .display_value(),
+        "source"
+    );
+
+    let delete = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--delete",
+            "WAV:iXML:Packet",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(delete.status.success(), "stderr: {:?}", delete.stderr);
+    assert!(
+        metra::read(&target)
+            .unwrap()
+            .find("WAV:iXML:Packet")
+            .is_none()
     );
 }
 

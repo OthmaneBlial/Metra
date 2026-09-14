@@ -2139,6 +2139,7 @@ enum CopyKey {
     PngXmp,
     WavInfo(String),
     WavBext(String),
+    WavIxml,
     FlacComment(String),
     OggComment(String),
     PdfInfo(String),
@@ -2330,6 +2331,13 @@ fn parse_edits(
                     },
                 ])));
             }
+            if wav_ixml_key(key) {
+                return Ok(Some(EditRequest::DirectWav(vec![
+                    metra::WavEdit::SetIxml {
+                        value: value.to_owned(),
+                    },
+                ])));
+            }
             if let Some(name) = flac_comment_name(key) {
                 return Ok(Some(EditRequest::DirectFlac(vec![
                     metra::FlacEdit::SetComment {
@@ -2482,6 +2490,11 @@ fn parse_edits(
                     },
                 ])));
             }
+            if wav_ixml_key(key) {
+                return Ok(Some(EditRequest::DirectWav(vec![
+                    metra::WavEdit::DeleteIxml,
+                ])));
+            }
             if let Some(name) = avi_info_name(key) {
                 return Ok(Some(EditRequest::DirectAvi(vec![
                     metra::AviEdit::DeleteInfo {
@@ -2610,6 +2623,8 @@ fn parse_edits(
             CopyKey::WavInfo(name.to_owned())
         } else if let Some(name) = wav_bext_name(key) {
             CopyKey::WavBext(name.to_owned())
+        } else if wav_ixml_key(key) {
+            CopyKey::WavIxml
         } else if let Some(name) = flac_comment_name(key) {
             CopyKey::FlacComment(name.to_owned())
         } else if let Some(name) = ogg_comment_name(key) {
@@ -2842,7 +2857,7 @@ fn svg_text_key(key: &str) -> Option<SvgTextKey> {
 
 fn unsupported_edit_message(key: &str) -> String {
     format!(
-        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:EXIF:<ASCII tag>, JPEG:XMP, IPTC:<dataset>, TIFF:EXIF:<ASCII tag>, GPS:Latitude/Longitude, GPS:Altitude, GPS:ImageDirection, GPS:Speed, GPS:TimeOfDaySeconds, GPS:Date, GPS:*, PDF:<Info field>, PSD:XMP, AVI:<INFO field>, Matroska:Title/MuxingApp/WritingApp, Matroska:Tag:<name>, ISOBMFF:<text field>, ISOBMFF:XMP, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, WAV:<bext field>, FLAC:<Vorbis field>, Ogg:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
+        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:EXIF:<ASCII tag>, JPEG:XMP, IPTC:<dataset>, TIFF:EXIF:<ASCII tag>, GPS:Latitude/Longitude, GPS:Altitude, GPS:ImageDirection, GPS:Speed, GPS:TimeOfDaySeconds, GPS:Date, GPS:*, PDF:<Info field>, PSD:XMP, AVI:<INFO field>, Matroska:Title/MuxingApp/WritingApp, Matroska:Tag:<name>, ISOBMFF:<text field>, ISOBMFF:XMP, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, WAV:<bext field>, WAV:iXML:Packet, FLAC:<Vorbis field>, Ogg:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
     )
 }
 
@@ -2967,6 +2982,10 @@ fn wav_bext_name(key: &str) -> Option<&str> {
             | "CodingHistory"
     )
     .then_some(name)
+}
+
+fn wav_ixml_key(key: &str) -> bool {
+    matches!(key, "WAV:iXML:Packet" | "WAV:IXML:Packet")
 }
 
 fn apply_request(paths: &[PathBuf], request: EditRequest, limits: ParseLimits) -> ExitCode {
@@ -4042,6 +4061,39 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path, limits: ParseLimit
                 name,
                 value: tag.display_value(),
             }];
+            apply_wav_edits(paths, &edits, limits)
+        }
+        CopyKey::WavIxml => {
+            if source_metadata.file_info.format != metra::FileFormat::Wav {
+                eprintln!(
+                    "metra: {}: source format {} is not WAV",
+                    source.display(),
+                    source_metadata.file_info.format
+                );
+                return ExitCode::from(1);
+            }
+            let Some(tag) = source_metadata.find("WAV:iXML:Packet") else {
+                eprintln!(
+                    "metra: {}: source does not contain WAV:iXML:Packet",
+                    source.display()
+                );
+                return ExitCode::from(1);
+            };
+            let metra::TagValue::Bytes(packet) = &tag.value else {
+                eprintln!(
+                    "metra: {}: WAV:iXML:Packet is not raw bytes",
+                    source.display()
+                );
+                return ExitCode::from(1);
+            };
+            let Ok(packet) = String::from_utf8(packet.clone()) else {
+                eprintln!(
+                    "metra: {}: WAV:iXML:Packet is not valid UTF-8",
+                    source.display()
+                );
+                return ExitCode::from(1);
+            };
+            let edits = [metra::WavEdit::SetIxml { value: packet }];
             apply_wav_edits(paths, &edits, limits)
         }
         CopyKey::FlacComment(name) => {

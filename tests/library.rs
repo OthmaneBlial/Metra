@@ -108,6 +108,35 @@ fn minimal_wav_with_bext() -> Vec<u8> {
     bytes
 }
 
+fn minimal_wav_with_ixml(project: &str) -> Vec<u8> {
+    fn chunk(kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
+        let mut output = kind.to_vec();
+        output.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        output.extend_from_slice(data);
+        if data.len() % 2 == 1 {
+            output.push(0);
+        }
+        output
+    }
+
+    let mut fmt = Vec::new();
+    fmt.extend_from_slice(&1_u16.to_le_bytes());
+    fmt.extend_from_slice(&1_u16.to_le_bytes());
+    fmt.extend_from_slice(&8_000_u32.to_le_bytes());
+    fmt.extend_from_slice(&8_000_u32.to_le_bytes());
+    fmt.extend_from_slice(&1_u16.to_le_bytes());
+    fmt.extend_from_slice(&8_u16.to_le_bytes());
+    let packet = format!("<BWFXML><PROJECT>{project}</PROJECT></BWFXML>");
+    let mut body = chunk(b"fmt ", &fmt);
+    body.extend(chunk(b"iXML", packet.as_bytes()));
+    body.extend(chunk(b"data", &[9, 8, 7, 6]));
+    let mut bytes = b"RIFF".to_vec();
+    bytes.extend_from_slice(&((4 + body.len()) as u32).to_le_bytes());
+    bytes.extend_from_slice(b"WAVE");
+    bytes.extend(body);
+    bytes
+}
+
 fn minimal_webm_with_title(title: &str) -> Vec<u8> {
     fn element(id: &[u8], data: &[u8]) -> Vec<u8> {
         assert!(data.len() < 127);
@@ -1372,6 +1401,66 @@ fn public_generic_edit_api_rewrites_broadcast_wave_fields() {
 }
 
 #[test]
+fn public_generic_edit_api_rewrites_and_deletes_wav_ixml() {
+    let bytes = minimal_wav_with_ixml("before");
+    let output = metra::rewrite_metadata_to_vec(
+        &bytes,
+        metra::FileInfo::new(
+            "memory.wav".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::set(
+            "WAV:iXML:Packet",
+            "<BWFXML><PROJECT>change</PROJECT></BWFXML>",
+        )],
+    )
+    .expect("generic iXML edit should validate its rewritten bytes");
+    let metadata = metra::read_from(
+        &mut Cursor::new(output.clone()),
+        metra::FileInfo::new(
+            "memory.wav".into(),
+            output.len() as u64,
+            metra::FileFormat::Wav,
+        ),
+    )
+    .expect("rewritten iXML WAV should remain readable");
+    assert_eq!(
+        metadata
+            .find("WAV:iXML:BWFXML.PROJECT")
+            .unwrap()
+            .display_value(),
+        "change"
+    );
+
+    let deleted = metra::rewrite_metadata_to_vec(
+        &output,
+        metra::FileInfo::new(
+            "memory.wav".into(),
+            output.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::delete("WAV:iXML:Packet")],
+    )
+    .expect("generic iXML deletion should validate its rewritten bytes");
+    assert!(
+        metra::read_from(
+            &mut Cursor::new(deleted.clone()),
+            metra::FileInfo::new(
+                "memory.wav".into(),
+                deleted.len() as u64,
+                metra::FileFormat::Wav,
+            ),
+        )
+        .unwrap()
+        .find("WAV:iXML:Packet")
+        .is_none()
+    );
+}
+
+#[test]
 fn public_generic_copy_api_rewrites_broadcast_wave_typed_fields() {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1408,6 +1497,36 @@ fn public_generic_copy_api_rewrites_broadcast_wave_typed_fields() {
     assert_eq!(
         metadata.find("WAV:TimeReference").unwrap().display_value(),
         "17"
+    );
+    fs::remove_file(source).expect("source fixture should be removable");
+    fs::remove_file(target).expect("target fixture should be removable");
+}
+
+#[test]
+fn public_generic_copy_api_rewrites_wav_ixml_packet() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock should be after the Unix epoch")
+        .as_nanos();
+    let source = std::env::temp_dir().join(format!("metra-copy-ixml-source-{nonce}.wav"));
+    let target = std::env::temp_dir().join(format!("metra-copy-ixml-target-{nonce}.wav"));
+    fs::write(&source, minimal_wav_with_ixml("source")).expect("source fixture should be writable");
+    fs::write(&target, minimal_wav_with_ixml("target")).expect("target fixture should be writable");
+
+    metra::copy_metadata_path(
+        &source,
+        &target,
+        metra::ParseLimits::default(),
+        "WAV:iXML:Packet",
+    )
+    .expect("generic iXML copy should rewrite the target");
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("WAV:iXML:BWFXML.PROJECT")
+            .unwrap()
+            .display_value(),
+        "source"
     );
     fs::remove_file(source).expect("source fixture should be removable");
     fs::remove_file(target).expect("target fixture should be removable");
