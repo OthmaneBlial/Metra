@@ -51,6 +51,7 @@ struct Arguments {
             "create_gif",
             "create_wav",
             "create_icc",
+            "create_mp3",
             "compare"
         ]
     )]
@@ -97,6 +98,7 @@ struct Arguments {
             "create_gif",
             "create_wav",
             "create_icc",
+            "create_mp3",
             "json",
             "jsonl",
             "csv",
@@ -123,6 +125,7 @@ struct Arguments {
             "create_gif",
             "create_wav",
             "create_icc",
+            "create_mp3",
             "json",
             "jsonl",
             "csv",
@@ -148,6 +151,7 @@ struct Arguments {
             "create_gif",
             "create_wav",
             "create_icc",
+            "create_mp3",
             "json",
             "jsonl",
             "csv",
@@ -175,6 +179,7 @@ struct Arguments {
             "create_flac",
             "create_gif",
             "create_icc",
+            "create_mp3",
             "json",
             "jsonl",
             "csv",
@@ -202,6 +207,7 @@ struct Arguments {
             "create_wav",
             "create_gif",
             "create_icc",
+            "create_mp3",
             "json",
             "jsonl",
             "csv",
@@ -229,6 +235,7 @@ struct Arguments {
             "create_wav",
             "create_flac",
             "create_icc",
+            "create_mp3",
             "json",
             "jsonl",
             "csv",
@@ -256,6 +263,7 @@ struct Arguments {
             "create_flac",
             "create_wav",
             "create_gif",
+            "create_mp3",
             "json",
             "jsonl",
             "csv",
@@ -267,6 +275,34 @@ struct Arguments {
         ]
     )]
     create_icc: Vec<String>,
+
+    /// Create a new minimal MP3 seed with ID3v2.4 text frames.
+    #[arg(
+        long = "create-mp3",
+        value_name = "KEY=VALUE",
+        action = clap::ArgAction::Append,
+        conflicts_with_all = [
+            "set",
+            "delete",
+            "copy",
+            "create_tiff",
+            "create_png",
+            "create_xmp",
+            "create_wav",
+            "create_flac",
+            "create_gif",
+            "create_icc",
+            "json",
+            "jsonl",
+            "csv",
+            "toml",
+            "yaml",
+            "tag",
+            "validate",
+            "compare"
+        ]
+    )]
+    create_mp3: Vec<String>,
 
     /// Validate inputs and return a failure when any warning is produced.
     #[arg(long, conflicts_with_all = ["set", "delete", "copy"])]
@@ -458,6 +494,29 @@ fn main() -> ExitCode {
             }
         };
         return match metra::create_icc_path(&arguments.files[0], &options, limits) {
+            Ok(()) => {
+                println!("created: {}", arguments.files[0].display());
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", arguments.files[0].display());
+                ExitCode::from(1)
+            }
+        };
+    }
+    if !arguments.create_mp3.is_empty() {
+        if arguments.files.len() != 1 {
+            eprintln!("metra: --create-mp3 requires exactly one destination path");
+            return ExitCode::from(2);
+        }
+        let options = match parse_mp3_create(&arguments.create_mp3) {
+            Ok(options) => options,
+            Err(message) => {
+                eprintln!("metra: {message}");
+                return ExitCode::from(2);
+            }
+        };
+        return match metra::create_mp3_path(&arguments.files[0], &options, limits) {
             Ok(()) => {
                 println!("created: {}", arguments.files[0].display());
                 ExitCode::SUCCESS
@@ -698,6 +757,28 @@ fn parse_icc_create(entries: &[String]) -> Result<metra::IccCreateOptions, Strin
             return Err("--create-icc requires a non-empty KEY".to_owned());
         }
         options.push_text(key, value);
+    }
+    Ok(options)
+}
+
+fn parse_mp3_create(entries: &[String]) -> Result<metra::Mp3CreateOptions, String> {
+    let mut options = metra::Mp3CreateOptions::new();
+    for assignment in entries {
+        let (key, value) = assignment
+            .split_once('=')
+            .ok_or_else(|| "--create-mp3 expects KEY=VALUE".to_owned())?;
+        let key = key.strip_prefix("ID3:").unwrap_or(key);
+        if key.is_empty() {
+            return Err("--create-mp3 requires a non-empty KEY".to_owned());
+        }
+        if key == "Comment" {
+            if options.comment.is_some() {
+                return Err("--create-mp3 accepts only one Comment field".to_owned());
+            }
+            options.set_comment(value);
+        } else {
+            options.push_text(key, value);
+        }
     }
     Ok(options)
 }

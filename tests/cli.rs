@@ -1138,6 +1138,48 @@ fn cli_can_create_standalone_icc_without_overwrite() {
 }
 
 #[test]
+fn cli_can_create_minimal_mp3_id3_seed_without_overwrite() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.path.join("created.mp3");
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--create-mp3",
+            "Title=Metra",
+            "--create-mp3",
+            "Artist=Othmane",
+            "--create-mp3",
+            "ID3:Comment=reviewed",
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let metadata = metra::read(&path).expect("created MP3 should remain readable");
+    assert_eq!(metadata.file_info.format, metra::FileFormat::Mp3);
+    assert_eq!(metadata.find("ID3:Title").unwrap().display_value(), "Metra");
+    assert_eq!(
+        metadata.find("ID3:Artist").unwrap().display_value(),
+        "Othmane"
+    );
+    assert_eq!(
+        metadata.find("ID3:Comment").unwrap().display_value(),
+        "reviewed"
+    );
+
+    let second = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--create-mp3",
+            "Title=Other",
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(!second.status.success());
+    assert!(String::from_utf8_lossy(&second.stderr).contains("refusing to overwrite"));
+}
+
+#[test]
 fn cli_can_create_standalone_xmp_without_overwrite() {
     let directory = TemporaryDirectory::new();
     let path = directory.path.join("created.xmp");
