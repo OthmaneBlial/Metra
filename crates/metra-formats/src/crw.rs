@@ -222,13 +222,71 @@ fn parse_directory<R: Read + Seek>(
         let location_bits = tag & 0xC000;
         let tag_id = tag & 0x3FFF;
         if matches!(type_bits, 0x2800 | 0x3000) {
-            metadata.add_warning(
-                Warning::new(
-                    "raw-crw-directory",
-                    format!("nested CRW directory tag 0x{tag_id:04X} is not expanded"),
-                )
-                .at(base_offset + entry_local),
-            );
+            if location_bits == 0x4000 {
+                parse_directory(
+                    reader,
+                    base_offset + entry_local + 2,
+                    8,
+                    tag_id as u64,
+                    depth + 1,
+                    endian,
+                    file_info,
+                    metadata,
+                    limits,
+                )?;
+            } else if location_bits == 0 {
+                let nested_length = u64::from(read_u32(endian, &entry[2..6]));
+                let nested_offset = u64::from(read_u32(endian, &entry[6..10]));
+                let Some(nested_end) = nested_offset.checked_add(nested_length) else {
+                    metadata.add_warning(
+                        Warning::new("raw-crw-range", "CRW nested directory range overflowed")
+                            .at(base_offset + entry_local),
+                    );
+                    continue;
+                };
+                if nested_length < 4
+                    || nested_end > region_length
+                    || overlaps_entry(nested_offset, nested_length, entry_local)
+                {
+                    metadata.add_warning(
+                        Warning::new(
+                            "raw-crw-range",
+                            "CRW nested directory range is outside its region",
+                        )
+                        .at(base_offset + entry_local),
+                    );
+                    continue;
+                }
+                if nested_length > limits.max_metadata_bytes as u64 {
+                    metadata.add_warning(
+                        Warning::new(
+                            "raw-crw-range-limit",
+                            "CRW nested directory exceeds the metadata budget",
+                        )
+                        .at(base_offset + nested_offset),
+                    );
+                    continue;
+                }
+                parse_directory(
+                    reader,
+                    base_offset + nested_offset,
+                    nested_length,
+                    tag_id as u64,
+                    depth + 1,
+                    endian,
+                    file_info,
+                    metadata,
+                    limits,
+                )?;
+            } else {
+                metadata.add_warning(
+                    Warning::new(
+                        "raw-crw-directory",
+                        format!("CRW directory tag 0x{tag_id:04X} uses an unsupported location"),
+                    )
+                    .at(base_offset + entry_local),
+                );
+            }
             continue;
         }
 
@@ -637,6 +695,30 @@ mod tests {
         bytes
     }
 
+    fn nested_crw_fixture() -> Vec<u8> {
+        let root_offset = CRW_HEADER_LENGTH;
+        let mut nested = Vec::new();
+        nested.extend_from_slice(b"Nested\0\0");
+        nested.extend_from_slice(&1_u16.to_le_bytes());
+        nested.extend_from_slice(&0x4805_u16.to_le_bytes());
+        nested.extend_from_slice(b"Nested\0\0");
+        nested.extend_from_slice(&8_u32.to_le_bytes());
+
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"II");
+        bytes.extend_from_slice(&(root_offset as u32).to_le_bytes());
+        bytes.extend_from_slice(b"HEAPCCDR");
+        bytes.extend_from_slice(&[2, 0, 0, 0]);
+        bytes.extend_from_slice(&[0_u8; 8]);
+        bytes.extend_from_slice(&nested);
+        bytes.extend_from_slice(&1_u16.to_le_bytes());
+        bytes.extend_from_slice(&0x3000_u16.to_le_bytes());
+        bytes.extend_from_slice(&(nested.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(&0_u32.to_le_bytes());
+        bytes.extend_from_slice(&(nested.len() as u32).to_le_bytes());
+        bytes
+    }
+
     #[test]
     fn reads_crw_common_ciff_values_without_loading_preview_data() {
         let bytes = crw_fixture();
@@ -657,6 +739,22 @@ mod tests {
             "5184"
         );
         assert_eq!(metadata.find("CRW:Rotation").unwrap().display_value(), "90");
+        assert!(metadata.warnings.is_empty());
+    }
+
+    #[test]
+    fn expands_bounded_nested_ciff_directories() {
+        let bytes = nested_crw_fixture();
+        let metadata = read_crw(
+            &mut Cursor::new(bytes.clone()),
+            FileInfo::new("capture.crw".into(), bytes.len() as u64, FileFormat::Raw),
+            ParseLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            metadata.find("CRW:Comment").unwrap().display_value(),
+            "Nested"
+        );
         assert!(metadata.warnings.is_empty());
     }
 }
