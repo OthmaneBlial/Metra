@@ -161,7 +161,8 @@ rewrites preserve the existing packet size and page layout, recompute page CRCs,
 growth that cannot fit in the original packet; deletions use bounded Vorbis padding when
 available. Ogg-FLAC comment blocks, whether embedded in the mapping packet or in a
 subsequent metadata packet, use the native metadata-block header and the same
-lossless packet-size rule. New packet/page creation remains planned. TIFF ASCII
+lossless packet-size rule. General packet/page restructuring remains planned;
+the separate minimal Opus seed creation seam is documented below. TIFF ASCII
 values can be copied from a validated TIFF-like source into an existing target
 slot when the target field has enough storage. JPEG EXIF ASCII rewrites use the
 existing TIFF entry type/count/offset, require a replacement that fits the
@@ -251,6 +252,12 @@ ID3v2.4 tag with common text frames or one English comment, appends a fixed
 minimal MPEG Layer III seed frame, validates it through the MP3 reader, and
 refuses to overwrite an existing destination.
 
+Ogg creation exposes `OggCreateOptions`, `create_ogg_to_vec`, `create_ogg_path`,
+and the CLI `--create-ogg KEY=VALUE`. It emits a minimal Opus stream with
+bounded `OpusHead`/`OpusTags` packets, valid page segmentation and CRCs,
+validates it through the Ogg reader, and refuses to overwrite an existing
+destination.
+
 Legacy read queries are handled by a thin argument normalizer: selected
 single-dash aliases such as `-Make` and `-GPSLatitude` become `--tag` selectors,
 while `-json` and `-jsonl` become the corresponding Metra output flags. The
@@ -269,9 +276,9 @@ Numeric/binary mutation, new metadata block creation, and deletion semantics
 that require layout changes remain intentionally outside this API. Creation
 seams are intentionally format-specific: `TiffCreateOptions` can build a
 minimal classic 1x1 TIFF with bounded EXIF ASCII seed fields, while
-`Mp3CreateOptions` can build a minimal ID3v2.4 MP3 metadata seed; both validate
-their output by reading it back and create a new path without overwriting an
-existing file.
+`Mp3CreateOptions` and `OggCreateOptions` can build minimal audio metadata
+seeds; all three validate their output by reading it back and create a new path
+without overwriting an existing file.
 
 ## Output contract
 
