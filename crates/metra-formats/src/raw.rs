@@ -65,12 +65,7 @@ pub fn read_raw<R: Read + Seek>(
     } else if prefix.starts_with(MRW_SIGNATURE) {
         crate::mrw::read_mrw(reader, file_info, limits)
     } else if prefix.starts_with(X3F_SIGNATURE) {
-        Ok(read_partial_container(
-            file_info,
-            "X3F",
-            "raw-x3f-partial",
-            "Sigma X3F container identified; Foveon metadata and image payload are not decoded",
-        ))
+        crate::x3f::read_x3f(reader, file_info, limits)
     } else {
         Err(MetraError::InvalidHeader {
             context: "RAW".to_owned(),
