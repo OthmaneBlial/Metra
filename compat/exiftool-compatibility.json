@@ -40,7 +40,7 @@
     "GIF": {
       "read": "partial",
       "write": "partial",
-      "create": "planned",
+      "create": "partial",
       "delete": "partial",
       "lossless_rewrite": "partial",
       "streaming": "partial"
@@ -203,6 +203,7 @@
     "create_wav_seed": "partial",
     "create_icc_profile": "partial",
     "create_flac_seed": "partial",
+    "create_gif_seed": "partial",
     "validate": "supported",
     "compare": "supported",
     "exiftool_compatibility_mode": "partial"
