@@ -513,7 +513,16 @@ impl<R: Read + Seek> TiffParser<'_, R> {
                             }
                         ))
             );
-        if !is_empty_string && !is_zeroed_gps_coordinate {
+        let is_zeroed_gps_scalar = namespace == "GPS"
+            && matches!(id, 0x0006 | 0x000D | 0x0011)
+            && matches!(
+                &value,
+                TagValue::UnsignedRational {
+                    numerator: 0,
+                    denominator: 0,
+                }
+            );
+        if !is_empty_string && !is_zeroed_gps_coordinate && !is_zeroed_gps_scalar {
             metadata.add_tag(Tag {
                 namespace: definition.namespace.to_owned(),
                 group: group.to_owned(),

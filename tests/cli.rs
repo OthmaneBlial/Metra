@@ -727,6 +727,47 @@ fn minimal_tiff_with_gps() -> Vec<u8> {
     bytes
 }
 
+fn minimal_tiff_with_gps_scalars() -> Vec<u8> {
+    let mut bytes = vec![
+        b'I', b'I', 42, 0, 8, 0, 0, 0, 1, 0, // one IFD0 entry
+        0x25, 0x88, 4, 0, 1, 0, 0, 0, 26, 0, 0, 0, // GPS IFD -> offset 26
+        0, 0, 0, 0, // no next IFD
+        9, 0, // nine GPS IFD entries
+    ];
+    let mut entry = |id: u16, type_id: u16, count: u32, value: u32| {
+        bytes.extend_from_slice(&id.to_le_bytes());
+        bytes.extend_from_slice(&type_id.to_le_bytes());
+        bytes.extend_from_slice(&count.to_le_bytes());
+        bytes.extend_from_slice(&value.to_le_bytes());
+    };
+    entry(2, 5, 3, 140);
+    entry(1, 2, 2, u32::from_le_bytes([b'N', 0, 0, 0]));
+    entry(4, 5, 3, 164);
+    entry(3, 2, 2, u32::from_le_bytes([b'E', 0, 0, 0]));
+    entry(6, 5, 1, 188);
+    entry(5, 1, 1, 0);
+    entry(17, 5, 1, 196);
+    entry(13, 5, 1, 204);
+    entry(12, 2, 2, u32::from_le_bytes([b'M', 0, 0, 0]));
+    bytes.extend_from_slice(&0_u32.to_le_bytes());
+    for (numerator, denominator) in [
+        (48_u32, 1_u32),
+        (51, 1),
+        (24, 1),
+        (2, 1),
+        (20, 1),
+        (0, 1),
+        (125, 1),
+        (270, 1),
+        (36, 1),
+    ] {
+        bytes.extend_from_slice(&numerator.to_le_bytes());
+        bytes.extend_from_slice(&denominator.to_le_bytes());
+    }
+    assert_eq!(bytes.len(), 212);
+    bytes
+}
+
 fn run(args: &[&Path]) -> std::process::Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_metra"));
     for path in args {
@@ -2558,6 +2599,77 @@ fn cli_can_set_copy_and_delete_gps_decimal_coordinates() {
         metra::read(&target)
             .unwrap()
             .find("GPS:LatitudeDecimal")
+            .is_none()
+    );
+}
+
+#[test]
+fn cli_can_set_copy_and_delete_gps_scalar_values() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.file("source.tif", &minimal_tiff_with_gps_scalars());
+    let target = directory.file("target.tif", &minimal_tiff_with_gps_scalars());
+
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "GPS:AltitudeMeters=-125.5",
+            source.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+    let altitude = metra::read(&source)
+        .unwrap()
+        .find("GPS:AltitudeMeters")
+        .unwrap()
+        .display_value()
+        .parse::<f64>()
+        .unwrap();
+    assert!((altitude + 125.5).abs() < 0.000001);
+
+    let copy_assignment = format!(
+        "GPS:AltitudeMeters={}",
+        source.to_str().expect("UTF-8 test path")
+    );
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            copy_assignment.as_str(),
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+    let target_altitude = metra::read(&target)
+        .unwrap()
+        .find("GPS:AltitudeMeters")
+        .unwrap()
+        .display_value()
+        .parse::<f64>()
+        .unwrap();
+    assert!((target_altitude + 125.5).abs() < 0.000001);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("GPS:GPSAltitudeRef")
+            .unwrap()
+            .display_value(),
+        "1"
+    );
+
+    let delete = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--delete",
+            "TIFF:GPS:AltitudeMeters",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(delete.status.success(), "stderr: {:?}", delete.stderr);
+    assert!(
+        metra::read(&target)
+            .unwrap()
+            .find("GPS:AltitudeMeters")
             .is_none()
     );
 }

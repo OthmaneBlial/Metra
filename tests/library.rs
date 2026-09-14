@@ -209,6 +209,47 @@ fn minimal_tiff_with_gps() -> Vec<u8> {
     bytes
 }
 
+fn minimal_tiff_with_gps_scalars() -> Vec<u8> {
+    let mut bytes = vec![
+        b'I', b'I', 42, 0, 8, 0, 0, 0, 1, 0, // one IFD0 entry
+        0x25, 0x88, 4, 0, 1, 0, 0, 0, 26, 0, 0, 0, // GPS IFD -> offset 26
+        0, 0, 0, 0, // no next IFD
+        9, 0, // nine GPS IFD entries
+    ];
+    let mut entry = |id: u16, type_id: u16, count: u32, value: u32| {
+        bytes.extend_from_slice(&id.to_le_bytes());
+        bytes.extend_from_slice(&type_id.to_le_bytes());
+        bytes.extend_from_slice(&count.to_le_bytes());
+        bytes.extend_from_slice(&value.to_le_bytes());
+    };
+    entry(2, 5, 3, 140);
+    entry(1, 2, 2, u32::from_le_bytes([b'N', 0, 0, 0]));
+    entry(4, 5, 3, 164);
+    entry(3, 2, 2, u32::from_le_bytes([b'E', 0, 0, 0]));
+    entry(6, 5, 1, 188);
+    entry(5, 1, 1, 0);
+    entry(17, 5, 1, 196);
+    entry(13, 5, 1, 204);
+    entry(12, 2, 2, u32::from_le_bytes([b'M', 0, 0, 0]));
+    bytes.extend_from_slice(&0_u32.to_le_bytes());
+    for (numerator, denominator) in [
+        (48_u32, 1_u32),
+        (51, 1),
+        (24, 1),
+        (2, 1),
+        (20, 1),
+        (0, 1),
+        (125, 1),
+        (270, 1),
+        (36, 1),
+    ] {
+        bytes.extend_from_slice(&numerator.to_le_bytes());
+        bytes.extend_from_slice(&denominator.to_le_bytes());
+    }
+    assert_eq!(bytes.len(), 212);
+    bytes
+}
+
 #[test]
 fn public_reader_api_detects_and_dispatches_in_memory_tiff() {
     let bytes = b"II*\0\0\0\0\0";
@@ -807,6 +848,96 @@ fn public_generic_edit_api_rewrites_gps_decimal_coordinates() {
         metadata.find("GPS:GPSLatitudeRef").unwrap().display_value(),
         "S"
     );
+}
+
+#[test]
+fn public_generic_edit_api_rewrites_gps_scalar_values() {
+    let bytes = minimal_tiff_with_gps_scalars();
+    let output = metra::rewrite_metadata_to_vec(
+        &bytes,
+        metra::FileInfo::new(
+            "memory.tif".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[
+            metra::MetadataEdit::set("GPS:AltitudeMeters", "-125.5"),
+            metra::MetadataEdit::set("GPS:ImageDirectionDegrees", "271.25"),
+            metra::MetadataEdit::set("GPS:SpeedMetersPerSecond", "10"),
+        ],
+    )
+    .expect("generic GPS scalar edits should validate their rewritten bytes");
+    assert_eq!(output.len(), bytes.len());
+    let metadata = metra::read_from(
+        &mut std::io::Cursor::new(output),
+        metra::FileInfo::new(
+            "memory.tif".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+    )
+    .expect("rewritten GPS scalars should remain readable");
+    let altitude = metadata
+        .find("GPS:AltitudeMeters")
+        .unwrap()
+        .display_value()
+        .parse::<f64>()
+        .unwrap();
+    let direction = metadata
+        .find("GPS:ImageDirectionDegrees")
+        .unwrap()
+        .display_value()
+        .parse::<f64>()
+        .unwrap();
+    let speed = metadata
+        .find("GPS:SpeedMetersPerSecond")
+        .unwrap()
+        .display_value()
+        .parse::<f64>()
+        .unwrap();
+    assert!((altitude + 125.5).abs() < 0.000001);
+    assert!((direction - 271.25).abs() < 0.000001);
+    assert!((speed - 10.0).abs() < 0.000001);
+    assert_eq!(
+        metadata.find("GPS:GPSAltitudeRef").unwrap().display_value(),
+        "1"
+    );
+}
+
+#[test]
+fn public_generic_copy_api_rewrites_derived_gps_scalar() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock should be after the Unix epoch")
+        .as_nanos();
+    let source = std::env::temp_dir().join(format!("metra-gps-source-{nonce}.tif"));
+    let target = std::env::temp_dir().join(format!("metra-gps-target-{nonce}.tif"));
+    fs::write(&source, minimal_tiff_with_gps_scalars()).expect("source fixture should be writable");
+    fs::write(&target, minimal_tiff_with_gps_scalars()).expect("target fixture should be writable");
+    metra::rewrite_metadata_path(
+        &source,
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::set("GPS:SpeedMetersPerSecond", "10")],
+    )
+    .expect("source GPS scalar should be writable");
+    metra::copy_metadata_path(
+        &source,
+        &target,
+        metra::ParseLimits::default(),
+        "GPS:SpeedMetersPerSecond",
+    )
+    .expect("generic GPS scalar copy should rewrite the target");
+    let metadata = metra::read(&target).expect("copied GPS scalar should remain readable");
+    let speed = metadata
+        .find("GPS:SpeedMetersPerSecond")
+        .unwrap()
+        .display_value()
+        .parse::<f64>()
+        .unwrap();
+    assert!((speed - 10.0).abs() < 0.000001);
+    fs::remove_file(source).expect("source fixture should be removable");
+    fs::remove_file(target).expect("target fixture should be removable");
 }
 
 #[test]

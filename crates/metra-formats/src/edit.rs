@@ -186,8 +186,9 @@ pub fn rewrite_metadata_to_vec(
     }
 }
 
-/// Copy one supported string metadata value from a source path to a target
-/// path through the same read-first and atomic rewrite pipeline.
+/// Copy one supported metadata value from a source path to a target path
+/// through the same read-first and atomic rewrite pipeline. In addition to
+/// strings, bounded derived GPS scalar values are copied as decimal text.
 pub fn copy_metadata_path(
     source: impl AsRef<Path>,
     target: impl AsRef<Path>,
@@ -213,6 +214,18 @@ pub fn copy_metadata_path(
                 message: format!("source value {key} is not valid UTF-8"),
             })?
         }
+        (metra_core::TagValue::Float(value), false)
+            if matches!(
+                lookup_key,
+                "GPS:LatitudeDecimal"
+                    | "GPS:LongitudeDecimal"
+                    | "GPS:AltitudeMeters"
+                    | "GPS:ImageDirectionDegrees"
+                    | "GPS:SpeedMetersPerSecond"
+            ) =>
+        {
+            value.to_string()
+        }
         _ => {
             return Err(MetraError::InvalidTag {
                 context: "metadata copy".to_owned(),
@@ -236,7 +249,20 @@ fn is_cr3_metadata(metadata: &metra_core::Metadata) -> bool {
 }
 
 fn source_lookup_key(key: &str) -> &str {
-    if let Some(key) = key.strip_prefix("TIFF:") {
+    if let Some(key) = gps_decimal_key(key) {
+        match key {
+            "GPS:GPSLatitude" => "GPS:LatitudeDecimal",
+            "GPS:GPSLongitude" => "GPS:LongitudeDecimal",
+            _ => unreachable!("GPS decimal aliases are normalized above"),
+        }
+    } else if let Some(key) = gps_scalar_key(key) {
+        match key {
+            "GPS:GPSAltitude" => "GPS:AltitudeMeters",
+            "GPS:GPSImgDirection" => "GPS:ImageDirectionDegrees",
+            "GPS:GPSSpeed" => "GPS:SpeedMetersPerSecond",
+            _ => unreachable!("GPS scalar aliases are normalized above"),
+        }
+    } else if let Some(key) = key.strip_prefix("TIFF:") {
         key
     } else if jpeg_xmp_key(key)
         || png_xmp_key(key)
@@ -313,6 +339,11 @@ pub(crate) fn collect_tiff(
                         key: key.to_owned(),
                         value: value.clone(),
                     })
+                } else if let Some(key) = gps_scalar_key(key) {
+                    Ok(crate::TiffEdit::SetGpsScalar {
+                        key: key.to_owned(),
+                        value: value.clone(),
+                    })
                 } else {
                     tiff_ascii_key(key)
                         .map(|key| crate::TiffEdit::SetAscii {
@@ -325,6 +356,10 @@ pub(crate) fn collect_tiff(
             MetadataEdit::Delete { key } => {
                 if let Some(key) = gps_decimal_key(key) {
                     Ok(crate::TiffEdit::DeleteGpsDecimal {
+                        key: key.to_owned(),
+                    })
+                } else if let Some(key) = gps_scalar_key(key) {
+                    Ok(crate::TiffEdit::DeleteGpsScalar {
                         key: key.to_owned(),
                     })
                 } else {
@@ -706,6 +741,18 @@ fn gps_decimal_key(key: &str) -> Option<&'static str> {
     }
 }
 
+fn gps_scalar_key(key: &str) -> Option<&'static str> {
+    let key = key.strip_prefix("TIFF:").unwrap_or(key);
+    match key {
+        "GPS:Altitude" | "GPS:AltitudeMeters" | "GPS:GPSAltitude" => Some("GPS:GPSAltitude"),
+        "GPS:ImageDirection" | "GPS:ImageDirectionDegrees" | "GPS:GPSImgDirection" => {
+            Some("GPS:GPSImgDirection")
+        }
+        "GPS:Speed" | "GPS:SpeedMetersPerSecond" | "GPS:GPSSpeed" => Some("GPS:GPSSpeed"),
+        _ => None,
+    }
+}
+
 fn png_xmp_key(key: &str) -> bool {
     matches!(key, "PNG:XMP" | "PNG:iTXt:XMP")
 }
@@ -1037,6 +1084,27 @@ mod tests {
             .unwrap(),
             vec![crate::TiffEdit::DeleteGpsDecimal {
                 key: "GPS:GPSLongitude".to_owned(),
+            }]
+        );
+        assert_eq!(
+            collect_tiff(
+                &[MetadataEdit::set("GPS:AltitudeMeters", "-125.5")],
+                FileFormat::Tiff,
+            )
+            .unwrap(),
+            vec![crate::TiffEdit::SetGpsScalar {
+                key: "GPS:GPSAltitude".to_owned(),
+                value: "-125.5".to_owned(),
+            }]
+        );
+        assert_eq!(
+            collect_tiff(
+                &[MetadataEdit::delete("TIFF:GPS:SpeedMetersPerSecond")],
+                FileFormat::Raw,
+            )
+            .unwrap(),
+            vec![crate::TiffEdit::DeleteGpsScalar {
+                key: "GPS:GPSSpeed".to_owned(),
             }]
         );
     }

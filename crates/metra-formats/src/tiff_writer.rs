@@ -8,17 +8,19 @@ use metra_core::{FileFormat, FileInfo, Metadata, MetraError, ParseLimits, Result
 use crate::atomic::atomic_replace;
 use crate::tiff::read_tiff;
 
-/// Safe in-place edits for existing TIFF/BigTIFF ASCII values.
+/// Safe in-place edits for existing TIFF/BigTIFF values.
 ///
-/// The writer never changes an IFD layout or allocates a new value area. An
-/// edit succeeds only when the replacement, including its terminating NUL,
-/// fits in the original ASCII field.
+/// The writer never changes an IFD layout or allocates a new value area. ASCII
+/// replacements must fit in their original field; GPS scalar edits use the
+/// existing rational and reference fields only.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TiffEdit {
     SetAscii { key: String, value: String },
     DeleteAscii { key: String },
     SetGpsDecimal { key: String, value: String },
     DeleteGpsDecimal { key: String },
+    SetGpsScalar { key: String, value: String },
+    DeleteGpsScalar { key: String },
 }
 
 pub fn rewrite_tiff<R: Read + Seek, W: Write + Seek>(
@@ -172,17 +174,32 @@ fn collect_patches<R: Read + Seek>(
     for edit in edits {
         if matches!(
             edit,
-            TiffEdit::SetGpsDecimal { .. } | TiffEdit::DeleteGpsDecimal { .. }
+            TiffEdit::SetGpsDecimal { .. }
+                | TiffEdit::DeleteGpsDecimal { .. }
+                | TiffEdit::SetGpsScalar { .. }
+                | TiffEdit::DeleteGpsScalar { .. }
         ) {
-            patches.extend(collect_gps_patches(
-                reader, metadata, file_info, limits, variant, edit,
-            )?);
+            let gps_patches = match edit {
+                TiffEdit::SetGpsDecimal { .. } | TiffEdit::DeleteGpsDecimal { .. } => {
+                    collect_gps_patches(reader, metadata, file_info, limits, variant, edit)?
+                }
+                TiffEdit::SetGpsScalar { .. } | TiffEdit::DeleteGpsScalar { .. } => {
+                    collect_gps_scalar_patches(reader, metadata, file_info, limits, variant, edit)?
+                }
+                TiffEdit::SetAscii { .. } | TiffEdit::DeleteAscii { .. } => {
+                    unreachable!("ASCII edits are handled by the ASCII collector")
+                }
+            };
+            patches.extend(gps_patches);
             continue;
         }
         let (key, value) = match edit {
             TiffEdit::SetAscii { key, value } => (key, value.as_str()),
             TiffEdit::DeleteAscii { key } => (key, ""),
-            TiffEdit::SetGpsDecimal { .. } | TiffEdit::DeleteGpsDecimal { .. } => {
+            TiffEdit::SetGpsDecimal { .. }
+            | TiffEdit::DeleteGpsDecimal { .. }
+            | TiffEdit::SetGpsScalar { .. }
+            | TiffEdit::DeleteGpsScalar { .. } => {
                 unreachable!("GPS edits are handled before ASCII edits")
             }
         };
@@ -365,7 +382,10 @@ fn collect_gps_patches<R: Read + Seek>(
     let (key, replacement) = match edit {
         TiffEdit::SetGpsDecimal { key, value } => (key.as_str(), Some(value.as_str())),
         TiffEdit::DeleteGpsDecimal { key } => (key.as_str(), None),
-        TiffEdit::SetAscii { .. } | TiffEdit::DeleteAscii { .. } => {
+        TiffEdit::SetAscii { .. }
+        | TiffEdit::DeleteAscii { .. }
+        | TiffEdit::SetGpsScalar { .. }
+        | TiffEdit::DeleteGpsScalar { .. } => {
             unreachable!("ASCII edits are handled by the ASCII collector")
         }
     };
@@ -603,6 +623,386 @@ fn encode_gps_coordinate(value: f64, maximum: f64, key: &str) -> Result<[(u32, u
             1_000_000,
         ),
     ])
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GpsScalarKind {
+    AltitudeMeters,
+    DirectionDegrees,
+    SpeedMetersPerSecond,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct GpsScalarSpec {
+    value_key: &'static str,
+    reference_key: Option<&'static str>,
+    kind: GpsScalarKind,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct GpsReferenceLocation {
+    offset: u64,
+    span: u64,
+    unit: Option<u8>,
+}
+
+fn gps_scalar_spec(key: &str) -> Option<GpsScalarSpec> {
+    match key {
+        "GPS:GPSAltitude" => Some(GpsScalarSpec {
+            value_key: "GPS:GPSAltitude",
+            reference_key: Some("GPS:GPSAltitudeRef"),
+            kind: GpsScalarKind::AltitudeMeters,
+        }),
+        "GPS:GPSImgDirection" => Some(GpsScalarSpec {
+            value_key: "GPS:GPSImgDirection",
+            reference_key: None,
+            kind: GpsScalarKind::DirectionDegrees,
+        }),
+        "GPS:GPSSpeed" => Some(GpsScalarSpec {
+            value_key: "GPS:GPSSpeed",
+            reference_key: Some("GPS:GPSSpeedRef"),
+            kind: GpsScalarKind::SpeedMetersPerSecond,
+        }),
+        _ => None,
+    }
+}
+
+fn collect_gps_scalar_patches<R: Read + Seek>(
+    reader: &mut R,
+    metadata: &Metadata,
+    file_info: &FileInfo,
+    limits: ParseLimits,
+    variant: Variant,
+    edit: &TiffEdit,
+) -> Result<Vec<Patch>> {
+    let (key, replacement) = match edit {
+        TiffEdit::SetGpsScalar { key, value } => (key.as_str(), Some(value.as_str())),
+        TiffEdit::DeleteGpsScalar { key } => (key.as_str(), None),
+        TiffEdit::SetAscii { .. }
+        | TiffEdit::DeleteAscii { .. }
+        | TiffEdit::SetGpsDecimal { .. }
+        | TiffEdit::DeleteGpsDecimal { .. } => {
+            unreachable!("other edits are handled by their dedicated collectors")
+        }
+    };
+    let spec = gps_scalar_spec(key).ok_or_else(|| MetraError::WriteFailure {
+        message: format!("TIFF GPS scalar key {key} is not writable"),
+    })?;
+    if limits.max_value_bytes < 8 {
+        return Err(MetraError::ResourceLimitExceeded {
+            resource: "TIFF GPS scalar".to_owned(),
+            limit: limits.max_value_bytes,
+        });
+    }
+
+    let scalar_tag = match metadata.find_all(spec.value_key).as_slice() {
+        [tag] => *tag,
+        [] => {
+            return Err(MetraError::WriteFailure {
+                message: format!("TIFF GPS scalar {} does not exist", spec.value_key),
+            });
+        }
+        _ => {
+            return Err(MetraError::WriteFailure {
+                message: format!("TIFF GPS scalar {} is repeated", spec.value_key),
+            });
+        }
+    };
+    if !matches!(scalar_tag.value, TagValue::UnsignedRational { .. }) {
+        return Err(MetraError::WriteFailure {
+            message: format!(
+                "TIFF GPS scalar {} is not an unsigned rational",
+                spec.value_key
+            ),
+        });
+    }
+    let scalar_entry_offset = scalar_tag
+        .source
+        .offset
+        .ok_or_else(|| MetraError::WriteFailure {
+            message: format!("TIFF GPS scalar {} has no source entry", spec.value_key),
+        })?;
+    let endian = variant.endian();
+    let scalar_entry = read_at(
+        reader,
+        scalar_entry_offset,
+        variant.entry_size(),
+        file_info.size,
+        &file_info.path,
+        "TIFF GPS scalar entry",
+    )?;
+    let scalar_type = read_u16(endian, &scalar_entry[2..4]);
+    let scalar_count = match variant {
+        Variant::Classic { .. } => u64::from(read_u32(endian, &scalar_entry[4..8])),
+        Variant::Big { .. } => read_u64(endian, &scalar_entry[4..12]),
+    };
+    if scalar_type != 5 || scalar_count != 1 {
+        return Err(MetraError::WriteFailure {
+            message: format!(
+                "TIFF GPS scalar {} must use one unsigned rational",
+                spec.value_key
+            ),
+        });
+    }
+    let scalar_offset = entry_value_offset(variant, scalar_entry_offset, &scalar_entry, 8)?;
+    let scalar_end = scalar_offset
+        .checked_add(8)
+        .ok_or(MetraError::InvalidOffset {
+            context: "TIFF GPS scalar value".to_owned(),
+            offset: scalar_offset,
+        })?;
+    if scalar_end > file_info.size {
+        return Err(MetraError::UnexpectedEof {
+            context: "TIFF GPS scalar value".to_owned(),
+        });
+    }
+
+    let reference = if let Some(reference_key) = spec.reference_key {
+        let reference_tag = match metadata.find_all(reference_key).as_slice() {
+            [tag] => *tag,
+            [] => {
+                return Err(MetraError::WriteFailure {
+                    message: format!("TIFF GPS reference {reference_key} does not exist"),
+                });
+            }
+            _ => {
+                return Err(MetraError::WriteFailure {
+                    message: format!("TIFF GPS reference {reference_key} is repeated"),
+                });
+            }
+        };
+        let reference_entry_offset =
+            reference_tag
+                .source
+                .offset
+                .ok_or_else(|| MetraError::WriteFailure {
+                    message: format!("TIFF GPS reference {reference_key} has no source entry"),
+                })?;
+        let reference_entry = read_at(
+            reader,
+            reference_entry_offset,
+            variant.entry_size(),
+            file_info.size,
+            &file_info.path,
+            "TIFF GPS scalar reference entry",
+        )?;
+        let reference_type = read_u16(endian, &reference_entry[2..4]);
+        let reference_count = match variant {
+            Variant::Classic { .. } => u64::from(read_u32(endian, &reference_entry[4..8])),
+            Variant::Big { .. } => read_u64(endian, &reference_entry[4..12]),
+        };
+        match spec.kind {
+            GpsScalarKind::AltitudeMeters => {
+                if reference_type != 1
+                    || reference_count != 1
+                    || !matches!(reference_tag.value, TagValue::Unsigned(value) if value <= 1)
+                {
+                    return Err(MetraError::WriteFailure {
+                        message: format!(
+                            "TIFF GPS reference {reference_key} must be one BYTE value 0 or 1"
+                        ),
+                    });
+                }
+                let offset =
+                    entry_value_offset(variant, reference_entry_offset, &reference_entry, 1)?;
+                let end = offset.checked_add(1).ok_or(MetraError::InvalidOffset {
+                    context: "TIFF GPS altitude reference".to_owned(),
+                    offset,
+                })?;
+                if end > file_info.size {
+                    return Err(MetraError::UnexpectedEof {
+                        context: "TIFF GPS altitude reference".to_owned(),
+                    });
+                }
+                Some(GpsReferenceLocation {
+                    offset,
+                    span: 1,
+                    unit: None,
+                })
+            }
+            GpsScalarKind::SpeedMetersPerSecond => {
+                let reference_count_usize = usize::try_from(reference_count).map_err(|_| {
+                    MetraError::ResourceLimitExceeded {
+                        resource: "TIFF GPS speed reference".to_owned(),
+                        limit: limits.max_value_bytes,
+                    }
+                })?;
+                let unit = match &reference_tag.value {
+                    TagValue::String(value) => value.as_bytes().first().copied(),
+                    _ => None,
+                };
+                if reference_type != 2
+                    || reference_count_usize < 2
+                    || reference_count_usize > limits.max_value_bytes
+                    || !matches!(unit, Some(b'K' | b'k' | b'M' | b'm' | b'N' | b'n'))
+                {
+                    return Err(MetraError::WriteFailure {
+                        message: format!(
+                            "TIFF GPS reference {reference_key} must be an ASCII K, M, or N field"
+                        ),
+                    });
+                }
+                let offset = entry_value_offset(
+                    variant,
+                    reference_entry_offset,
+                    &reference_entry,
+                    reference_count_usize,
+                )?;
+                let end = offset
+                    .checked_add(reference_count)
+                    .ok_or(MetraError::InvalidOffset {
+                        context: "TIFF GPS speed reference".to_owned(),
+                        offset,
+                    })?;
+                if end > file_info.size {
+                    return Err(MetraError::UnexpectedEof {
+                        context: "TIFF GPS speed reference".to_owned(),
+                    });
+                }
+                Some(GpsReferenceLocation {
+                    offset,
+                    span: reference_count,
+                    unit,
+                })
+            }
+            GpsScalarKind::DirectionDegrees => unreachable!("direction has no reference field"),
+        }
+    } else {
+        None
+    };
+
+    let mut scalar_bytes = vec![0_u8; 8];
+    let mut patches = vec![Patch {
+        offset: scalar_offset,
+        span: 8,
+        bytes: scalar_bytes.clone(),
+    }];
+    if let Some(replacement) = replacement {
+        let value = replacement
+            .parse::<f64>()
+            .map_err(|_| MetraError::WriteFailure {
+                message: format!("TIFF GPS scalar value {replacement:?} is not a number"),
+            })?;
+        let (encoded_value, reference_value) = match spec.kind {
+            GpsScalarKind::AltitudeMeters => {
+                if !value.is_finite() {
+                    return Err(MetraError::WriteFailure {
+                        message: format!("TIFF GPS altitude {replacement:?} must be finite"),
+                    });
+                }
+                (
+                    value.abs(),
+                    Some(if value.is_sign_negative() && value != 0.0 {
+                        1_u8
+                    } else {
+                        0_u8
+                    }),
+                )
+            }
+            GpsScalarKind::DirectionDegrees => {
+                if !value.is_finite() || !(0.0..=360.0).contains(&value) {
+                    return Err(MetraError::WriteFailure {
+                        message: format!(
+                            "TIFF GPS direction {replacement:?} must be finite and within 0..=360"
+                        ),
+                    });
+                }
+                (value, None)
+            }
+            GpsScalarKind::SpeedMetersPerSecond => {
+                if !value.is_finite() || value < 0.0 {
+                    return Err(MetraError::WriteFailure {
+                        message: format!(
+                            "TIFF GPS speed {replacement:?} must be finite and non-negative"
+                        ),
+                    });
+                }
+                let unit = reference
+                    .and_then(|reference| reference.unit)
+                    .ok_or_else(|| MetraError::WriteFailure {
+                        message: "TIFF GPS speed reference is missing".to_owned(),
+                    })?;
+                (speed_from_meters_per_second(value, unit, key)?, None)
+            }
+        };
+        let (numerator, denominator) = encode_gps_scalar(encoded_value, key)?;
+        write_u32(endian, &mut scalar_bytes[..4], numerator);
+        write_u32(endian, &mut scalar_bytes[4..], denominator);
+        patches[0].bytes = scalar_bytes;
+        if let Some(reference_value) = reference_value {
+            let location = reference.expect("altitude reference was validated");
+            patches.push(Patch {
+                offset: location.offset,
+                span: location.span,
+                bytes: vec![reference_value],
+            });
+        }
+    } else if let Some(location) = reference {
+        patches.push(Patch {
+            offset: location.offset,
+            span: location.span,
+            bytes: vec![
+                0_u8;
+                usize::try_from(location.span).map_err(|_| {
+                    MetraError::ResourceLimitExceeded {
+                        resource: "TIFF GPS reference".to_owned(),
+                        limit: limits.max_value_bytes,
+                    }
+                })?
+            ],
+        });
+    }
+    Ok(patches)
+}
+
+fn speed_from_meters_per_second(value: f64, unit: u8, key: &str) -> Result<f64> {
+    let multiplier = match unit {
+        b'K' | b'k' => 1_000.0 / 3_600.0,
+        b'M' | b'm' => 1.0,
+        b'N' | b'n' => 1_852.0 / 3_600.0,
+        _ => {
+            return Err(MetraError::WriteFailure {
+                message: format!("TIFF GPS speed reference for {key} is unsupported"),
+            });
+        }
+    };
+    let converted = value / multiplier;
+    if converted.is_finite() {
+        Ok(converted)
+    } else {
+        Err(MetraError::WriteFailure {
+            message: format!("TIFF GPS speed {value} cannot be represented safely"),
+        })
+    }
+}
+
+fn encode_gps_scalar(value: f64, key: &str) -> Result<(u32, u32)> {
+    if !value.is_finite() || value < 0.0 || value > f64::from(u32::MAX) {
+        return Err(MetraError::WriteFailure {
+            message: format!("TIFF GPS scalar {key} is outside the representable range"),
+        });
+    }
+    const MAX_DENOMINATOR: u32 = 1_000_000;
+    if value == 0.0 {
+        return Ok((0, 1));
+    }
+    let denominator_limit = (f64::from(u32::MAX) / value)
+        .floor()
+        .min(f64::from(MAX_DENOMINATOR));
+    let mut denominator = denominator_limit.max(1.0) as u32;
+    loop {
+        let rounded = (value * f64::from(denominator)).round();
+        if rounded.is_finite() && rounded <= f64::from(u32::MAX) {
+            return Ok((rounded as u32, denominator));
+        }
+        if denominator == 1 {
+            break;
+        }
+        denominator -= 1;
+    }
+    Err(MetraError::WriteFailure {
+        message: format!("TIFF GPS scalar {key} cannot be represented safely"),
+    })
 }
 
 fn read_variant<R: Read + Seek>(reader: &mut R, file_length: u64, path: &Path) -> Result<Variant> {
@@ -898,6 +1298,47 @@ mod tests {
         bytes
     }
 
+    fn tiff_with_gps_scalars() -> Vec<u8> {
+        let mut bytes = vec![
+            b'I', b'I', 42, 0, 8, 0, 0, 0, 1, 0, // one IFD0 entry
+            0x25, 0x88, 4, 0, 1, 0, 0, 0, 26, 0, 0, 0, // GPS IFD -> offset 26
+            0, 0, 0, 0, // no next IFD
+            9, 0, // nine GPS IFD entries
+        ];
+        let mut entry = |id: u16, type_id: u16, count: u32, value: u32| {
+            bytes.extend_from_slice(&id.to_le_bytes());
+            bytes.extend_from_slice(&type_id.to_le_bytes());
+            bytes.extend_from_slice(&count.to_le_bytes());
+            bytes.extend_from_slice(&value.to_le_bytes());
+        };
+        entry(2, 5, 3, 140); // GPSLatitude
+        entry(1, 2, 2, u32::from_le_bytes([b'N', 0, 0, 0])); // GPSLatitudeRef
+        entry(4, 5, 3, 164); // GPSLongitude
+        entry(3, 2, 2, u32::from_le_bytes([b'E', 0, 0, 0])); // GPSLongitudeRef
+        entry(6, 5, 1, 188); // GPSAltitude
+        entry(5, 1, 1, 0); // GPSAltitudeRef
+        entry(17, 5, 1, 196); // GPSImgDirection
+        entry(13, 5, 1, 204); // GPSSpeed
+        entry(12, 2, 2, u32::from_le_bytes([b'M', 0, 0, 0])); // GPSSpeedRef
+        bytes.extend_from_slice(&0_u32.to_le_bytes()); // no next IFD
+        for (numerator, denominator) in [
+            (48_u32, 1_u32),
+            (51, 1),
+            (24, 1),
+            (2, 1),
+            (20, 1),
+            (0, 1),
+            (125, 1),
+            (270, 1),
+            (36, 1),
+        ] {
+            bytes.extend_from_slice(&numerator.to_le_bytes());
+            bytes.extend_from_slice(&denominator.to_le_bytes());
+        }
+        assert_eq!(bytes.len(), 212);
+        bytes
+    }
+
     fn info(bytes: &[u8]) -> FileInfo {
         FileInfo::new("editable.tif".into(), bytes.len() as u64, FileFormat::Tiff)
     }
@@ -1088,6 +1529,161 @@ mod tests {
                 .unwrap()
                 .display_value(),
             "W"
+        );
+    }
+
+    #[test]
+    fn rewrites_gps_altitude_direction_and_speed_without_resizing() {
+        let bytes = tiff_with_gps_scalars();
+        let output = rewrite_tiff_to_vec(
+            &bytes,
+            info(&bytes),
+            ParseLimits::default(),
+            &[
+                TiffEdit::SetGpsScalar {
+                    key: "GPS:GPSAltitude".to_owned(),
+                    value: "-125.5".to_owned(),
+                },
+                TiffEdit::SetGpsScalar {
+                    key: "GPS:GPSImgDirection".to_owned(),
+                    value: "271.25".to_owned(),
+                },
+                TiffEdit::SetGpsScalar {
+                    key: "GPS:GPSSpeed".to_owned(),
+                    value: "10".to_owned(),
+                },
+            ],
+        )
+        .expect("GPS scalar edits should succeed");
+        assert_eq!(output.len(), bytes.len());
+        let metadata = read_tiff(
+            &mut Cursor::new(output),
+            info(&bytes),
+            ParseLimits::default(),
+        )
+        .expect("edited GPS scalars should remain readable");
+        let altitude = metadata
+            .find("GPS:AltitudeMeters")
+            .unwrap()
+            .display_value()
+            .parse::<f64>()
+            .unwrap();
+        let direction = metadata
+            .find("GPS:ImageDirectionDegrees")
+            .unwrap()
+            .display_value()
+            .parse::<f64>()
+            .unwrap();
+        let speed = metadata
+            .find("GPS:SpeedMetersPerSecond")
+            .unwrap()
+            .display_value()
+            .parse::<f64>()
+            .unwrap();
+        assert!((altitude + 125.5).abs() < 0.000001);
+        assert!((direction - 271.25).abs() < 0.000001);
+        assert!((speed - 10.0).abs() < 0.000001);
+        assert_eq!(
+            metadata.find("GPS:GPSAltitudeRef").unwrap().display_value(),
+            "1"
+        );
+        assert_eq!(
+            metadata.find("GPS:GPSSpeedRef").unwrap().display_value(),
+            "M"
+        );
+    }
+
+    #[test]
+    fn deletes_gps_altitude_direction_and_speed_as_zeroed_tombstones() {
+        let bytes = tiff_with_gps_scalars();
+        let output = rewrite_tiff_to_vec(
+            &bytes,
+            info(&bytes),
+            ParseLimits::default(),
+            &[
+                TiffEdit::DeleteGpsScalar {
+                    key: "GPS:GPSAltitude".to_owned(),
+                },
+                TiffEdit::DeleteGpsScalar {
+                    key: "GPS:GPSImgDirection".to_owned(),
+                },
+                TiffEdit::DeleteGpsScalar {
+                    key: "GPS:GPSSpeed".to_owned(),
+                },
+            ],
+        )
+        .expect("GPS scalar deletion should succeed");
+        assert_eq!(output.len(), bytes.len());
+        let metadata = read_tiff(
+            &mut Cursor::new(output),
+            info(&bytes),
+            ParseLimits::default(),
+        )
+        .expect("deleted GPS scalars should remain readable");
+        assert!(metadata.find("GPS:GPSAltitude").is_none());
+        assert!(metadata.find("GPS:GPSImgDirection").is_none());
+        assert!(metadata.find("GPS:GPSSpeed").is_none());
+        assert!(metadata.find("GPS:AltitudeMeters").is_none());
+        assert!(metadata.find("GPS:ImageDirectionDegrees").is_none());
+        assert!(metadata.find("GPS:SpeedMetersPerSecond").is_none());
+        assert!(metadata.find("GPS:GPSSpeedRef").is_none());
+    }
+
+    #[test]
+    fn rejects_invalid_gps_scalar_values() {
+        let bytes = tiff_with_gps_scalars();
+        let direction = rewrite_tiff_to_vec(
+            &bytes,
+            info(&bytes),
+            ParseLimits::default(),
+            &[TiffEdit::SetGpsScalar {
+                key: "GPS:GPSImgDirection".to_owned(),
+                value: "361".to_owned(),
+            }],
+        );
+        assert!(matches!(direction, Err(MetraError::WriteFailure { .. })));
+        let speed = rewrite_tiff_to_vec(
+            &bytes,
+            info(&bytes),
+            ParseLimits::default(),
+            &[TiffEdit::SetGpsScalar {
+                key: "GPS:GPSSpeed".to_owned(),
+                value: "-1".to_owned(),
+            }],
+        );
+        assert!(matches!(speed, Err(MetraError::WriteFailure { .. })));
+    }
+
+    #[test]
+    fn converts_speed_from_meters_per_second_into_existing_kmh_units() {
+        let mut bytes = tiff_with_gps_scalars();
+        bytes[132] = b'K';
+        let output = rewrite_tiff_to_vec(
+            &bytes,
+            info(&bytes),
+            ParseLimits::default(),
+            &[TiffEdit::SetGpsScalar {
+                key: "GPS:GPSSpeed".to_owned(),
+                value: "10".to_owned(),
+            }],
+        )
+        .expect("GPS speed conversion should succeed");
+        let metadata = read_tiff(
+            &mut Cursor::new(output),
+            info(&bytes),
+            ParseLimits::default(),
+        )
+        .expect("converted GPS speed should remain readable");
+        let speed = metadata
+            .find("GPS:SpeedMetersPerSecond")
+            .unwrap()
+            .display_value()
+            .parse::<f64>()
+            .unwrap();
+        assert!((speed - 10.0).abs() < 0.000001);
+        assert_eq!(
+            metadata.find("GPS:GPSSpeedRef").unwrap().display_value(),
+            "K"
         );
     }
 
