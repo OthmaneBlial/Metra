@@ -59,6 +59,9 @@ standalone XMP packet can also be created from caller-supplied XML after the
 same bounded parser validation.
 An existing standalone XMP packet can be replaced through the validated
 equal-byte-length `XMP:Packet` rewrite seam.
+`--delete XMP:Packet` clears the parsed XMP properties while retaining a
+same-length, valid empty RDF packet envelope; the structural `XMP:Packet` tag
+therefore remains present by design.
 Existing standalone ICC `Description`, `Copyright`, `ManufacturerDescription`,
 and `ModelDescription` text tags can be rewritten or cleared within their
 allocated profile payloads.
@@ -98,9 +101,10 @@ minimal SOI/metadata/EOI JPEG container seed with bounded Comment and XMP.
 `PdfCreateEntry`/`PdfCreateOptions` and `create_pdf_to_vec`/`create_pdf_path`
 provide a minimal xref-valid PDF document with bounded Info fields, without
 creating page content.
-`XmpEdit` and `rewrite_xmp`/`rewrite_xmp_path` provide bounded replacement of
-an existing standalone XMP packet, requiring an equal byte length and re-reading
-the result before replacement.
+`XmpEdit` and `rewrite_xmp`/`rewrite_xmp_path` provide bounded replacement or
+property clearing for an existing standalone XMP packet, requiring an equal
+byte length and re-reading the result before replacement. Clearing retains the
+valid packet envelope and removes parsed properties.
 `IccCreateOptions` and `create_icc_to_vec`/`create_icc_path` provide the
 standalone ICC creation seam.
 `IccEdit` and `rewrite_icc`/`rewrite_icc_path` provide bounded replacement and
@@ -415,7 +419,7 @@ validation de sortie et refus d’écrasement : AVI émet une frame DIB 1x1 et
 Matroska/WebM émettent un `Segment` EBML metadata-only avec `Info`/`SimpleTag` ;
 l’encodage vidéo général, les tracks/clusters et la création arbitraire de
 chunks restent planifiés.
-6. **99 %** — Ajouter `set`/`delete`/`copy` et comparer après les tests round-trip ; les opérations couvrent maintenant JPEG `Comment`/EXIF ASCII existant/`XMP` et datasets IPTC-IIM connus, PNG `tEXt`/`XMP`, GIF `Comment`, WebP `XMP`, paquets XMP autonomes `XMP:Packet`, tags texte ICC autonomes, SVG `Title`/`Description`/`Comment`, WAV `LIST/INFO`, FLAC et Ogg Vorbis/Opus/Ogg-FLAC Comments, ID3v2 texte/commentaire, les champs texte ISO-BMFF existants y compris CR3 avec effacement borné, les champs Info PDF existants avec suppression de tokens Info existants, les ressources XMP PSD existantes, les chaînes AVI `LIST/INFO` avec effacement borné, les chaînes `Info` et `SimpleTag` Matroska/WebM avec effacement borné, les slots TIFF ASCII des RAW TIFF-like avec effacement borné et la copie de champs ASCII TIFF existants via API et CLI, avec comparaison déterministe des valeurs ; l’API publique ajoute aussi des opérations canoniques `MetadataEdit` qui dispatchent vers ces writers validés.
+6. **99 %** — Ajouter `set`/`delete`/`copy` et comparer après les tests round-trip ; les opérations couvrent maintenant JPEG `Comment`/EXIF ASCII existant/`XMP` et datasets IPTC-IIM connus, PNG `tEXt`/`XMP`, GIF `Comment`, WebP `XMP`, paquets XMP autonomes `XMP:Packet` avec effacement borné de leurs propriétés, tags texte ICC autonomes, SVG `Title`/`Description`/`Comment`, WAV `LIST/INFO`, FLAC et Ogg Vorbis/Opus/Ogg-FLAC Comments, ID3v2 texte/commentaire, les champs texte ISO-BMFF existants y compris CR3 avec effacement borné, les champs Info PDF existants avec suppression de tokens Info existants, les ressources XMP PSD existantes, les chaînes AVI `LIST/INFO` avec effacement borné, les chaînes `Info` et `SimpleTag` Matroska/WebM avec effacement borné, les slots TIFF ASCII des RAW TIFF-like avec effacement borné et la copie de champs ASCII TIFF existants via API et CLI, avec comparaison déterministe des valeurs ; l’API publique ajoute aussi des opérations canoniques `MetadataEdit` qui dispatchent vers ces writers validés.
 7. **82 %** — Ajouter le traitement parallèle contrôlé et le rendu en flux borné ; le scheduler est partagé par l’API Rust et le CLI, conserve l’ordre déterministe, borne les workers et la fenêtre de résultats hors ordre, applique une contre-pression au flux parallèle et gère l’annulation coopérative Ctrl+C avec le code 130. Le benchmark réel du corpus mesure environ 20,6 MiB/s en séquentiel, 106 MiB/s avec quatre workers et 89 MiB/s en streaming borné sur cette machine ; les baselines multi-plateformes et le profiling restent à faire.
 8. **100 %** — Étendre les sorties structurées avec CSV, TOML et YAML versionnés.
 

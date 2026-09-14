@@ -4,6 +4,8 @@
 
 Initial read-first foundation with narrow validated rewrites:
 
+- added standalone XMP property clearing through a same-length empty RDF
+  envelope, with generic API, registry, atomic path, and CLI `--delete` coverage;
 - added bounded standalone XMP packet replacement with equal-byte-length XML
   validation, generic and registry API dispatch, atomic replacement, and CLI
   `--set`/`--copy` coverage;
