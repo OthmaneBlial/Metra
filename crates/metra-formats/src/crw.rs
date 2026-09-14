@@ -87,6 +87,7 @@ pub fn read_crw<R: Read + Seek>(
         return Ok(metadata);
     }
 
+    let mut entries_seen = 0_usize;
     parse_directory(
         reader,
         root_offset,
@@ -96,6 +97,7 @@ pub fn read_crw<R: Read + Seek>(
         endian,
         &file_info,
         &mut metadata,
+        &mut entries_seen,
         limits,
     )?;
     metadata.sort_tags();
@@ -112,6 +114,7 @@ fn parse_directory<R: Read + Seek>(
     endian: Endian,
     file_info: &FileInfo,
     metadata: &mut Metadata,
+    entries_seen: &mut usize,
     limits: ParseLimits,
 ) -> Result<()> {
     if depth > limits.max_recursion_depth {
@@ -177,6 +180,17 @@ fn parse_directory<R: Read + Seek>(
     }
     let entries_local = local_directory + 2;
     for index in 0..entry_count {
+        if *entries_seen >= limits.max_ifd_entries {
+            metadata.add_warning(
+                Warning::new(
+                    "raw-crw-entry-limit",
+                    "CRW total directory-entry budget exceeded",
+                )
+                .at(base_offset + entries_local),
+            );
+            break;
+        }
+        *entries_seen = entries_seen.saturating_add(1);
         let entry_local = match entries_local.checked_add(
             u64::try_from(index * CRW_DIRECTORY_ENTRY_LENGTH).map_err(|_| {
                 MetraError::InvalidOffset {
@@ -234,6 +248,7 @@ fn parse_directory<R: Read + Seek>(
                     endian,
                     file_info,
                     metadata,
+                    entries_seen,
                     limits,
                 )?;
             } else if location_bits == 0 {
@@ -278,6 +293,7 @@ fn parse_directory<R: Read + Seek>(
                     endian,
                     file_info,
                     metadata,
+                    entries_seen,
                     limits,
                 )?;
             } else {
@@ -776,5 +792,27 @@ mod tests {
         );
         assert_eq!(metadata.find("CRW:Comment").unwrap().group, "Dir3000");
         assert!(metadata.warnings.is_empty());
+    }
+
+    #[test]
+    fn applies_a_global_entry_budget_across_nested_ciff_directories() {
+        let bytes = nested_crw_fixture();
+        let limits = ParseLimits {
+            max_ifd_entries: 1,
+            ..ParseLimits::default()
+        };
+        let metadata = read_crw(
+            &mut Cursor::new(bytes.clone()),
+            FileInfo::new("capture.crw".into(), bytes.len() as u64, FileFormat::Raw),
+            limits,
+        )
+        .unwrap();
+        assert!(metadata.find("CRW:Comment").is_none());
+        assert!(
+            metadata
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "raw-crw-entry-limit")
+        );
     }
 }
