@@ -269,7 +269,7 @@ const FORMAT_CAPABILITIES: &[FormatCapabilities] = &[
         format: FileFormat::Mp3,
         read: CapabilityStatus::Partial,
         write: CapabilityStatus::Partial,
-        create: CapabilityStatus::Planned,
+        create: CapabilityStatus::Partial,
         delete: CapabilityStatus::Partial,
         lossless_rewrite: CapabilityStatus::Partial,
         streaming: CapabilityStatus::Partial,
@@ -1060,6 +1060,10 @@ mod tests {
         );
         assert_eq!(
             format_capabilities(FileFormat::Wav).create,
+            CapabilityStatus::Partial
+        );
+        assert_eq!(
+            format_capabilities(FileFormat::Mp3).create,
             CapabilityStatus::Partial
         );
         assert_eq!(
