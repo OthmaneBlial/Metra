@@ -156,5 +156,12 @@ escaped before insertion; comment delimiters, XML node limits, document size,
 and the final reader validation are enforced before an atomic no-overwrite path
 create.
 
+WebP creation emits only a fixed 1x1 lossless `VP8L` seed with an optional
+bounded XMP chunk. The XMP packet is parsed with the same entity-safe limits as
+read operations; chunk sizes, total output, final reader validation, temporary
+file cleanup, and atomic no-overwrite path creation are enforced before the
+destination is committed. The seed is metadata-oriented and does not claim to
+be a general WebP image encoder.
+
 Security reports should include the smallest reproducible input and the exact
 Metra version. Do not include private media or secrets in an issue.
