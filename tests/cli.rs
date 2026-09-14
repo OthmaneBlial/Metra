@@ -298,6 +298,26 @@ fn minimal_raf() -> Vec<u8> {
     bytes
 }
 
+fn minimal_mrw() -> Vec<u8> {
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(b"\0MRM");
+    bytes.extend_from_slice(&32_u32.to_be_bytes());
+    bytes.extend_from_slice(b"\0PRD");
+    bytes.extend_from_slice(&24_u32.to_be_bytes());
+    let mut prd = [0_u8; 24];
+    prd[..5].copy_from_slice(b"FW-1\0");
+    prd[8..10].copy_from_slice(&3000_u16.to_be_bytes());
+    prd[10..12].copy_from_slice(&4000_u16.to_be_bytes());
+    prd[12..14].copy_from_slice(&2000_u16.to_be_bytes());
+    prd[14..16].copy_from_slice(&3000_u16.to_be_bytes());
+    prd[16] = 14;
+    prd[17] = 14;
+    prd[18] = 82;
+    prd[23] = 1;
+    bytes.extend_from_slice(&prd);
+    bytes
+}
+
 fn minimal_svg_document(title: &str, description: &str, comment: &str) -> Vec<u8> {
     format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\"><!-- {comment} --><title>{title}</title><desc>{description}</desc><rect width=\"2\" height=\"2\"/></svg>"
@@ -956,6 +976,37 @@ fn raf_json_output_exposes_bounded_header_and_directory_metadata() {
     assert!(
         tags.iter()
             .any(|tag| tag["name"] == "RawZoomActive" && tag["value"]["unsigned"] == 1)
+    );
+    assert!(
+        document["warnings"]
+            .as_array()
+            .expect("warnings should be an array")
+            .is_empty()
+    );
+}
+
+#[test]
+fn mrw_json_output_exposes_bounded_prd_metadata() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.file("capture.mrw", &minimal_mrw());
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args(["--json", path.to_str().expect("UTF-8 test path")])
+        .output()
+        .expect("Metra CLI should start");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let document: Value = serde_json::from_slice(&output.stdout).expect("JSON output should parse");
+    assert_eq!(document["file_info"]["format"], "RAW");
+    let tags = document["tags"]
+        .as_array()
+        .expect("tags should be an array");
+    assert!(
+        tags.iter()
+            .any(|tag| tag["name"] == "FirmwareID" && tag["value"]["string"] == "FW-1")
+    );
+    assert!(
+        tags.iter()
+            .any(|tag| tag["name"] == "ImageWidth" && tag["value"]["unsigned"] == 3000)
     );
     assert!(
         document["warnings"]
