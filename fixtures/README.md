@@ -1,8 +1,13 @@
 # Fixtures
 
-The current test suite creates minimal synthetic JPEG, TIFF, PNG, and WebP
-inputs at runtime so no private media is stored in the repository. This folder
-is reserved for reviewed, redistributable corpus fixtures and their provenance.
+The checked-in `corpus/` contains small, deterministic, synthetic files created
+by Metra's own public creators. It covers every currently creatable container
+family and is used by the normal corpus smoke test. File sizes and provenance
+are recorded in [`CORPUS_MANIFEST.json`](CORPUS_MANIFEST.json).
+
+These fixtures are not a substitute for a licensed real-world media corpus or
+an ExifTool differential study. Those remain opt-in and can be supplied with
+`METRA_CORPUS_DIR`.
 
 Every future fixture should document its source, license, format, expected
 behavior, and whether it is intentionally malformed.
@@ -13,7 +18,7 @@ The ignored integration checks use an explicit environment variable so a
 private or reviewed corpus is never copied into the repository:
 
 ```bash
-METRA_CORPUS_DIR=/path/to/corpus cargo test --test corpus -- --ignored --nocapture
+METRA_CORPUS_DIR=/path/to/corpus cargo test --test corpus -- --nocapture
 METRA_CORPUS_DIR=/path/to/corpus METRA_ORACLE=/path/to/exiftool \
   cargo test --test corpus corpus_supported_tags_can_be_compared_with_oracle -- --ignored --nocapture
 

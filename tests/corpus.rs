@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::env;
 use std::fs;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -30,10 +30,18 @@ struct DifferentialSummary {
     oracle_value_mismatches: usize,
 }
 
-fn corpus_files() -> Vec<PathBuf> {
-    let root = env::var_os("METRA_CORPUS_DIR")
+fn corpus_root() -> PathBuf {
+    env::var_os("METRA_CORPUS_DIR")
         .map(PathBuf::from)
-        .expect("METRA_CORPUS_DIR must point to a reviewed local corpus");
+        .unwrap_or_else(checked_in_corpus_root)
+}
+
+fn checked_in_corpus_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/corpus")
+}
+
+fn corpus_files() -> Vec<PathBuf> {
+    let root = corpus_root();
     let mut files = Vec::new();
     collect_files(&root, &mut files).expect("corpus should be traversable");
     files.sort();
@@ -60,7 +68,6 @@ fn collect_files(path: &Path, files: &mut Vec<PathBuf>) -> std::io::Result<()> {
 }
 
 #[test]
-#[ignore = "requires METRA_CORPUS_DIR pointing to reviewed redistributable or private test media"]
 fn corpus_inspection_does_not_panic() {
     let files = corpus_files();
     let mut recognized = 0_usize;
@@ -94,6 +101,62 @@ fn corpus_inspection_does_not_panic() {
             failures,
             warnings,
         },
+    );
+}
+
+#[test]
+fn checked_in_corpus_matches_manifest() {
+    let manifest_path =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/CORPUS_MANIFEST.json");
+    let manifest: Value = serde_json::from_slice(
+        &fs::read(&manifest_path).expect("checked-in corpus manifest should be readable"),
+    )
+    .expect("checked-in corpus manifest should be valid JSON");
+    assert_eq!(manifest["schema_version"], 1);
+
+    let listed = manifest["files"]
+        .as_array()
+        .expect("corpus manifest files should be an array")
+        .iter()
+        .map(|entry| {
+            let object = entry
+                .as_object()
+                .expect("corpus manifest entries should be objects");
+            let name = object["name"]
+                .as_str()
+                .expect("corpus manifest entries should have names");
+            let size = object["size_bytes"]
+                .as_u64()
+                .expect("corpus manifest entries should have sizes");
+            let file = checked_in_corpus_root().join(name);
+            assert!(
+                file.is_file(),
+                "manifest file should exist: {}",
+                file.display()
+            );
+            assert_eq!(
+                fs::metadata(&file)
+                    .expect("manifest file metadata should be readable")
+                    .len(),
+                size,
+                "manifest size drift for {name}"
+            );
+            name.to_owned()
+        })
+        .collect::<BTreeSet<_>>();
+
+    let actual = corpus_files()
+        .into_iter()
+        .map(|file| {
+            file.strip_prefix(checked_in_corpus_root())
+                .expect("corpus file should be under corpus root")
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        listed, actual,
+        "corpus files and manifest should stay in sync"
     );
 }
 

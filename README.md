@@ -270,9 +270,14 @@ cargo bench --bench throughput --no-run
 cargo build --release
 ```
 
-The corpus and differential tests are intentionally ignored unless a reviewed
-local corpus and oracle are supplied. Passing the local suite does not establish
-complete ExifTool compatibility.
+The differential test is intentionally ignored unless a reviewed local corpus
+and oracle are supplied. Passing the local suite does not establish complete
+ExifTool compatibility.
+
+The repository also ships a deterministic synthetic corpus covering every
+currently creatable container family. It is inspected by the normal test suite;
+see [`fixtures/CORPUS_MANIFEST.json`](fixtures/CORPUS_MANIFEST.json) for
+provenance and checksums.
 
 ## Contributing
 
