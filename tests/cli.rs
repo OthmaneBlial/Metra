@@ -1539,6 +1539,29 @@ fn cli_can_create_minimal_psd_with_xmp_without_overwrite() {
 }
 
 #[test]
+fn cli_can_create_mp4_mov_and_m4a_metadata_seeds() {
+    let directory = TemporaryDirectory::new();
+    for (flag, name, format) in [
+        ("--create-mp4", "created.mp4", metra::FileFormat::Mp4),
+        ("--create-mov", "created.mov", metra::FileFormat::Mov),
+        ("--create-m4a", "created.m4a", metra::FileFormat::M4a),
+    ] {
+        let path = directory.path.join(name);
+        let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+            .args([flag, "ISOBMFF:Title=Metra", path.to_str().unwrap()])
+            .output()
+            .expect("Metra CLI should start");
+        assert!(output.status.success(), "stderr: {:?}", output.stderr);
+        let metadata = metra::read(&path).expect("created ISO-BMFF should remain readable");
+        assert_eq!(metadata.file_info.format, format);
+        assert_eq!(
+            metadata.find("ISOBMFF:Title").unwrap().display_value(),
+            "Metra"
+        );
+    }
+}
+
+#[test]
 fn cli_can_set_and_copy_standalone_xmp_packet() {
     let directory = TemporaryDirectory::new();
     let source = directory.file("source.xmp", &xmp_packet("source").into_bytes());

@@ -216,6 +216,51 @@ struct Arguments {
     )]
     create_psd: Vec<String>,
 
+    /// Create a metadata-only MP4 seed with bounded QuickTime text fields.
+    #[arg(
+        long = "create-mp4",
+        value_name = "KEY=VALUE",
+        action = clap::ArgAction::Append,
+        conflicts_with_all = [
+            "set", "delete", "copy", "create_tiff", "create_jpeg", "create_pdf", "create_psd",
+            "create_avi", "create_mkv", "create_webm", "create_png", "create_xmp", "create_wav",
+            "create_flac", "create_gif", "create_icc", "create_mp3", "create_ogg", "create_svg",
+            "create_webp_xmp", "create_mov", "create_m4a", "json", "jsonl", "csv", "toml", "yaml",
+            "tag", "validate", "compare"
+        ]
+    )]
+    create_mp4: Vec<String>,
+
+    /// Create a metadata-only MOV seed with bounded QuickTime text fields.
+    #[arg(
+        long = "create-mov",
+        value_name = "KEY=VALUE",
+        action = clap::ArgAction::Append,
+        conflicts_with_all = [
+            "set", "delete", "copy", "create_tiff", "create_jpeg", "create_pdf", "create_psd",
+            "create_avi", "create_mkv", "create_webm", "create_png", "create_xmp", "create_wav",
+            "create_flac", "create_gif", "create_icc", "create_mp3", "create_ogg", "create_svg",
+            "create_webp_xmp", "create_mp4", "create_m4a", "json", "jsonl", "csv", "toml", "yaml",
+            "tag", "validate", "compare"
+        ]
+    )]
+    create_mov: Vec<String>,
+
+    /// Create a metadata-only M4A seed with bounded QuickTime text fields.
+    #[arg(
+        long = "create-m4a",
+        value_name = "KEY=VALUE",
+        action = clap::ArgAction::Append,
+        conflicts_with_all = [
+            "set", "delete", "copy", "create_tiff", "create_jpeg", "create_pdf", "create_psd",
+            "create_avi", "create_mkv", "create_webm", "create_png", "create_xmp", "create_wav",
+            "create_flac", "create_gif", "create_icc", "create_mp3", "create_ogg", "create_svg",
+            "create_webp_xmp", "create_mp4", "create_mov", "json", "jsonl", "csv", "toml", "yaml",
+            "tag", "validate", "compare"
+        ]
+    )]
+    create_m4a: Vec<String>,
+
     /// Create a new minimal 1x1 AVI seed with one or more INFO fields.
     #[arg(
         long = "create-avi",
@@ -734,6 +779,30 @@ fn main() -> ExitCode {
             }
         };
     }
+    if !arguments.create_mp4.is_empty() {
+        return run_isobmff_create(
+            &arguments.files,
+            &arguments.create_mp4,
+            metra::IsobmffCreateKind::Mp4,
+            limits,
+        );
+    }
+    if !arguments.create_mov.is_empty() {
+        return run_isobmff_create(
+            &arguments.files,
+            &arguments.create_mov,
+            metra::IsobmffCreateKind::Mov,
+            limits,
+        );
+    }
+    if !arguments.create_m4a.is_empty() {
+        return run_isobmff_create(
+            &arguments.files,
+            &arguments.create_m4a,
+            metra::IsobmffCreateKind::M4a,
+            limits,
+        );
+    }
     if !arguments.create_avi.is_empty() {
         if arguments.files.len() != 1 {
             eprintln!("metra: --create-avi requires exactly one destination path");
@@ -1200,6 +1269,74 @@ fn run_matroska_create(
             ExitCode::from(1)
         }
     }
+}
+
+fn run_isobmff_create(
+    files: &[PathBuf],
+    entries: &[String],
+    kind: metra::IsobmffCreateKind,
+    limits: ParseLimits,
+) -> ExitCode {
+    let option_name = match kind {
+        metra::IsobmffCreateKind::Mp4 => "--create-mp4",
+        metra::IsobmffCreateKind::Mov => "--create-mov",
+        metra::IsobmffCreateKind::M4a => "--create-m4a",
+    };
+    if files.len() != 1 {
+        eprintln!("metra: {option_name} requires exactly one destination path");
+        return ExitCode::from(2);
+    }
+    let options = match parse_isobmff_create(entries, kind) {
+        Ok(options) => options,
+        Err(message) => {
+            eprintln!("metra: {message}");
+            return ExitCode::from(2);
+        }
+    };
+    match metra::create_isobmff_path(&files[0], &options, limits) {
+        Ok(()) => {
+            println!("created: {}", files[0].display());
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("metra: {}: {error}", files[0].display());
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn parse_isobmff_create(
+    entries: &[String],
+    kind: metra::IsobmffCreateKind,
+) -> Result<metra::IsobmffCreateOptions, String> {
+    let option_name = match kind {
+        metra::IsobmffCreateKind::Mp4 => "--create-mp4",
+        metra::IsobmffCreateKind::Mov => "--create-mov",
+        metra::IsobmffCreateKind::M4a => "--create-m4a",
+    };
+    let mut options = metra::IsobmffCreateOptions::new(kind);
+    for assignment in entries {
+        let (raw_key, value) = assignment
+            .split_once('=')
+            .ok_or_else(|| format!("{option_name} expects KEY=VALUE"))?;
+        let key = raw_key.strip_prefix("ISOBMFF:").unwrap_or(raw_key);
+        if !matches!(
+            key,
+            "Title"
+                | "Artist"
+                | "Album"
+                | "Year"
+                | "Comment"
+                | "AlbumArtist"
+                | "Description"
+                | "PurchaseDate"
+                | "Encoder"
+        ) {
+            return Err(format!("unsupported {option_name} field {raw_key}"));
+        }
+        options.push_text(key, value);
+    }
+    Ok(options)
 }
 
 fn parse_matroska_create(
