@@ -9,7 +9,7 @@ use crate::atomic::atomic_replace;
 use crate::isobmff_writer::{IsobmffEdit, rewrite_isobmff};
 use crate::raw::read_raw;
 
-/// Rewrites existing ISO-BMFF text items in a Canon CR3 container.
+/// Rewrites existing ISO-BMFF text or XMP items in a Canon CR3 container.
 ///
 /// CR3 is reported as RAW by the public detector, but its metadata container
 /// is ISO-BMFF. This adapter requires the RAW reader to identify CR3 before it
@@ -179,6 +179,15 @@ mod tests {
         [ftyp, moov].concat()
     }
 
+    fn minimal_cr3_xmp(format: &str) -> Vec<u8> {
+        let ftyp = box_with_kind(b"ftyp", b"crx \0\0\0\0crx ");
+        let packet = format!(
+            "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF><rdf:Description xmlns:dc=\"urn:dc\" dc:format=\"{format}\"/></rdf:RDF></x:xmpmeta>"
+        );
+        let xmp = box_with_kind(b"xml ", packet.as_bytes());
+        [ftyp, xmp].concat()
+    }
+
     #[test]
     fn rewrites_existing_cr3_isobmff_text_without_changing_layout() {
         let bytes = minimal_cr3("old");
@@ -202,6 +211,33 @@ mod tests {
         assert_eq!(metadata.find("RAW:Variant").unwrap().display_value(), "CR3");
         assert_eq!(
             metadata.find("ISOBMFF:Title").unwrap().display_value(),
+            "new"
+        );
+    }
+
+    #[test]
+    fn rewrites_existing_cr3_isobmff_xmp_without_changing_layout() {
+        let bytes = minimal_cr3_xmp("old");
+        let replacement = "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF><rdf:Description xmlns:dc=\"urn:dc\" dc:format=\"new\"/></rdf:RDF></x:xmpmeta>";
+        let output = rewrite_raw_cr3_to_vec(
+            &bytes,
+            FileInfo::new("capture.cr3".into(), bytes.len() as u64, FileFormat::Raw),
+            ParseLimits::default(),
+            &[IsobmffEdit::SetXmp {
+                value: replacement.to_owned(),
+            }],
+        )
+        .expect("CR3 XMP rewrite should succeed");
+        assert_eq!(output.len(), bytes.len());
+        let metadata = read_raw(
+            &mut Cursor::new(output),
+            FileInfo::new("capture.cr3".into(), bytes.len() as u64, FileFormat::Raw),
+            ParseLimits::default(),
+        )
+        .expect("rewritten CR3 XMP should remain readable");
+        assert_eq!(metadata.find("RAW:Variant").unwrap().display_value(), "CR3");
+        assert_eq!(
+            metadata.find("XMP:dc:format").unwrap().display_value(),
             "new"
         );
     }
