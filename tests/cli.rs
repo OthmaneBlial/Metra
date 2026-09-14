@@ -1180,6 +1180,43 @@ fn cli_can_create_minimal_mp3_id3_seed_without_overwrite() {
 }
 
 #[test]
+fn cli_can_create_minimal_ogg_opus_seed_without_overwrite() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.path.join("created.ogg");
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--create-ogg",
+            "TITLE=Metra",
+            "--create-ogg",
+            "ARTIST=Othmane",
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let metadata = metra::read(&path).expect("created Ogg should remain readable");
+    assert_eq!(metadata.file_info.format, metra::FileFormat::Ogg);
+    assert_eq!(metadata.find("Ogg:Codec").unwrap().display_value(), "Opus");
+    assert_eq!(metadata.find("Ogg:Title").unwrap().display_value(), "Metra");
+    assert_eq!(
+        metadata.find("Ogg:Artist").unwrap().display_value(),
+        "Othmane"
+    );
+
+    let second = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--create-ogg",
+            "TITLE=Other",
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(!second.status.success());
+    assert!(String::from_utf8_lossy(&second.stderr).contains("refusing to overwrite"));
+}
+
+#[test]
 fn cli_can_create_standalone_xmp_without_overwrite() {
     let directory = TemporaryDirectory::new();
     let path = directory.path.join("created.xmp");

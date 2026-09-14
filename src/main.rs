@@ -52,6 +52,7 @@ struct Arguments {
             "create_wav",
             "create_icc",
             "create_mp3",
+            "create_ogg",
             "compare"
         ]
     )]
@@ -99,6 +100,7 @@ struct Arguments {
             "create_wav",
             "create_icc",
             "create_mp3",
+            "create_ogg",
             "json",
             "jsonl",
             "csv",
@@ -126,6 +128,7 @@ struct Arguments {
             "create_wav",
             "create_icc",
             "create_mp3",
+            "create_ogg",
             "json",
             "jsonl",
             "csv",
@@ -152,6 +155,7 @@ struct Arguments {
             "create_wav",
             "create_icc",
             "create_mp3",
+            "create_ogg",
             "json",
             "jsonl",
             "csv",
@@ -180,6 +184,7 @@ struct Arguments {
             "create_gif",
             "create_icc",
             "create_mp3",
+            "create_ogg",
             "json",
             "jsonl",
             "csv",
@@ -208,6 +213,7 @@ struct Arguments {
             "create_gif",
             "create_icc",
             "create_mp3",
+            "create_ogg",
             "json",
             "jsonl",
             "csv",
@@ -236,6 +242,7 @@ struct Arguments {
             "create_flac",
             "create_icc",
             "create_mp3",
+            "create_ogg",
             "json",
             "jsonl",
             "csv",
@@ -264,6 +271,7 @@ struct Arguments {
             "create_wav",
             "create_gif",
             "create_mp3",
+            "create_ogg",
             "json",
             "jsonl",
             "csv",
@@ -292,6 +300,7 @@ struct Arguments {
             "create_flac",
             "create_gif",
             "create_icc",
+            "create_ogg",
             "json",
             "jsonl",
             "csv",
@@ -303,6 +312,35 @@ struct Arguments {
         ]
     )]
     create_mp3: Vec<String>,
+
+    /// Create a new minimal Ogg Opus seed with Vorbis-style comments.
+    #[arg(
+        long = "create-ogg",
+        value_name = "KEY=VALUE",
+        action = clap::ArgAction::Append,
+        conflicts_with_all = [
+            "set",
+            "delete",
+            "copy",
+            "create_tiff",
+            "create_png",
+            "create_xmp",
+            "create_wav",
+            "create_flac",
+            "create_gif",
+            "create_icc",
+            "create_mp3",
+            "json",
+            "jsonl",
+            "csv",
+            "toml",
+            "yaml",
+            "tag",
+            "validate",
+            "compare"
+        ]
+    )]
+    create_ogg: Vec<String>,
 
     /// Validate inputs and return a failure when any warning is produced.
     #[arg(long, conflicts_with_all = ["set", "delete", "copy"])]
@@ -517,6 +555,29 @@ fn main() -> ExitCode {
             }
         };
         return match metra::create_mp3_path(&arguments.files[0], &options, limits) {
+            Ok(()) => {
+                println!("created: {}", arguments.files[0].display());
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", arguments.files[0].display());
+                ExitCode::from(1)
+            }
+        };
+    }
+    if !arguments.create_ogg.is_empty() {
+        if arguments.files.len() != 1 {
+            eprintln!("metra: --create-ogg requires exactly one destination path");
+            return ExitCode::from(2);
+        }
+        let options = match parse_ogg_create(&arguments.create_ogg) {
+            Ok(options) => options,
+            Err(message) => {
+                eprintln!("metra: {message}");
+                return ExitCode::from(2);
+            }
+        };
+        return match metra::create_ogg_path(&arguments.files[0], &options, limits) {
             Ok(()) => {
                 println!("created: {}", arguments.files[0].display());
                 ExitCode::SUCCESS
@@ -779,6 +840,20 @@ fn parse_mp3_create(entries: &[String]) -> Result<metra::Mp3CreateOptions, Strin
         } else {
             options.push_text(key, value);
         }
+    }
+    Ok(options)
+}
+
+fn parse_ogg_create(entries: &[String]) -> Result<metra::OggCreateOptions, String> {
+    let mut options = metra::OggCreateOptions::new();
+    for assignment in entries {
+        let (key, value) = assignment
+            .split_once('=')
+            .ok_or_else(|| "--create-ogg expects KEY=VALUE".to_owned())?;
+        if key.is_empty() {
+            return Err("--create-ogg requires a non-empty KEY".to_owned());
+        }
+        options.push_comment(key, value);
     }
     Ok(options)
 }
