@@ -192,7 +192,9 @@ revalidates through the RAW reader; RAF, CRW, MRW, and X3F remain unsupported fo
 writes.
 The SVG writer validates the source XML, escapes replacement text, rejects
 unsafe comment delimiters, and preserves unrelated source ranges. The ID3 writer requires a tag without
-unsynchronization, extended-header, or footer flags. Each library writer
+unsynchronization, extended-header, or footer flags. ID3v2.4 creation uses the
+same bounded text/comment encoders and emits a minimal zeroed MPEG Layer III
+frame only as a metadata seed, not as an audio encoder. Each library writer
 validates its source through the reader before writing, streams the original
 container while preserving untargeted bytes, validates the temporary output
 with the reader again, syncs it, and replaces the original through a shared
@@ -243,6 +245,12 @@ GIF with bounded comment extensions and a valid one-pixel image data stream,
 validates it through the GIF reader, and refuses to overwrite an existing
 destination.
 
+MP3 creation exposes `Mp3CreateOptions`, `create_mp3_to_vec`,
+`create_mp3_path`, and the CLI `--create-mp3 KEY=VALUE`. It emits a bounded
+ID3v2.4 tag with common text frames or one English comment, appends a fixed
+minimal MPEG Layer III seed frame, validates it through the MP3 reader, and
+refuses to overwrite an existing destination.
+
 Legacy read queries are handled by a thin argument normalizer: selected
 single-dash aliases such as `-Make` and `-GPSLatitude` become `--tag` selectors,
 while `-json` and `-jsonl` become the corresponding Metra output flags. The
@@ -258,10 +266,12 @@ format-specific atomic implementation; `rewrite_metadata_to_vec` provides the
 same dispatch for callers that own the byte buffer, and `copy_metadata_path`
 reads the source value before rewriting the target.
 Numeric/binary mutation, new metadata block creation, and deletion semantics
-that require layout changes remain intentionally outside this API. The first
-creation seam is intentionally separate: `TiffCreateOptions` can build a
-minimal classic 1x1 TIFF with bounded EXIF ASCII seed fields, validate it by
-reading it back, and create a new path without overwriting an existing file.
+that require layout changes remain intentionally outside this API. Creation
+seams are intentionally format-specific: `TiffCreateOptions` can build a
+minimal classic 1x1 TIFF with bounded EXIF ASCII seed fields, while
+`Mp3CreateOptions` can build a minimal ID3v2.4 MP3 metadata seed; both validate
+their output by reading it back and create a new path without overwriting an
+existing file.
 
 ## Output contract
 
