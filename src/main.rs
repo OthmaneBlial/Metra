@@ -2159,6 +2159,9 @@ enum CopyKey {
     PngText(String),
     PngXmp,
     PngTime,
+    PngPhysX,
+    PngPhysY,
+    PngPhysUnit,
     WavInfo(String),
     WavBext(String),
     WavIxml,
@@ -2334,6 +2337,21 @@ fn parse_edits(
                     value.to_owned(),
                 )])));
             }
+            if png_phys_x_key(key) {
+                return Ok(Some(EditRequest::DirectPng(vec![
+                    metra::PngEdit::SetPhysX(value.to_owned()),
+                ])));
+            }
+            if png_phys_y_key(key) {
+                return Ok(Some(EditRequest::DirectPng(vec![
+                    metra::PngEdit::SetPhysY(value.to_owned()),
+                ])));
+            }
+            if png_phys_unit_key(key) {
+                return Ok(Some(EditRequest::DirectPng(vec![
+                    metra::PngEdit::SetPhysUnit(value.to_owned()),
+                ])));
+            }
             if let Some(keyword) = png_text_keyword(key) {
                 return Ok(Some(EditRequest::DirectPng(vec![
                     metra::PngEdit::SetText {
@@ -2501,6 +2519,11 @@ fn parse_edits(
                     metra::PngEdit::DeleteTime,
                 ])));
             }
+            if png_phys_key(key) {
+                return Ok(Some(EditRequest::DirectPng(vec![
+                    metra::PngEdit::DeletePhys,
+                ])));
+            }
             if let Some(keyword) = png_text_keyword(key) {
                 return Ok(Some(EditRequest::DirectPng(vec![
                     metra::PngEdit::DeleteText {
@@ -2651,6 +2674,12 @@ fn parse_edits(
             CopyKey::PngXmp
         } else if png_time_key(key) {
             CopyKey::PngTime
+        } else if png_phys_x_key(key) {
+            CopyKey::PngPhysX
+        } else if png_phys_y_key(key) {
+            CopyKey::PngPhysY
+        } else if png_phys_unit_key(key) {
+            CopyKey::PngPhysUnit
         } else if let Some(keyword) = png_text_keyword(key) {
             CopyKey::PngText(keyword.to_owned())
         } else if let Some(name) = wav_info_name(key) {
@@ -2833,6 +2862,22 @@ fn png_time_key(key: &str) -> bool {
     matches!(key, "PNG:ModificationTime" | "PNG:tIME:ModificationTime")
 }
 
+fn png_phys_x_key(key: &str) -> bool {
+    matches!(key, "PNG:PixelsPerUnitX" | "PNG:pHYs:PixelsPerUnitX")
+}
+
+fn png_phys_y_key(key: &str) -> bool {
+    matches!(key, "PNG:PixelsPerUnitY" | "PNG:pHYs:PixelsPerUnitY")
+}
+
+fn png_phys_unit_key(key: &str) -> bool {
+    matches!(key, "PNG:Unit" | "PNG:pHYs:Unit")
+}
+
+fn png_phys_key(key: &str) -> bool {
+    matches!(key, "PNG:pHYs" | "PNG:Phys")
+}
+
 fn jpeg_xmp_key(key: &str) -> bool {
     matches!(key, "JPEG:XMP" | "JPEG:APP1:XMP")
 }
@@ -2895,7 +2940,7 @@ fn svg_text_key(key: &str) -> Option<SvgTextKey> {
 
 fn unsupported_edit_message(key: &str) -> String {
     format!(
-        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:EXIF:<ASCII tag>, JPEG:XMP, IPTC:<dataset>, TIFF:EXIF:<ASCII tag>, GPS:Latitude/Longitude, GPS:Altitude, GPS:ImageDirection, GPS:Speed, GPS:TimeOfDaySeconds, GPS:Date, GPS:*, PDF:<Info field>, PSD:XMP, AVI:<INFO field>, Matroska:Title/MuxingApp/WritingApp, Matroska:Tag:<name>, ISOBMFF:<text field>, ISOBMFF:XMP, PNG:XMP, PNG:Text:<keyword>, PNG:ModificationTime, WAV:<INFO field>, WAV:<bext field>, WAV:iXML:Packet, FLAC:<Vorbis field>, Ogg:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
+        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:EXIF:<ASCII tag>, JPEG:XMP, IPTC:<dataset>, TIFF:EXIF:<ASCII tag>, GPS:Latitude/Longitude, GPS:Altitude, GPS:ImageDirection, GPS:Speed, GPS:TimeOfDaySeconds, GPS:Date, GPS:*, PDF:<Info field>, PSD:XMP, AVI:<INFO field>, Matroska:Title/MuxingApp/WritingApp, Matroska:Tag:<name>, ISOBMFF:<text field>, ISOBMFF:XMP, PNG:XMP, PNG:Text:<keyword>, PNG:ModificationTime, PNG:PixelsPerUnitX, PNG:PixelsPerUnitY, PNG:Unit, WAV:<INFO field>, WAV:<bext field>, WAV:iXML:Packet, FLAC:<Vorbis field>, Ogg:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
     )
 }
 
@@ -4053,6 +4098,47 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path, limits: ParseLimit
             };
             let edits = [metra::PngEdit::SetTime(time.clone())];
             apply_png_edits(paths, &edits, limits)
+        }
+        CopyKey::PngPhysX | CopyKey::PngPhysY | CopyKey::PngPhysUnit => {
+            if source_metadata.file_info.format != metra::FileFormat::Png {
+                eprintln!(
+                    "metra: {}: source format {} is not PNG",
+                    source.display(),
+                    source_metadata.file_info.format
+                );
+                return ExitCode::from(1);
+            }
+            let (key, edit) = match key {
+                CopyKey::PngPhysX => (
+                    "PNG:PixelsPerUnitX",
+                    metra::PngEdit::SetPhysX(String::new()),
+                ),
+                CopyKey::PngPhysY => (
+                    "PNG:PixelsPerUnitY",
+                    metra::PngEdit::SetPhysY(String::new()),
+                ),
+                CopyKey::PngPhysUnit => ("PNG:Unit", metra::PngEdit::SetPhysUnit(String::new())),
+                _ => unreachable!("the outer match limits the variants"),
+            };
+            let Some(tag) = source_metadata.find(key) else {
+                eprintln!("metra: {}: source does not contain {key}", source.display());
+                return ExitCode::from(1);
+            };
+            let value = match &tag.value {
+                metra::TagValue::Unsigned(value) => value.to_string(),
+                metra::TagValue::String(value) => value.clone(),
+                _ => {
+                    eprintln!("metra: {}: {key} is not a scalar value", source.display());
+                    return ExitCode::from(1);
+                }
+            };
+            let edit = match edit {
+                metra::PngEdit::SetPhysX(_) => metra::PngEdit::SetPhysX(value),
+                metra::PngEdit::SetPhysY(_) => metra::PngEdit::SetPhysY(value),
+                metra::PngEdit::SetPhysUnit(_) => metra::PngEdit::SetPhysUnit(value),
+                _ => unreachable!("the temporary edit is always a pHYs setter"),
+            };
+            apply_png_edits(paths, &[edit], limits)
         }
         CopyKey::SvgText(kind) => {
             if source_metadata.file_info.format != metra::FileFormat::Svg {

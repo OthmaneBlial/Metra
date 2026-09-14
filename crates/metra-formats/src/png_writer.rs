@@ -9,7 +9,7 @@ use crate::atomic::atomic_replace;
 use crate::png::{PNG_SIGNATURE, crc32, read_png};
 use crate::xmp::parse_xmp;
 
-/// Lossless PNG text edits for uncompressed `tEXt` chunks.
+/// Lossless PNG metadata edits for fixed textual, timestamp, and resolution chunks.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PngEdit {
     SetText {
@@ -25,6 +25,14 @@ pub enum PngEdit {
     SetTime(String),
     /// Remove every PNG `tIME` chunk.
     DeleteTime,
+    /// Set the horizontal pixels-per-unit value in `pHYs`.
+    SetPhysX(String),
+    /// Set the vertical pixels-per-unit value in `pHYs`.
+    SetPhysY(String),
+    /// Set the `pHYs` unit to `meter`, `unknown`, `0`, or `1`.
+    SetPhysUnit(String),
+    /// Remove every PNG `pHYs` chunk.
+    DeletePhys,
 }
 
 pub fn rewrite_png<R: Read + Seek, W: Write>(
@@ -137,6 +145,16 @@ enum TimeAction {
     Delete,
 }
 
+#[derive(Debug)]
+enum PhysAction {
+    Set {
+        x: Option<u32>,
+        y: Option<u32>,
+        unit: Option<u8>,
+    },
+    Delete,
+}
+
 fn rewrite_png_stream<R: Read, W: Write>(
     reader: &mut R,
     writer: &mut W,
@@ -146,6 +164,7 @@ fn rewrite_png_stream<R: Read, W: Write>(
 ) -> Result<()> {
     let action = text_action(edits, limits)?;
     let time_action = time_action(edits)?;
+    let phys_action = phys_action(edits)?;
     let mut signature = [0_u8; 8];
     read_exact(reader, &mut signature, path)?;
     if &signature != PNG_SIGNATURE {
@@ -159,6 +178,7 @@ fn rewrite_png_stream<R: Read, W: Write>(
     let mut text_bytes = 0_usize;
     let mut inserted = false;
     let mut time_inserted = false;
+    let mut phys_inserted = false;
 
     loop {
         if chunks >= limits.max_jpeg_segments {
@@ -241,6 +261,24 @@ fn rewrite_png_stream<R: Read, W: Write>(
                 copy_exact(reader, writer, data_length, path)?;
                 copy_exact(reader, writer, 4, path)?;
             }
+        } else if &chunk_type == b"pHYs" {
+            if let Some(action) = phys_action.as_ref() {
+                let mut data = [0_u8; 9];
+                if data_length == 9 {
+                    read_exact(reader, &mut data, path)?;
+                } else {
+                    copy_exact(&mut *reader, &mut std::io::sink(), data_length, path)?;
+                }
+                copy_exact(&mut *reader, &mut std::io::sink(), 4, path)?;
+                if !phys_inserted {
+                    write_phys_action(writer, action, data_length == 9, &mut data)?;
+                    phys_inserted = true;
+                }
+            } else {
+                write_all(writer, &header)?;
+                copy_exact(reader, writer, data_length, path)?;
+                copy_exact(reader, writer, 4, path)?;
+            }
         } else if &chunk_type == b"IEND" {
             if let Some(action) = action.as_ref()
                 && !inserted
@@ -253,6 +291,12 @@ fn rewrite_png_stream<R: Read, W: Write>(
                 && matches!(action, TimeAction::Set(_))
             {
                 write_time_action(writer, action)?;
+            }
+            if let Some(action) = phys_action.as_ref()
+                && !phys_inserted
+                && matches!(action, PhysAction::Set { .. })
+            {
+                write_phys_action(writer, action, false, &mut [0; 9])?;
             }
             write_all(writer, &header)?;
             copy_exact(reader, writer, data_length, path)?;
@@ -273,6 +317,62 @@ fn time_action(edits: &[PngEdit]) -> Result<Option<TimeAction>> {
         match edit {
             PngEdit::SetTime(value) => action = Some(TimeAction::Set(parse_png_time(value)?)),
             PngEdit::DeleteTime => action = Some(TimeAction::Delete),
+            _ => {}
+        }
+    }
+    Ok(action)
+}
+
+fn phys_action(edits: &[PngEdit]) -> Result<Option<PhysAction>> {
+    let mut action = None;
+    for edit in edits {
+        match edit {
+            PngEdit::SetPhysX(value) => {
+                let x = parse_phys_value(value, "PixelsPerUnitX")?;
+                action = Some(match action {
+                    Some(PhysAction::Set { y, unit, .. }) => PhysAction::Set {
+                        x: Some(x),
+                        y,
+                        unit,
+                    },
+                    Some(PhysAction::Delete) | None => PhysAction::Set {
+                        x: Some(x),
+                        y: None,
+                        unit: None,
+                    },
+                });
+            }
+            PngEdit::SetPhysY(value) => {
+                let y = parse_phys_value(value, "PixelsPerUnitY")?;
+                action = Some(match action {
+                    Some(PhysAction::Set { x, unit, .. }) => PhysAction::Set {
+                        x,
+                        y: Some(y),
+                        unit,
+                    },
+                    Some(PhysAction::Delete) | None => PhysAction::Set {
+                        x: None,
+                        y: Some(y),
+                        unit: None,
+                    },
+                });
+            }
+            PngEdit::SetPhysUnit(value) => {
+                let unit = parse_phys_unit(value)?;
+                action = Some(match action {
+                    Some(PhysAction::Set { x, y, .. }) => PhysAction::Set {
+                        x,
+                        y,
+                        unit: Some(unit),
+                    },
+                    Some(PhysAction::Delete) | None => PhysAction::Set {
+                        x: None,
+                        y: None,
+                        unit: Some(unit),
+                    },
+                });
+            }
+            PngEdit::DeletePhys => action = Some(PhysAction::Delete),
             _ => {}
         }
     }
@@ -315,7 +415,12 @@ fn text_action(edits: &[PngEdit], limits: ParseLimits) -> Result<Option<TextActi
                 action = Some(TextAction::SetXmp(validate_xmp(value, limits)?));
             }
             PngEdit::DeleteXmp => action = Some(TextAction::DeleteXmp),
-            PngEdit::SetTime(_) | PngEdit::DeleteTime => {}
+            PngEdit::SetTime(_)
+            | PngEdit::DeleteTime
+            | PngEdit::SetPhysX(_)
+            | PngEdit::SetPhysY(_)
+            | PngEdit::SetPhysUnit(_)
+            | PngEdit::DeletePhys => {}
         }
     }
     Ok(action)
@@ -389,6 +494,24 @@ fn days_in_month(year: u16, month: u16) -> u16 {
         2 => 28,
         4 | 6 | 9 | 11 => 30,
         _ => 31,
+    }
+}
+
+fn parse_phys_value(value: &str, field: &str) -> Result<u32> {
+    value.parse::<u32>().map_err(|_| MetraError::InvalidTag {
+        context: format!("PNG pHYs {field}"),
+        message: "pixels-per-unit values must be unsigned 32-bit integers".to_owned(),
+    })
+}
+
+fn parse_phys_unit(value: &str) -> Result<u8> {
+    match value.to_ascii_lowercase().as_str() {
+        "meter" | "metre" | "1" => Ok(1),
+        "unknown" | "0" => Ok(0),
+        _ => Err(MetraError::InvalidTag {
+            context: "PNG pHYs Unit".to_owned(),
+            message: "unit must be meter, unknown, 0, or 1".to_owned(),
+        }),
     }
 }
 
@@ -480,6 +603,32 @@ fn write_time_action<W: Write>(writer: &mut W, action: &TimeAction) -> Result<()
         write_png_chunk(writer, b"tIME", value)?;
     }
     Ok(())
+}
+
+fn write_phys_action<W: Write>(
+    writer: &mut W,
+    action: &PhysAction,
+    had_valid_chunk: bool,
+    data: &mut [u8; 9],
+) -> Result<()> {
+    match action {
+        PhysAction::Set { x, y, unit } => {
+            if !had_valid_chunk {
+                *data = [0; 9];
+            }
+            if let Some(x) = x {
+                data[..4].copy_from_slice(&x.to_be_bytes());
+            }
+            if let Some(y) = y {
+                data[4..8].copy_from_slice(&y.to_be_bytes());
+            }
+            if let Some(unit) = unit {
+                data[8] = *unit;
+            }
+            write_png_chunk(writer, b"pHYs", data)
+        }
+        PhysAction::Delete => Ok(()),
+    }
 }
 
 fn write_png_chunk<W: Write>(writer: &mut W, chunk_type: &[u8; 4], data: &[u8]) -> Result<()> {
@@ -627,6 +776,15 @@ mod tests {
         let mut bytes = PNG_SIGNATURE.to_vec();
         bytes.extend_from_slice(&chunk(b"IHDR", &[0; 13]));
         bytes.extend_from_slice(&chunk(b"tIME", &[0x07, 0xEA, 9, 13, 12, 34, 56]));
+        bytes.extend_from_slice(&chunk(b"IDAT", &[1, 2, 3, 4]));
+        bytes.extend_from_slice(&chunk(b"IEND", &[]));
+        bytes
+    }
+
+    fn png_with_phys() -> Vec<u8> {
+        let mut bytes = PNG_SIGNATURE.to_vec();
+        bytes.extend_from_slice(&chunk(b"IHDR", &[0; 13]));
+        bytes.extend_from_slice(&chunk(b"pHYs", &[0, 0, 0, 96, 0, 0, 0, 96, 1]));
         bytes.extend_from_slice(&chunk(b"IDAT", &[1, 2, 3, 4]));
         bytes.extend_from_slice(&chunk(b"IEND", &[]));
         bytes
@@ -816,6 +974,100 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.to_string().contains("out of range"));
+    }
+
+    #[test]
+    fn replaces_deletes_and_inserts_physical_resolution() {
+        let bytes = png_with_phys();
+        let output = rewrite_png_to_vec(
+            &bytes,
+            info(bytes.len()),
+            ParseLimits::default(),
+            &[
+                PngEdit::SetPhysX("300".to_owned()),
+                PngEdit::SetPhysUnit("unknown".to_owned()),
+            ],
+        )
+        .unwrap();
+        let metadata = read_png(
+            &mut Cursor::new(output.clone()),
+            info(output.len()),
+            ParseLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            metadata.find("PNG:PixelsPerUnitX").unwrap().display_value(),
+            "300"
+        );
+        assert_eq!(
+            metadata.find("PNG:PixelsPerUnitY").unwrap().display_value(),
+            "96"
+        );
+        assert_eq!(
+            metadata.find("PNG:Unit").unwrap().display_value(),
+            "unknown"
+        );
+
+        let deleted = rewrite_png_to_vec(
+            &bytes,
+            info(bytes.len()),
+            ParseLimits::default(),
+            &[PngEdit::DeletePhys],
+        )
+        .unwrap();
+        assert!(!deleted.windows(4).any(|window| window == b"pHYs"));
+
+        let mut without_phys = PNG_SIGNATURE.to_vec();
+        without_phys.extend_from_slice(&chunk(b"IHDR", &[0; 13]));
+        without_phys.extend_from_slice(&chunk(b"IEND", &[]));
+        let inserted = rewrite_png_to_vec(
+            &without_phys,
+            info(without_phys.len()),
+            ParseLimits::default(),
+            &[PngEdit::SetPhysY("72".to_owned())],
+        )
+        .unwrap();
+        let inserted_metadata = read_png(
+            &mut Cursor::new(inserted.clone()),
+            info(inserted.len()),
+            ParseLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            inserted_metadata
+                .find("PNG:PixelsPerUnitY")
+                .unwrap()
+                .display_value(),
+            "72"
+        );
+        assert_eq!(
+            inserted_metadata
+                .find("PNG:PixelsPerUnitX")
+                .unwrap()
+                .display_value(),
+            "0"
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_physical_resolution_values() {
+        let bytes = png_with_phys();
+        let error = rewrite_png_to_vec(
+            &bytes,
+            info(bytes.len()),
+            ParseLimits::default(),
+            &[PngEdit::SetPhysX("-1".to_owned())],
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("unsigned 32-bit"));
+        let error = rewrite_png_to_vec(
+            &bytes,
+            info(bytes.len()),
+            ParseLimits::default(),
+            &[PngEdit::SetPhysUnit("inch".to_owned())],
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("unit must be"));
     }
 
     #[test]

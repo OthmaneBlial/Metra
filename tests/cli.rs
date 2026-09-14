@@ -454,6 +454,21 @@ fn minimal_png_with_time(time: [u8; 7]) -> Vec<u8> {
     bytes
 }
 
+fn minimal_png_with_phys(x: u32, y: u32, unit: u8) -> Vec<u8> {
+    let mut bytes = b"\x89PNG\r\n\x1A\n".to_vec();
+    bytes.extend_from_slice(&png_chunk(
+        b"IHDR",
+        &[0, 0, 2, 0, 0, 0, 2, 0, 8, 2, 0, 0, 0],
+    ));
+    let mut phys = Vec::new();
+    phys.extend_from_slice(&x.to_be_bytes());
+    phys.extend_from_slice(&y.to_be_bytes());
+    phys.push(unit);
+    bytes.extend_from_slice(&png_chunk(b"pHYs", &phys));
+    bytes.extend_from_slice(&png_chunk(b"IEND", &[]));
+    bytes
+}
+
 fn minimal_png_xmp(format: &str) -> Vec<u8> {
     let xmp = format!(
         "<x:xmpmeta><rdf:RDF><rdf:Description xmlns:dc=\"urn:dc\" dc:format=\"{format}\"/></rdf:RDF></x:xmpmeta>"
@@ -3824,6 +3839,84 @@ fn cli_can_edit_and_copy_png_modification_time() {
             .display_value(),
         "2026-09-14 10:11:12"
     );
+}
+
+#[test]
+fn cli_can_edit_copy_and_delete_png_physical_resolution() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.file("source-phys.png", &minimal_png_with_phys(300, 240, 1));
+    let target = directory.file("target-phys.png", &minimal_png_with_phys(96, 96, 1));
+
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "PNG:PixelsPerUnitX=600",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("PNG:PixelsPerUnitX")
+            .unwrap()
+            .display_value(),
+        "600"
+    );
+
+    let unit = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "PNG:Unit=unknown",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(unit.status.success(), "stderr: {:?}", unit.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("PNG:Unit")
+            .unwrap()
+            .display_value(),
+        "unknown"
+    );
+
+    let copy_assignment = format!(
+        "PNG:PixelsPerUnitY={}",
+        source.to_str().expect("UTF-8 test path")
+    );
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            copy_assignment.as_str(),
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("PNG:PixelsPerUnitY")
+            .unwrap()
+            .display_value(),
+        "240"
+    );
+
+    let delete = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--delete",
+            "PNG:pHYs",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(delete.status.success(), "stderr: {:?}", delete.stderr);
+    let metadata = metra::read(&target).unwrap();
+    assert!(metadata.find("PNG:PixelsPerUnitX").is_none());
+    assert!(metadata.find("PNG:PixelsPerUnitY").is_none());
 }
 
 #[test]

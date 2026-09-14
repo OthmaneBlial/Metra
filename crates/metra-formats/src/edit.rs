@@ -312,7 +312,13 @@ pub fn copy_metadata_path(
             format!("{year:04}:{month:02}:{day:02} {hour:02}:{minute:02}:{second:02}")
         }
         (metra_core::TagValue::Unsigned(value), false)
-            if matches!(lookup_key, "WAV:TimeReference" | "WAV:BWFVersion") =>
+            if matches!(
+                lookup_key,
+                "WAV:TimeReference"
+                    | "WAV:BWFVersion"
+                    | "PNG:PixelsPerUnitX"
+                    | "PNG:PixelsPerUnitY"
+            ) =>
         {
             value.to_string()
         }
@@ -360,6 +366,12 @@ fn source_lookup_key(key: &str) -> &str {
         key
     } else if png_time_key(key) {
         "PNG:ModificationTime"
+    } else if png_phys_x_key(key) {
+        "PNG:PixelsPerUnitX"
+    } else if png_phys_y_key(key) {
+        "PNG:PixelsPerUnitY"
+    } else if png_phys_unit_key(key) {
+        "PNG:Unit"
     } else if jpeg_xmp_key(key)
         || png_xmp_key(key)
         || webp_xmp_key(key)
@@ -504,6 +516,16 @@ pub(crate) fn collect_png(
                 Ok(crate::PngEdit::SetTime(value.clone()))
             }
             MetadataEdit::Delete { key } if png_time_key(key) => Ok(crate::PngEdit::DeleteTime),
+            MetadataEdit::Set { key, value } if png_phys_x_key(key) => {
+                Ok(crate::PngEdit::SetPhysX(value.clone()))
+            }
+            MetadataEdit::Set { key, value } if png_phys_y_key(key) => {
+                Ok(crate::PngEdit::SetPhysY(value.clone()))
+            }
+            MetadataEdit::Set { key, value } if png_phys_unit_key(key) => {
+                Ok(crate::PngEdit::SetPhysUnit(value.clone()))
+            }
+            MetadataEdit::Delete { key } if png_phys_key(key) => Ok(crate::PngEdit::DeletePhys),
             MetadataEdit::Set { key, value } => png_text_keyword(key)
                 .map(|keyword| crate::PngEdit::SetText {
                     keyword: keyword.to_owned(),
@@ -932,6 +954,22 @@ fn png_xmp_key(key: &str) -> bool {
 
 fn png_time_key(key: &str) -> bool {
     matches!(key, "PNG:ModificationTime" | "PNG:tIME:ModificationTime")
+}
+
+fn png_phys_x_key(key: &str) -> bool {
+    matches!(key, "PNG:PixelsPerUnitX" | "PNG:pHYs:PixelsPerUnitX")
+}
+
+fn png_phys_y_key(key: &str) -> bool {
+    matches!(key, "PNG:PixelsPerUnitY" | "PNG:pHYs:PixelsPerUnitY")
+}
+
+fn png_phys_unit_key(key: &str) -> bool {
+    matches!(key, "PNG:Unit" | "PNG:pHYs:Unit")
+}
+
+fn png_phys_key(key: &str) -> bool {
+    matches!(key, "PNG:pHYs" | "PNG:Phys")
 }
 
 fn png_text_keyword(key: &str) -> Option<&str> {
