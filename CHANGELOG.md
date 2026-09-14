@@ -12,6 +12,8 @@ Initial read-first foundation with narrow validated rewrites:
   with round-trip and no-audio-change coverage;
 - added public and CLI Broadcast Wave seed creation with bounded `bext` fields,
   fixed-width encoding, duplicate validation, and output revalidation;
+- added generic Rust API and CLI `--copy` support for Broadcast Wave `bext`
+  fields, including canonical conversion of typed date/time and integer values;
 - extended the opt-in differential JSON report with symmetric oracle-side key
   totals and oracle-only coverage, plus an opt-in strict gate for requiring all
   oracle keys to be matched;

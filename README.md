@@ -82,6 +82,10 @@ and the CLI exposes the same narrow operations through `--set`,
 `--delete`, and `--copy`.
 TIFF ASCII values can also be copied from a TIFF-like source into an existing
 TIFF ASCII field when the target field has enough storage.
+Broadcast Wave `DateTimeOriginal`, `TimeReference`, and `BWFVersion` values can
+also be copied from a validated WAV source into an existing `bext` chunk;
+typed date/time and integer values are converted to canonical text before the
+target rewrite.
 Existing ISO-BMFF text values can be cleared or copied between supported
 ISO-BMFF files when the target value slot has enough storage; clearing zero-fills
 the existing slot without changing box sizes.
@@ -275,6 +279,7 @@ cargo run -- --copy IPTC:CaptionAbstract=source.jpg target.jpg
 cargo run -- --set 'PNG:Text:Comment=reviewed' image.png
 cargo run -- --set 'PNG:XMP=<x:xmpmeta>...</x:xmpmeta>' image.png
 cargo run -- --set 'WAV:Title=reviewed' audio.wav
+cargo run -- --copy WAV:DateTimeOriginal=source.wav target.wav
 cargo run -- --set 'FLAC:Title=reviewed' audio.flac
 cargo run -- --set 'ID3:Title=reviewed' audio.mp3
 cargo run -- --set 'GIF:Comment=reviewed' animation.gif
@@ -515,7 +520,7 @@ avec offsets 32 bits pour le premier et 64 bits pour le second ;
 l’encodage vidéo général, les tracks/samples/item
 locations/clusters, les calques/PSB et la création arbitraire de chunks restent
 planifiés.
-6. **99 %** — Ajouter `set`/`delete`/`copy` et comparer après les tests round-trip ; les opérations couvrent maintenant JPEG `Comment`/EXIF ASCII existant/`XMP` et datasets IPTC-IIM connus, PNG `tEXt`/`XMP`, GIF `Comment`, WebP `XMP`, paquets XMP autonomes `XMP:Packet` avec effacement borné de leurs propriétés, tags texte ICC autonomes, SVG `Title`/`Description`/`Comment`, WAV `LIST/INFO`, FLAC et Ogg Vorbis/Opus/Ogg-FLAC Comments, ID3v2 texte/commentaire, les champs texte ISO-BMFF existants y compris CR3 avec effacement borné, les champs Info PDF existants avec suppression de tokens Info existants, les ressources XMP PSD existantes, les chaînes AVI `LIST/INFO` avec effacement borné, les chaînes `Info` et `SimpleTag` Matroska/WebM avec effacement borné, les slots TIFF ASCII des RAW TIFF-like avec effacement borné et la copie de champs ASCII TIFF existants via API et CLI, avec comparaison déterministe des valeurs ; l’API publique ajoute aussi des opérations canoniques `MetadataEdit` qui dispatchent vers ces writers validés.
+6. **99 %** — Ajouter `set`/`delete`/`copy` et comparer après les tests round-trip ; les opérations couvrent maintenant JPEG `Comment`/EXIF ASCII existant/`XMP` et datasets IPTC-IIM connus, PNG `tEXt`/`XMP`, GIF `Comment`, WebP `XMP`, paquets XMP autonomes `XMP:Packet` avec effacement borné de leurs propriétés, tags texte ICC autonomes, SVG `Title`/`Description`/`Comment`, WAV `LIST/INFO` et Broadcast Wave `bext` avec copie des champs date/entiers typés, FLAC et Ogg Vorbis/Opus/Ogg-FLAC Comments, ID3v2 texte/commentaire, les champs texte ISO-BMFF existants y compris CR3 avec effacement borné, les champs Info PDF existants avec suppression de tokens Info existants, les ressources XMP PSD existantes, les chaînes AVI `LIST/INFO` avec effacement borné, les chaînes `Info` et `SimpleTag` Matroska/WebM avec effacement borné, les slots TIFF ASCII des RAW TIFF-like avec effacement borné et la copie de champs ASCII TIFF existants via API et CLI, avec comparaison déterministe des valeurs ; l’API publique ajoute aussi des opérations canoniques `MetadataEdit` qui dispatchent vers ces writers validés.
 7. **82 %** — Ajouter le traitement parallèle contrôlé et le rendu en flux borné ; le scheduler est partagé par l’API Rust et le CLI, conserve l’ordre déterministe, borne les workers et la fenêtre de résultats hors ordre, applique une contre-pression au flux parallèle et gère l’annulation coopérative Ctrl+C avec le code 130. Le benchmark réel du corpus mesure environ 20,6 MiB/s en séquentiel, 106 MiB/s avec quatre workers et 89 MiB/s en streaming borné sur cette machine ; les baselines multi-plateformes et le profiling restent à faire.
 8. **100 %** — Étendre les sorties structurées avec CSV, TOML et YAML versionnés.
 
