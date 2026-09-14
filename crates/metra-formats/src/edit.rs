@@ -11,7 +11,7 @@ use metra_core::{FileFormat, FileInfo, MetraError, ParseLimits, Result, TagValue
 /// bounded typed constructor for values that have an unambiguous text encoding
 /// in the current writers. The bounded `GPS:*` deletion is the one supported
 /// namespace wildcard.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MetadataEdit {
     Set { key: String, value: String },
     Delete { key: String },
