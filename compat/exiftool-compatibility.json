@@ -35,8 +35,18 @@
       "lossless_rewrite": "partial",
       "streaming": "partial"
     },
-    "HEIF": { "read": "partial", "write": "partial", "streaming": "partial" },
-    "AVIF": { "read": "partial", "write": "partial", "streaming": "partial" },
+    "HEIF": {
+      "read": "partial",
+      "write": "partial",
+      "create": "partial",
+      "streaming": "partial"
+    },
+    "AVIF": {
+      "read": "partial",
+      "write": "partial",
+      "create": "partial",
+      "streaming": "partial"
+    },
     "GIF": {
       "read": "partial",
       "write": "partial",

@@ -206,7 +206,7 @@ const FORMAT_CAPABILITIES: &[FormatCapabilities] = &[
         format: FileFormat::Heif,
         read: CapabilityStatus::Partial,
         write: CapabilityStatus::Partial,
-        create: CapabilityStatus::Planned,
+        create: CapabilityStatus::Partial,
         delete: CapabilityStatus::Planned,
         lossless_rewrite: CapabilityStatus::Partial,
         streaming: CapabilityStatus::Partial,
@@ -215,7 +215,7 @@ const FORMAT_CAPABILITIES: &[FormatCapabilities] = &[
         format: FileFormat::Avif,
         read: CapabilityStatus::Partial,
         write: CapabilityStatus::Partial,
-        create: CapabilityStatus::Planned,
+        create: CapabilityStatus::Partial,
         delete: CapabilityStatus::Planned,
         lossless_rewrite: CapabilityStatus::Partial,
         streaming: CapabilityStatus::Partial,
@@ -1156,6 +1156,14 @@ mod tests {
         );
         assert_eq!(
             format_capabilities(FileFormat::M4a).create,
+            CapabilityStatus::Partial
+        );
+        assert_eq!(
+            format_capabilities(FileFormat::Heif).create,
+            CapabilityStatus::Partial
+        );
+        assert_eq!(
+            format_capabilities(FileFormat::Avif).create,
             CapabilityStatus::Partial
         );
         assert_eq!(format_capabilities_all().len(), 23);
