@@ -365,10 +365,10 @@ reads the source value before rewriting the target.
 Numeric/binary mutation, new metadata block creation, and deletion semantics
 that require layout changes remain intentionally outside this API. Creation
 seams are intentionally format-specific: `TiffCreateOptions` can build a
-minimal classic 1x1 TIFF with optional EXIF ASCII fields and a GPS coordinate
-pair, while `create_bigtiff_to_vec` and
+minimal classic 1x1 TIFF with optional EXIF ASCII fields and GPS coordinate
+fields, while `create_bigtiff_to_vec` and
 `create_bigtiff_path` build the corresponding BigTIFF seed; both accept bounded
-EXIF ASCII fields and an optional GPS coordinate pair. `Mp3CreateOptions` and
+EXIF ASCII fields and optional GPS coordinate fields. `Mp3CreateOptions` and
 `OggCreateOptions` can build minimal
 audio metadata seeds, `SvgCreateOptions` can build a minimal XML metadata seed, and
 `WebpCreateOptions` can build a minimal lossless image metadata seed, while

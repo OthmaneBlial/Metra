@@ -165,8 +165,11 @@ result through the TIFF reader before returning it. An optional classic-TIFF
 GPS coordinate pair accepts only finite decimal latitude/longitude values within
 their legal ranges, converts them to bounded DMS rationals, and requires both
 coordinates before emitting a new GPS IFD. BigTIFF uses the same bounded
-coordinate encoder with 64-bit IFD offsets. The path helper refuses an existing
-destination and removes its temporary file on failure.
+coordinate encoder with 64-bit IFD offsets. Optional altitude, direction, speed,
+time, and date fields use finite/range-checked values, bounded unsigned
+rationals, an explicit K speed reference, and strict calendar validation. The
+path helper refuses an existing destination and removes its temporary file on
+failure.
 
 The BigTIFF creation API applies the same allowlist, duplicate/NUL checks,
 resource limits, reader revalidation, temporary-file cleanup, and no-overwrite
