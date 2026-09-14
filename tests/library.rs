@@ -1414,6 +1414,70 @@ fn public_generic_copy_api_rewrites_broadcast_wave_typed_fields() {
 }
 
 #[test]
+fn public_generic_copy_api_rewrites_broadcast_wave_on_extended_containers() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock should be after the Unix epoch")
+        .as_nanos();
+    let source = std::env::temp_dir().join(format!("metra-copy-rf64-source-{nonce}.wav"));
+    let target = std::env::temp_dir().join(format!("metra-copy-bw64-target-{nonce}.wav"));
+    let source_bytes = metra::create_wav_to_vec(
+        &metra::WavCreateOptions::new()
+            .with_rf64()
+            .with_bext("DateTimeOriginal", "2026:09:14 12:34:56")
+            .with_bext("TimeReference", "17"),
+        metra::ParseLimits::default(),
+    )
+    .expect("RF64 source should be creatable");
+    let target_bytes = metra::create_wav_to_vec(
+        &metra::WavCreateOptions::new()
+            .with_bw64()
+            .with_bext("DateTimeOriginal", "2026:09:15 01:02:03")
+            .with_bext("TimeReference", "23"),
+        metra::ParseLimits::default(),
+    )
+    .expect("BW64 target should be creatable");
+    fs::write(&source, source_bytes).expect("source fixture should be writable");
+    fs::write(&target, target_bytes).expect("target fixture should be writable");
+
+    metra::copy_metadata_path(
+        &source,
+        &target,
+        metra::ParseLimits::default(),
+        "WAV:DateTimeOriginal",
+    )
+    .expect("generic extended BWF date/time copy should rewrite the target");
+    metra::copy_metadata_path(
+        &source,
+        &target,
+        metra::ParseLimits::default(),
+        "WAV:TimeReference",
+    )
+    .expect("generic extended BWF integer copy should rewrite the target");
+
+    let bytes = fs::read(&target).expect("rewritten BW64 should be readable");
+    assert_eq!(&bytes[..4], b"BW64");
+    assert_eq!(
+        u64::from_le_bytes(bytes[20..28].try_into().unwrap()),
+        (bytes.len() - 8) as u64
+    );
+    let metadata = metra::read(&target).expect("copied BW64 should remain readable");
+    assert_eq!(
+        metadata
+            .find("WAV:DateTimeOriginal")
+            .unwrap()
+            .display_value(),
+        "2026:09:14 12:34:56"
+    );
+    assert_eq!(
+        metadata.find("WAV:TimeReference").unwrap().display_value(),
+        "17"
+    );
+    fs::remove_file(source).expect("source fixture should be removable");
+    fs::remove_file(target).expect("target fixture should be removable");
+}
+
+#[test]
 fn public_wav_creation_api_supports_broadcast_wave_seed() {
     let options = metra::WavCreateOptions::new()
         .with_bext("Description", "Metra take")
