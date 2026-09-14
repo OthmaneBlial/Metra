@@ -213,6 +213,78 @@ struct Arguments {
     )]
     create_avi: Vec<String>,
 
+    /// Create a bounded Matroska metadata seed with Info/SimpleTag fields.
+    #[arg(
+        long = "create-mkv",
+        value_name = "KEY=VALUE",
+        action = clap::ArgAction::Append,
+        conflicts_with_all = [
+            "set",
+            "delete",
+            "copy",
+            "create_tiff",
+            "create_jpeg",
+            "create_pdf",
+            "create_avi",
+            "create_png",
+            "create_xmp",
+            "create_wav",
+            "create_flac",
+            "create_gif",
+            "create_icc",
+            "create_mp3",
+            "create_ogg",
+            "create_svg",
+            "create_webp_xmp",
+            "create_webm",
+            "json",
+            "jsonl",
+            "csv",
+            "toml",
+            "yaml",
+            "tag",
+            "validate",
+            "compare"
+        ]
+    )]
+    create_mkv: Vec<String>,
+
+    /// Create a bounded WebM metadata seed with Info/SimpleTag fields.
+    #[arg(
+        long = "create-webm",
+        value_name = "KEY=VALUE",
+        action = clap::ArgAction::Append,
+        conflicts_with_all = [
+            "set",
+            "delete",
+            "copy",
+            "create_tiff",
+            "create_jpeg",
+            "create_pdf",
+            "create_avi",
+            "create_mkv",
+            "create_png",
+            "create_xmp",
+            "create_wav",
+            "create_flac",
+            "create_gif",
+            "create_icc",
+            "create_mp3",
+            "create_ogg",
+            "create_svg",
+            "create_webp_xmp",
+            "json",
+            "jsonl",
+            "csv",
+            "toml",
+            "yaml",
+            "tag",
+            "validate",
+            "compare"
+        ]
+    )]
+    create_webm: Vec<String>,
+
     /// Create a new minimal PNG with one or more tEXt metadata fields.
     #[arg(
         long = "create-png",
@@ -625,6 +697,22 @@ fn main() -> ExitCode {
             }
         };
     }
+    if !arguments.create_mkv.is_empty() {
+        return run_matroska_create(
+            &arguments.files,
+            &arguments.create_mkv,
+            metra::MatroskaCreateKind::Mkv,
+            limits,
+        );
+    }
+    if !arguments.create_webm.is_empty() {
+        return run_matroska_create(
+            &arguments.files,
+            &arguments.create_webm,
+            metra::MatroskaCreateKind::Webm,
+            limits,
+        );
+    }
     if !arguments.create_tiff.is_empty() {
         if arguments.files.len() != 1 {
             eprintln!("metra: --create-tiff requires exactly one destination path");
@@ -1019,6 +1107,72 @@ fn filter_result(result: metra::Result<Metadata>, selectors: &[String]) -> metra
         }
         metadata
     })
+}
+
+fn run_matroska_create(
+    files: &[PathBuf],
+    entries: &[String],
+    kind: metra::MatroskaCreateKind,
+    limits: ParseLimits,
+) -> ExitCode {
+    let option_name = match kind {
+        metra::MatroskaCreateKind::Mkv => "--create-mkv",
+        metra::MatroskaCreateKind::Webm => "--create-webm",
+    };
+    if files.len() != 1 {
+        eprintln!("metra: {option_name} requires exactly one destination path");
+        return ExitCode::from(2);
+    }
+    let options = match parse_matroska_create(entries, kind) {
+        Ok(options) => options,
+        Err(message) => {
+            eprintln!("metra: {message}");
+            return ExitCode::from(2);
+        }
+    };
+    match metra::create_matroska_path(&files[0], &options, limits) {
+        Ok(()) => {
+            println!("created: {}", files[0].display());
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("metra: {}: {error}", files[0].display());
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn parse_matroska_create(
+    entries: &[String],
+    kind: metra::MatroskaCreateKind,
+) -> Result<metra::MatroskaCreateOptions, String> {
+    let option_name = match kind {
+        metra::MatroskaCreateKind::Mkv => "--create-mkv",
+        metra::MatroskaCreateKind::Webm => "--create-webm",
+    };
+    let mut options = metra::MatroskaCreateOptions::new(kind);
+    for assignment in entries {
+        let (raw_key, value) = assignment
+            .split_once('=')
+            .ok_or_else(|| format!("{option_name} expects KEY=VALUE"))?;
+        let key = raw_key.strip_prefix("Matroska:").unwrap_or(raw_key);
+        if key.is_empty() {
+            return Err(format!("{option_name} requires a non-empty KEY"));
+        }
+        if let Some(name) = key.strip_prefix("Tag:") {
+            if name.is_empty() {
+                return Err(format!("{option_name} Tag requires a non-empty name"));
+            }
+            options.push_tag(name, value);
+        } else if matches!(key, "Title" | "MuxingApp" | "WritingApp") {
+            options.push_info(key, value);
+        } else {
+            return Err(format!(
+                "unsupported {option_name} field {raw_key}; use Title, MuxingApp, WritingApp, or Tag:<name>"
+            ));
+        }
+    }
+    Ok(options)
 }
 
 fn parse_tiff_create(entries: &[String]) -> Result<metra::TiffCreateOptions, String> {

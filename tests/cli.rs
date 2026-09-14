@@ -1255,6 +1255,61 @@ fn cli_can_create_minimal_avi_seed_without_overwrite() {
 }
 
 #[test]
+fn cli_can_create_mkv_and_webm_metadata_seeds() {
+    let directory = TemporaryDirectory::new();
+    let mkv = directory.path.join("created.mkv");
+    let mkv_output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--create-mkv",
+            "Matroska:Title=Metra",
+            "--create-mkv",
+            "Matroska:Tag:TITLE=Metra",
+            mkv.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(
+        mkv_output.status.success(),
+        "stderr: {:?}",
+        mkv_output.stderr
+    );
+    let metadata = metra::read(&mkv).expect("created MKV should remain readable");
+    assert_eq!(metadata.file_info.format, metra::FileFormat::Mkv);
+    assert_eq!(
+        metadata.find("Matroska:Title").unwrap().display_value(),
+        "Metra"
+    );
+    assert_eq!(
+        metadata.find("Matroska:Tag:TITLE").unwrap().display_value(),
+        "Metra"
+    );
+
+    let webm = directory.path.join("created.webm");
+    let webm_output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--create-webm",
+            "WritingApp=Metra",
+            webm.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(
+        webm_output.status.success(),
+        "stderr: {:?}",
+        webm_output.stderr
+    );
+    let metadata = metra::read(&webm).expect("created WebM should remain readable");
+    assert_eq!(metadata.file_info.format, metra::FileFormat::Webm);
+    assert_eq!(
+        metadata
+            .find("Matroska:WritingApp")
+            .unwrap()
+            .display_value(),
+        "Metra"
+    );
+}
+
+#[test]
 fn cli_can_create_minimal_mp3_id3_seed_without_overwrite() {
     let directory = TemporaryDirectory::new();
     let path = directory.path.join("created.mp3");
