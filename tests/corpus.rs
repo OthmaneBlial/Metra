@@ -6,6 +6,27 @@ use std::process::Command;
 
 use serde_json::Value;
 
+#[derive(Debug, serde::Serialize)]
+struct InspectionSummary {
+    files: usize,
+    recognized: usize,
+    failures: usize,
+    warnings: usize,
+}
+
+#[derive(Debug, Default, serde::Serialize)]
+struct DifferentialSummary {
+    corpus_files: usize,
+    compared_files: usize,
+    metra_read_failures: usize,
+    metra_panics: usize,
+    metra_tags: usize,
+    oracle_key_matches: usize,
+    oracle_key_misses: usize,
+    oracle_value_matches: usize,
+    oracle_value_mismatches: usize,
+}
+
 fn corpus_files() -> Vec<PathBuf> {
     let root = env::var_os("METRA_CORPUS_DIR")
         .map(PathBuf::from)
@@ -62,6 +83,15 @@ fn corpus_inspection_does_not_panic() {
         recognized,
         failures
     );
+    write_json_report(
+        "METRA_CORPUS_INSPECTION_REPORT",
+        &InspectionSummary {
+            files: files.len(),
+            recognized,
+            failures,
+            warnings,
+        },
+    );
 }
 
 #[test]
@@ -71,16 +101,22 @@ fn corpus_supported_tags_can_be_compared_with_oracle() {
     let oracle = env::var_os("METRA_ORACLE")
         .map(PathBuf::from)
         .expect("METRA_ORACLE must point to an ExifTool-compatible executable");
-    let mut compared_files = 0_usize;
-    let mut matched_tags = 0_usize;
-    let mut matched_values = 0_usize;
-    let mut metra_tags = 0_usize;
+    let mut summary = DifferentialSummary {
+        corpus_files: files.len(),
+        ..DifferentialSummary::default()
+    };
 
     for path in files {
         let Ok(metadata) = catch_unwind(AssertUnwindSafe(|| metra::read(&path))) else {
-            panic!("Metra panicked while inspecting {}", path.display());
+            summary.metra_panics += 1;
+            eprintln!(
+                "differential: Metra panicked while inspecting {}",
+                path.display()
+            );
+            continue;
         };
         let Ok(metadata) = metadata else {
+            summary.metra_read_failures += 1;
             continue;
         };
         let output = Command::new(&oracle)
@@ -105,25 +141,84 @@ fn corpus_supported_tags_can_be_compared_with_oracle() {
             .and_then(|items| items.first())
             .and_then(Value::as_object)
             .expect("oracle JSON should contain one metadata object");
-        compared_files += 1;
-        metra_tags += metadata.tags().len();
+        summary.compared_files += 1;
+        summary.metra_tags += metadata.tags().len();
         for tag in metadata.tags() {
             let Some(key) = oracle_key_candidates(tag)
                 .into_iter()
                 .find(|key| object.contains_key(key))
             else {
+                summary.oracle_key_misses += 1;
                 continue;
             };
-            matched_tags += 1;
+            summary.oracle_key_matches += 1;
             if let Some(value) = object.get(&key) {
-                matched_values += usize::from(oracle_value_matches(&tag.value, value));
+                if oracle_value_matches(&tag.value, value) {
+                    summary.oracle_value_matches += 1;
+                } else {
+                    summary.oracle_value_mismatches += 1;
+                    eprintln!(
+                        "differential mismatch: {}: {} != {}",
+                        path.display(),
+                        tag.key(),
+                        key
+                    );
+                }
             }
         }
     }
 
     eprintln!(
-        "differential summary: compared_files={compared_files}, metra_tags={metra_tags}, oracle_key_matches={matched_tags}, oracle_value_matches={matched_values}"
+        "differential summary: corpus_files={}, compared_files={}, metra_read_failures={}, metra_panics={}, metra_tags={}, oracle_key_matches={}, oracle_key_misses={}, oracle_value_matches={}, oracle_value_mismatches={}",
+        summary.corpus_files,
+        summary.compared_files,
+        summary.metra_read_failures,
+        summary.metra_panics,
+        summary.metra_tags,
+        summary.oracle_key_matches,
+        summary.oracle_key_misses,
+        summary.oracle_value_matches,
+        summary.oracle_value_mismatches
     );
+    write_json_report("METRA_CORPUS_DIFFERENTIAL_REPORT", &summary);
+
+    if env_flag("METRA_ORACLE_STRICT") {
+        assert_eq!(
+            summary.metra_panics, 0,
+            "strict differential mode found {} Metra panics",
+            summary.metra_panics
+        );
+        assert_eq!(
+            summary.oracle_key_misses, 0,
+            "strict differential mode found {} Metra tags without an oracle key",
+            summary.oracle_key_misses
+        );
+        assert_eq!(
+            summary.oracle_value_mismatches, 0,
+            "strict differential mode found {} mismatched values",
+            summary.oracle_value_mismatches
+        );
+    }
+}
+
+fn env_flag(name: &str) -> bool {
+    env::var(name).is_ok_and(|value| {
+        matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        )
+    })
+}
+
+fn write_json_report<T: serde::Serialize>(variable: &str, report: &T) {
+    let Some(path) = env::var_os(variable).map(PathBuf::from) else {
+        return;
+    };
+    let payload = serde_json::to_vec_pretty(report)
+        .unwrap_or_else(|error| panic!("cannot serialize {variable}: {error}"));
+    fs::write(&path, payload)
+        .unwrap_or_else(|error| panic!("cannot write {variable} to {}: {error}", path.display()));
+    eprintln!("corpus report written: {}", path.display());
 }
 
 fn oracle_key_candidates(tag: &metra::Tag) -> Vec<String> {
@@ -267,4 +362,45 @@ fn oracle_number_matches(value: f64, oracle: &Value) -> bool {
 
 fn rational_matches(numerator: f64, denominator: f64, oracle: &Value) -> bool {
     denominator != 0.0 && oracle_number_matches(numerator / denominator, oracle)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn oracle_candidates_preserve_group_aliases() {
+        let tag = metra::Tag {
+            namespace: "EXIF".into(),
+            group: "IFD-next".into(),
+            id: None,
+            name: "ImageDescription".into(),
+            description: None,
+            value: metra::TagValue::String("example".into()),
+            raw_value: None,
+            value_type: metra::ValueType::String,
+            source: metra::Source::default(),
+            writable: false,
+        };
+        assert_eq!(oracle_key_candidates(&tag), ["IFD1:ImageDescription"]);
+    }
+
+    #[test]
+    fn numeric_matching_allows_only_small_relative_drift() {
+        assert!(oracle_number_matches(100.0, &Value::from(100.0000000001)));
+        assert!(!oracle_number_matches(100.0, &Value::from(100.01)));
+        assert!(rational_matches(1.0, 3.0, &Value::from(1.0 / 3.0)));
+        assert!(!rational_matches(1.0, 0.0, &Value::from(0.0)));
+    }
+
+    #[test]
+    fn arrays_require_same_shape_and_matching_values() {
+        let value = metra::TagValue::Array(vec![
+            metra::TagValue::Unsigned(1),
+            metra::TagValue::Unsigned(2),
+        ]);
+        assert!(oracle_value_matches(&value, &serde_json::json!([1, 2])));
+        assert!(!oracle_value_matches(&value, &serde_json::json!([1])));
+        assert!(!oracle_value_matches(&value, &serde_json::json!([1, 3])));
+    }
 }
