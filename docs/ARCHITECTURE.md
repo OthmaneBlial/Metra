@@ -375,6 +375,9 @@ audio metadata seeds, `SvgCreateOptions` can build a minimal XML metadata seed, 
 `JpegCreateOptions` can build a minimal JPEG metadata container seed; all
 validate their output by reading it back and create a new path without
 overwriting an existing file.
+`DngCreateOptions` reuses the classic TIFF creator for the root image/GPS
+directory, then appends a validated DNGVersion IFD and adjusts the root IFD
+chain pointer; proprietary sensor payload authoring remains outside this seam.
 
 ## Output contract
 

@@ -167,8 +167,10 @@ their legal ranges, converts them to bounded DMS rationals, and requires both
 coordinates before emitting a new GPS IFD. BigTIFF uses the same bounded
 coordinate encoder with 64-bit IFD offsets. Optional altitude, direction, speed,
 time, and date fields use finite/range-checked values, bounded unsigned
-rationals, an explicit K speed reference, and strict calendar validation. The
-path helper refuses an existing destination and removes its temporary file on
+rationals, an explicit K speed reference, and strict calendar validation. DNG
+creation reuses this validated TIFF seed before appending its DNGVersion IFD;
+the root IFD chain offset is adjusted for the optional GPS directory. The path
+helper refuses an existing destination and removes its temporary file on
 failure.
 
 The BigTIFF creation API applies the same allowlist, duplicate/NUL checks,

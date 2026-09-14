@@ -19,6 +19,9 @@ Initial read-first foundation with narrow validated rewrites:
   latitude/longitude, optional altitude/direction/speed/time/date fields, DMS
   and rational encoding, range/calendar validation, CLI coverage, and 64-bit
   BigTIFF entry offsets;
+- extended the bounded DNG seed creator and its CLI/public API with the same
+  validated GPS coordinate, scalar, time, and date fields, preserving the DNG
+  IFD chain after the optional GPS directory;
 - added bounded TIFF GPS latitude/longitude decimal rewrites, reference-field
   updates, zero-fill deletion tombstones, generic API aliases, CLI set/delete/
   copy support, and round-trip coverage for positive and negative coordinates;

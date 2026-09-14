@@ -40,7 +40,7 @@ Implemented today:
 | SVG | Bounded XML detection, root dimensions/version/viewBox, title, description, comments, embedded XMP extraction, nesting/text limits, safe document-text rewrites, and minimal 1x1 metadata-seed creation |
 | Standalone XMP/ICC | Signature-based standalone XMP packet and ICC profile readers reuse the bounded XML/profile engines and retain the detected file family; standalone XMP packets and existing ICC text tags can be rewritten within fixed storage, and minimal RGB ICC profiles can also be created and validated as new files |
 | PSD/PSB | Big-endian header and dimensions, bounded Photoshop image resources, XMP/IPTC/ICC/embedded EXIF delegation, resolution and common resource fields, preservation of unknown resources as bytes, and bounded replacement of existing PSD XMP resources |
-| RAW | DNG and TIFF-like CR2/NEF/ARW/ORF/RW2/PEF containers reuse the bounded TIFF/EXIF reader with common DNG tags (version, CFA, levels, matrices, white balance, and camera/lens identity) and safe rewrites of existing TIFF ASCII slots; a bounded 1x1 DNG/TIFF-like seed can be created with DNGVersion and EXIF ASCII fields; CR3 reuses ISO-BMFF inspection and supports bounded rewrites of existing ISO-BMFF text and XMP slots; RAF exposes its bounded header and proprietary directory fields, MRW exposes bounded PRD/WBG/RIF segments plus embedded TTW TIFF metadata, and X3F exposes its FOVb header, `SECd` directory, Unicode `PROP` fields, and image descriptors without touching pixel payloads; CRW exposes bounded CIFF root and nested directories, common Make/Model and dimensions, while all proprietary RAW writers remain read-only |
+| RAW | DNG and TIFF-like CR2/NEF/ARW/ORF/RW2/PEF containers reuse the bounded TIFF/EXIF reader with common DNG tags (version, CFA, levels, matrices, white balance, and camera/lens identity) and safe rewrites of existing TIFF ASCII slots; a bounded 1x1 DNG/TIFF-like seed can be created with DNGVersion, EXIF ASCII fields, and the complete bounded GPS seed; CR3 reuses ISO-BMFF inspection and supports bounded rewrites of existing ISO-BMFF text and XMP slots; RAF exposes its bounded header and proprietary directory fields, MRW exposes bounded PRD/WBG/RIF segments plus embedded TTW TIFF metadata, and X3F exposes its FOVb header, `SECd` directory, Unicode `PROP` fields, and image descriptors without touching pixel payloads; CRW exposes bounded CIFF root and nested directories, common Make/Model and dimensions, while all proprietary RAW writers remain read-only |
 | AVI | RIFF/AVI validation, bounded `avih` dimensions and frame timing, `strh` stream type/codec/rate/duration/frame bounds, video `strf` bitmap properties, audio `strf` format properties, common `LIST/INFO` text fields without decoding media frames, safe rewrites of existing `LIST/INFO` values, and a minimal 1x1 uncompressed-video seed creator |
 | MKV/WebM | EBML signature and document-type detection, bounded `Info`/`Tracks`/`Tags`/`Chapters`/`Cues`/`Attachments` scanning, typed duration, track, title, codec, chapter, cue, and attachment-descriptor values, without decoding clusters or loading attachment payloads, plus safe rewrites of existing `Info` title/app strings and `SimpleTag` strings |
 | Output | Human-readable text, JSON, JSON Lines, CSV, TOML, or YAML; schema version `1` is retained in structured output |
@@ -142,7 +142,8 @@ creating page content.
 1x1 RGB PSD seed with an optional bounded XMP image resource; PSB and full
 layer/pixel authoring remain outside this seam.
 `DngCreateOptions` and `create_dng_to_vec`/`create_dng_path` provide a bounded
-1x1 DNG/TIFF-like RAW seed with a DNGVersion IFD and EXIF ASCII fields;
+1x1 DNG/TIFF-like RAW seed with a DNGVersion IFD, EXIF ASCII fields, and the
+same optional GPS coordinate/scalar/time/date fields as TIFF;
 proprietary camera RAW encoding and full RAW authoring remain outside this seam.
 `IsobmffCreateKind`, `IsobmffCreateOptions` and
 `create_isobmff_to_vec`/`create_isobmff_path` provide metadata-only MP4, MOV,
@@ -212,6 +213,7 @@ cargo run -- --create-tiff 'GPS:Latitude=-48.8566' --create-tiff 'GPS:Longitude=
 cargo run -- --create-tiff 'GPS:Latitude=48.8566' --create-tiff 'GPS:Longitude=2.3522' --create-tiff 'GPS:Altitude=-125.5' --create-tiff 'GPS:Speed=10' --create-tiff 'GPS:Date=2026:09:14' gps-full.tif
 cargo run -- --create-bigtiff 'EXIF:Make=Metra' --create-bigtiff 'Software=BigTIFF' new.btf
 cargo run -- --create-dng 'DNG:Make=Metra' --create-dng 'Artist=Othmane' new.dng
+cargo run -- --create-dng 'GPS:Latitude=48.8566' --create-dng 'GPS:Longitude=2.3522' --create-dng 'GPS:Altitude=-125.5' --create-dng 'GPS:Date=2026:09:14' gps.dng
 cargo run -- --create-jpeg 'Comment=Metra' --create-jpeg 'XMP=<x:xmpmeta><rdf:RDF/></x:xmpmeta>' new.jpg
 cargo run -- --create-pdf 'Title=Metra' --create-pdf 'Author=Othmane' new.pdf
 cargo run -- --create-psd 'PSD:XMP=<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF/></x:xmpmeta>' new.psd
