@@ -45,9 +45,24 @@
       "lossless_rewrite": "partial",
       "streaming": "partial"
     },
-    "MP4": { "read": "partial", "write": "partial", "streaming": "partial" },
-    "MOV": { "read": "partial", "write": "partial", "streaming": "partial" },
-    "M4A": { "read": "partial", "write": "partial", "streaming": "partial" },
+    "MP4": {
+      "read": "partial",
+      "write": "partial",
+      "create": "partial",
+      "streaming": "partial"
+    },
+    "MOV": {
+      "read": "partial",
+      "write": "partial",
+      "create": "partial",
+      "streaming": "partial"
+    },
+    "M4A": {
+      "read": "partial",
+      "write": "partial",
+      "create": "partial",
+      "streaming": "partial"
+    },
     "PDF": {
       "read": "partial",
       "write": "partial",
