@@ -95,6 +95,8 @@ pub fn rewrite_gif_path(
             FileInfo::new(temp_path.clone(), written_size, FileFormat::Gif),
             limits,
         )?;
+        drop(validation);
+        drop(input);
         fs::set_permissions(&temp_path, source_metadata.permissions()).map_err(|source| {
             MetraError::WriteFailure {
                 message: format!(

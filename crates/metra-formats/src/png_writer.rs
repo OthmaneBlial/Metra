@@ -112,6 +112,8 @@ pub fn rewrite_png_path(
             .len();
         let written_info = FileInfo::new(temp_path.clone(), written_size, FileFormat::Png);
         read_png(&mut validation, written_info, limits)?;
+        drop(validation);
+        drop(input);
         fs::set_permissions(&temp_path, source_metadata.permissions()).map_err(|source| {
             MetraError::WriteFailure {
                 message: format!(

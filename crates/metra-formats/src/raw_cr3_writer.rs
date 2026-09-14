@@ -100,6 +100,8 @@ pub fn rewrite_raw_cr3_path(
             FileInfo::new(temp_path.clone(), written_size, FileFormat::Raw),
             limits,
         )?;
+        drop(validation);
+        drop(input);
         fs::set_permissions(&temp_path, source_file_metadata.permissions()).map_err(|source| {
             MetraError::WriteFailure {
                 message: format!(

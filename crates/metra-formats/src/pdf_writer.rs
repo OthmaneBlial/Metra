@@ -116,6 +116,8 @@ pub fn rewrite_pdf_path(
             FileInfo::new(temp_path.clone(), written_size, FileFormat::Pdf),
             limits,
         )?;
+        drop(validation);
+        drop(input);
         fs::set_permissions(&temp_path, source_metadata.permissions()).map_err(|source| {
             MetraError::WriteFailure {
                 message: format!(
