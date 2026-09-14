@@ -33,6 +33,9 @@ Initial read-first foundation with narrow validated rewrites:
 - added minimal Ogg Opus metadata-seed creation with bounded `OpusHead` and
   `OpusTags` packets, page CRC/segmentation validation, no-overwrite atomic path
   creation, and CLI `--create-ogg KEY=VALUE` coverage;
+- added minimal 1x1 SVG metadata-seed creation with bounded title, description,
+  and comment nodes, XML escaping/validation, no-overwrite atomic path creation,
+  and CLI `--create-svg KEY=VALUE` coverage;
 - added bounded CR3 ISO-BMFF text rewrites and zero-fill deletion through
   RAW-variant validation, including generic API, registry, atomic path, and CLI
   `--set`/`--delete`/`--copy`
