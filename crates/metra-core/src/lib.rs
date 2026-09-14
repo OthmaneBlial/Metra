@@ -368,7 +368,7 @@ const FORMAT_CAPABILITIES: &[FormatCapabilities] = &[
         format: FileFormat::Raw,
         read: CapabilityStatus::Partial,
         write: CapabilityStatus::Partial,
-        create: CapabilityStatus::Planned,
+        create: CapabilityStatus::Partial,
         delete: CapabilityStatus::Partial,
         lossless_rewrite: CapabilityStatus::Partial,
         streaming: CapabilityStatus::Partial,
@@ -1027,6 +1027,7 @@ mod tests {
             CapabilityStatus::Partial
         );
         let raw = format_capabilities(FileFormat::Raw);
+        assert_eq!(raw.create, CapabilityStatus::Partial);
         assert_eq!(raw.write, CapabilityStatus::Partial);
         assert_eq!(raw.delete, CapabilityStatus::Partial);
         assert_eq!(raw.lossless_rewrite, CapabilityStatus::Partial);
