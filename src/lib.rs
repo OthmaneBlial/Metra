@@ -35,7 +35,7 @@ pub use metra_formats::{
     create_png_path, create_png_to_vec, create_psd_path, create_psd_to_vec, create_svg_path,
     create_svg_to_vec, create_tiff_path, create_tiff_to_vec, create_to_vec, create_wav_path,
     create_wav_to_vec, create_webp_path, create_webp_to_vec, create_xmp_path, create_xmp_to_vec,
-    detect_format, format_handlers, handler_for_format, read_icc, read_mrw, read_ogg,
+    detect_format, format_handlers, handler_for_format, read_crw, read_icc, read_mrw, read_ogg,
     read_path_with_limits, read_raf, read_reader, read_reader_with_limits, read_x3f, read_xmp,
     rewrite_avi, rewrite_avi_path, rewrite_avi_to_vec, rewrite_flac, rewrite_flac_path,
     rewrite_flac_to_vec, rewrite_gif, rewrite_gif_path, rewrite_gif_to_vec, rewrite_icc,

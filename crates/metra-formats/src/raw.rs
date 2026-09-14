@@ -2,7 +2,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
 use metra_core::{
-    FileInfo, Metadata, MetraError, ParseLimits, Result, Source, Tag, TagValue, ValueType, Warning,
+    FileInfo, Metadata, MetraError, ParseLimits, Result, Source, Tag, TagValue, ValueType,
 };
 
 const TIFF_LITTLE_ENDIAN: &[u8; 4] = b"II*\0";
@@ -12,7 +12,6 @@ const RW2_BIG_ENDIAN: &[u8; 4] = b"MM\0U";
 const BIG_TIFF_LITTLE_ENDIAN: &[u8; 4] = b"II+\0";
 const BIG_TIFF_BIG_ENDIAN: &[u8; 4] = b"MM\0+";
 const RAF_SIGNATURE: &[u8; 16] = b"FUJIFILMCCD-RAW ";
-const CRW_SIGNATURE: &[u8; 14] = b"II\x1A\0\0\0HEAPCCDR";
 const MRW_SIGNATURE: &[u8; 4] = b"\0MRM";
 const X3F_SIGNATURE: &[u8; 4] = b"FOVb";
 
@@ -55,13 +54,8 @@ pub fn read_raw<R: Read + Seek>(
         Ok(metadata)
     } else if prefix.starts_with(RAF_SIGNATURE) {
         crate::raf::read_raf(reader, file_info, limits)
-    } else if prefix.starts_with(CRW_SIGNATURE) {
-        Ok(read_partial_container(
-            file_info,
-            "CRW",
-            "raw-crw-partial",
-            "Canon CIFF RAW container identified; CIFF metadata and image payload are not decoded",
-        ))
+    } else if is_crw_header(&prefix) {
+        crate::crw::read_crw(reader, file_info, limits)
     } else if prefix.starts_with(MRW_SIGNATURE) {
         crate::mrw::read_mrw(reader, file_info, limits)
     } else if prefix.starts_with(X3F_SIGNATURE) {
@@ -84,7 +78,7 @@ pub(crate) fn is_tiff_header(bytes: &[u8]) -> bool {
 }
 
 pub(crate) fn is_crw_header(bytes: &[u8]) -> bool {
-    bytes.starts_with(CRW_SIGNATURE)
+    bytes.len() >= 14 && matches!(&bytes[..2], b"II" | b"MM") && &bytes[6..14] == b"HEAPCCDR"
 }
 
 pub(crate) fn is_mrw_header(bytes: &[u8]) -> bool {
@@ -125,18 +119,6 @@ pub(crate) fn raw_variant(path: &Path) -> Option<&'static str> {
         "raw" => Some("RAW"),
         _ => None,
     }
-}
-
-fn read_partial_container(
-    file_info: FileInfo,
-    variant: &'static str,
-    warning_code: &'static str,
-    message: &'static str,
-) -> Metadata {
-    let mut metadata = Metadata::new(file_info);
-    add_identity(&mut metadata, variant);
-    metadata.add_warning(Warning::new(warning_code, message).at(0));
-    metadata
 }
 
 pub(crate) fn add_identity(metadata: &mut Metadata, variant: &str) {

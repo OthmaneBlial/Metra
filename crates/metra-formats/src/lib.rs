@@ -16,6 +16,7 @@ mod avi_create;
 mod avi_writer;
 mod bigtiff_create;
 mod create;
+mod crw;
 mod dng_create;
 mod edit;
 mod flac;
@@ -83,6 +84,7 @@ pub use avi_create::{AviCreateEntry, AviCreateOptions, create_avi_path, create_a
 pub use avi_writer::{AviEdit, rewrite_avi, rewrite_avi_path, rewrite_avi_to_vec};
 pub use bigtiff_create::{create_bigtiff_path, create_bigtiff_to_vec};
 pub use create::{CreateRequest, create_path, create_to_vec};
+pub use crw::read_crw;
 pub use dng_create::{DngCreateOptions, create_dng_path, create_dng_to_vec};
 pub use edit::{MetadataEdit, copy_metadata_path, rewrite_metadata_path, rewrite_metadata_to_vec};
 pub use flac::read_flac;
