@@ -1447,6 +1447,81 @@ fn cli_can_set_and_copy_standalone_xmp_packet() {
 }
 
 #[test]
+fn cli_can_set_delete_and_copy_icc_text() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.path.join("source.icc");
+    let target = directory.path.join("target.icc");
+
+    for (path, value) in [(&source, "source"), (&target, "target")] {
+        let created = Command::new(env!("CARGO_BIN_EXE_metra"))
+            .args([
+                "--create-icc",
+                &format!("Description={value}"),
+                path.to_str().expect("UTF-8 test path"),
+            ])
+            .output()
+            .expect("Metra CLI should start");
+        assert!(created.status.success(), "stderr: {:?}", created.stderr);
+    }
+
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "ICC:Description=edited",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("ICC:Description")
+            .unwrap()
+            .display_value(),
+        "edited"
+    );
+
+    let copy_assignment = format!(
+        "ICC:Description={}",
+        source.to_str().expect("UTF-8 test path")
+    );
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            &copy_assignment,
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("ICC:Description")
+            .unwrap()
+            .display_value(),
+        "source"
+    );
+
+    let delete = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--delete",
+            "ICC:Description",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(delete.status.success(), "stderr: {:?}", delete.stderr);
+    assert!(
+        metra::read(&target)
+            .unwrap()
+            .find("ICC:Description")
+            .is_none()
+    );
+}
+
+#[test]
 fn cli_can_edit_existing_tiff_ascii_in_place() {
     let directory = TemporaryDirectory::new();
     let path = directory.file("editable.tif", &minimal_raw_tiff());

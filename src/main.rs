@@ -1228,6 +1228,7 @@ enum EditRequest {
     DirectOgg(Vec<metra::OggEdit>),
     DirectPdf(Vec<metra::PdfEdit>),
     DirectPsd(Vec<metra::PsdEdit>),
+    DirectIcc(Vec<metra::IccEdit>),
     DirectAvi(Vec<metra::AviEdit>),
     DirectMatroska(Vec<metra::MatroskaEdit>),
     DirectMp3(Vec<metra::Mp3Edit>),
@@ -1252,6 +1253,7 @@ enum CopyKey {
     FlacComment(String),
     OggComment(String),
     PdfInfo(String),
+    IccText(String),
     PsdXmp,
     AviInfo(String),
     MatroskaTag(String),
@@ -1300,6 +1302,14 @@ fn parse_edits(
             if let Some(name) = pdf_info_name(key) {
                 return Ok(Some(EditRequest::DirectPdf(vec![
                     metra::PdfEdit::SetInfo {
+                        name: name.to_owned(),
+                        value: value.to_owned(),
+                    },
+                ])));
+            }
+            if let Some(name) = icc_text_name(key) {
+                return Ok(Some(EditRequest::DirectIcc(vec![
+                    metra::IccEdit::SetText {
                         name: name.to_owned(),
                         value: value.to_owned(),
                     },
@@ -1445,6 +1455,13 @@ fn parse_edits(
                     },
                 ])));
             }
+            if let Some(name) = icc_text_name(key) {
+                return Ok(Some(EditRequest::DirectIcc(vec![
+                    metra::IccEdit::DeleteText {
+                        name: name.to_owned(),
+                    },
+                ])));
+            }
             if psd_xmp_key(key) {
                 return Ok(Some(EditRequest::DirectPsd(vec![
                     metra::PsdEdit::DeleteXmp,
@@ -1569,6 +1586,8 @@ fn parse_edits(
             CopyKey::TiffAscii(tiff_key.to_owned())
         } else if let Some(name) = pdf_info_name(key) {
             CopyKey::PdfInfo(name.to_owned())
+        } else if let Some(name) = icc_text_name(key) {
+            CopyKey::IccText(name.to_owned())
         } else if key == "XMP:Packet" {
             CopyKey::XmpPacket
         } else if psd_xmp_key(key) {
@@ -1641,6 +1660,15 @@ fn pdf_info_name(key: &str) -> Option<&str> {
             | "Producer"
             | "CreationDate"
             | "ModifyDate"
+    )
+    .then_some(name)
+}
+
+fn icc_text_name(key: &str) -> Option<&str> {
+    let name = key.strip_prefix("ICC:")?;
+    matches!(
+        name,
+        "Description" | "Copyright" | "ManufacturerDescription" | "ModelDescription"
     )
     .then_some(name)
 }
@@ -1903,6 +1931,7 @@ fn apply_request(paths: &[PathBuf], request: EditRequest, limits: ParseLimits) -
         EditRequest::DirectOgg(edits) => apply_ogg_edits(paths, &edits, limits),
         EditRequest::DirectPdf(edits) => apply_pdf_edits(paths, &edits, limits),
         EditRequest::DirectPsd(edits) => apply_psd_edits(paths, &edits, limits),
+        EditRequest::DirectIcc(edits) => apply_icc_edits(paths, &edits, limits),
         EditRequest::DirectAvi(edits) => apply_avi_edits(paths, &edits, limits),
         EditRequest::DirectMatroska(edits) => apply_matroska_edits(paths, &edits, limits),
         EditRequest::DirectMp3(edits) => apply_mp3_edits(paths, &edits, limits),
@@ -2150,6 +2179,39 @@ fn apply_xmp_edits(paths: &[PathBuf], edits: &[metra::XmpEdit], limits: ParseLim
             Ok(metadata) => {
                 eprintln!(
                     "metra: {}: XMP packet edits are supported only for standalone XMP files, not {}",
+                    path.display(),
+                    metadata.file_info.format
+                );
+                failures += 1;
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", path.display());
+                failures += 1;
+            }
+        }
+    }
+    if failures == 0 {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
+fn apply_icc_edits(paths: &[PathBuf], edits: &[metra::IccEdit], limits: ParseLimits) -> ExitCode {
+    let mut failures = 0_usize;
+    for path in paths {
+        match metra::read_with_limits(path, limits) {
+            Ok(metadata) if metadata.file_info.format == metra::FileFormat::Icc => {
+                if let Err(error) = metra::rewrite_icc_path(path, limits, edits) {
+                    eprintln!("metra: {}: {error}", path.display());
+                    failures += 1;
+                } else {
+                    println!("updated: {}", path.display());
+                }
+            }
+            Ok(metadata) => {
+                eprintln!(
+                    "metra: {}: ICC edits are supported only for standalone ICC files, not {}",
                     path.display(),
                     metadata.file_info.format
                 );
@@ -2434,6 +2496,30 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path, limits: ParseLimit
                 value: value.clone(),
             }];
             apply_pdf_edits(paths, &edits, limits)
+        }
+        CopyKey::IccText(name) => {
+            if source_metadata.file_info.format != metra::FileFormat::Icc {
+                eprintln!(
+                    "metra: {}: source format {} is not standalone ICC",
+                    source.display(),
+                    source_metadata.file_info.format
+                );
+                return ExitCode::from(1);
+            }
+            let key = format!("ICC:{name}");
+            let Some(tag) = source_metadata.find(&key) else {
+                eprintln!("metra: {}: source does not contain {key}", source.display());
+                return ExitCode::from(1);
+            };
+            let metra::TagValue::String(value) = &tag.value else {
+                eprintln!("metra: {}: {key} is not a string", source.display());
+                return ExitCode::from(1);
+            };
+            let edits = [metra::IccEdit::SetText {
+                name,
+                value: value.clone(),
+            }];
+            apply_icc_edits(paths, &edits, limits)
         }
         CopyKey::XmpPacket => {
             if source_metadata.file_info.format != metra::FileFormat::Xmp {
