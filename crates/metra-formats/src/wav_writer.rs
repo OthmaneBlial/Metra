@@ -135,6 +135,26 @@ enum BextAction {
     Delete { name: String },
 }
 
+#[derive(Debug)]
+struct Rf64WriteInfo {
+    riff_size: u64,
+    data_size: u64,
+    chunk_sizes: Vec<([u8; 4], u64)>,
+}
+
+impl Rf64WriteInfo {
+    fn chunk_size(&self, kind: &[u8; 4]) -> Option<u64> {
+        if kind == b"data" {
+            Some(self.data_size)
+        } else {
+            self.chunk_sizes
+                .iter()
+                .find(|(entry_kind, _)| entry_kind == kind)
+                .map(|(_, size)| *size)
+        }
+    }
+}
+
 fn rewrite_wav_stream<R: Read, W: Write + Seek>(
     reader: &mut R,
     writer: &mut W,
@@ -147,29 +167,39 @@ fn rewrite_wav_stream<R: Read, W: Write + Seek>(
     let bext_actions = bext_actions(edits, limits)?;
     let mut header = [0_u8; 12];
     read_exact(reader, &mut header, path)?;
-    if &header[..4] != b"RIFF" || &header[8..12] != b"WAVE" {
+    let container_kind = &header[..4];
+    let is_rf64 = matches!(container_kind, b"RF64" | b"BW64");
+    if (!is_rf64 && container_kind != b"RIFF") || &header[8..12] != b"WAVE" {
         return Err(MetraError::InvalidHeader {
             context: "WAV".to_owned(),
-            message: "expected RIFF/WAVE signature".to_owned(),
+            message: "expected RIFF, RF64, or BW64 WAVE signature".to_owned(),
         });
     }
-    let declared_size = u64::from(u32::from_le_bytes(
-        header[4..8].try_into().expect("RIFF size"),
-    ));
-    let declared_end = 8_u64
-        .checked_add(declared_size)
-        .ok_or(MetraError::InvalidOffset {
-            context: "WAV RIFF boundary".to_owned(),
-            offset: declared_size,
-        })?;
+    let stored_size = u32::from_le_bytes(header[4..8].try_into().expect("RIFF size"));
+    let mut declared_end = if is_rf64 {
+        file_length
+    } else {
+        8_u64
+            .checked_add(u64::from(stored_size))
+            .ok_or(MetraError::InvalidOffset {
+                context: "WAV RIFF boundary".to_owned(),
+                offset: u64::from(stored_size),
+            })?
+    };
     if declared_end > file_length {
         return Err(MetraError::UnexpectedEof {
             context: "WAV RIFF body".to_owned(),
         });
     }
-    header[4..8].copy_from_slice(&0_u32.to_le_bytes());
+    if is_rf64 {
+        header[4..8].copy_from_slice(&u32::MAX.to_le_bytes());
+    } else {
+        header[4..8].copy_from_slice(&0_u32.to_le_bytes());
+    }
     write_all(writer, &header)?;
 
+    let mut rf64_info = None;
+    let mut ds64_riff_offset = None;
     let mut input_offset = 12_u64;
     let mut chunk_count = 0_usize;
     let mut inserted = false;
@@ -191,9 +221,22 @@ fn rewrite_wav_stream<R: Read, W: Write + Seek>(
         let kind: [u8; 4] = chunk_header[..4]
             .try_into()
             .expect("WAV chunk id is four bytes");
-        let length = u64::from(u32::from_le_bytes(
-            chunk_header[4..8].try_into().expect("WAV chunk length"),
-        ));
+        let stored_length =
+            u32::from_le_bytes(chunk_header[4..8].try_into().expect("WAV chunk length"));
+        let length = if is_rf64 && stored_length == u32::MAX {
+            rf64_info
+                .as_ref()
+                .and_then(|info: &Rf64WriteInfo| info.chunk_size(&kind))
+                .ok_or_else(|| MetraError::InvalidTag {
+                    context: "WAV RF64 rewrite".to_owned(),
+                    message: format!(
+                        "RF64 {} chunk uses the 64-bit sentinel without a ds64 entry",
+                        fourcc(&kind)
+                    ),
+                })?
+        } else {
+            u64::from(stored_length)
+        };
         let data_end = input_offset
             .checked_add(8)
             .and_then(|offset| offset.checked_add(length))
@@ -213,7 +256,58 @@ fn rewrite_wav_stream<R: Read, W: Write + Seek>(
             });
         }
 
-        if &kind == b"LIST" {
+        if is_rf64 && rf64_info.is_none() {
+            if &kind != b"ds64" {
+                return Err(MetraError::InvalidHeader {
+                    context: "WAV RF64 rewrite".to_owned(),
+                    message: "RF64/BW64 must start with a ds64 chunk".to_owned(),
+                });
+            }
+            let length =
+                usize::try_from(length).map_err(|_| MetraError::ResourceLimitExceeded {
+                    resource: "WAV ds64 chunk during rewrite".to_owned(),
+                    limit: limits.max_metadata_bytes,
+                })?;
+            if length > limits.max_metadata_bytes {
+                return Err(MetraError::ResourceLimitExceeded {
+                    resource: "WAV ds64 chunk during rewrite".to_owned(),
+                    limit: limits.max_metadata_bytes,
+                });
+            }
+            let mut data = vec![0_u8; length];
+            read_exact(reader, &mut data, path)?;
+            if length % 2 == 1 {
+                let mut padding = [0_u8; 1];
+                read_exact(reader, &mut padding, path)?;
+            }
+            let info = parse_rf64_write_info(&data, limits)?;
+            declared_end = 8_u64
+                .checked_add(info.riff_size)
+                .ok_or(MetraError::InvalidOffset {
+                    context: "WAV RF64 boundary".to_owned(),
+                    offset: info.riff_size,
+                })?;
+            if declared_end > file_length || padded_end > declared_end {
+                return Err(MetraError::UnexpectedEof {
+                    context: "WAV RF64 body".to_owned(),
+                });
+            }
+            let output_offset = writer
+                .stream_position()
+                .map_err(|source| write_io_error(path, source))?;
+            ds64_riff_offset = Some(output_offset.checked_add(8).ok_or(
+                MetraError::InvalidOffset {
+                    context: "WAV ds64 output offset".to_owned(),
+                    offset: output_offset,
+                },
+            )?);
+            write_all(writer, &chunk_header)?;
+            write_all(writer, &data)?;
+            if length % 2 == 1 {
+                write_all(writer, &[0])?;
+            }
+            rf64_info = Some(info);
+        } else if &kind == b"LIST" {
             let length =
                 usize::try_from(length).map_err(|_| MetraError::ResourceLimitExceeded {
                     resource: "WAV LIST chunk during rewrite".to_owned(),
@@ -276,23 +370,101 @@ fn rewrite_wav_stream<R: Read, W: Write + Seek>(
         });
     }
 
-    let riff_output_end = writer
+    if is_rf64 && rf64_info.is_none() {
+        return Err(MetraError::InvalidHeader {
+            context: "WAV RF64 rewrite".to_owned(),
+            message: "RF64/BW64 must contain a valid ds64 chunk".to_owned(),
+        });
+    }
+
+    let container_output_end = writer
         .stream_position()
         .map_err(|source| write_io_error(path, source))?;
-    let riff_size = riff_output_end
+    let riff_size = container_output_end
         .checked_sub(8)
-        .and_then(|size| u32::try_from(size).ok())
         .ok_or(MetraError::WriteFailure {
+            message: "rewritten WAV container size underflows".to_owned(),
+        })?;
+    if is_rf64 {
+        let ds64_riff_offset = ds64_riff_offset.ok_or_else(|| MetraError::InvalidHeader {
+            context: "WAV RF64 rewrite".to_owned(),
+            message: "RF64/BW64 ds64 offset was not recorded".to_owned(),
+        })?;
+        writer
+            .seek(SeekFrom::Start(ds64_riff_offset))
+            .map_err(|source| write_io_error(path, source))?;
+        write_all(writer, &riff_size.to_le_bytes())?;
+    } else {
+        let riff_size = u32::try_from(riff_size).map_err(|_| MetraError::WriteFailure {
             message: "rewritten WAV exceeds the RIFF 32-bit size limit".to_owned(),
         })?;
+        writer
+            .seek(SeekFrom::Start(4))
+            .map_err(|source| write_io_error(path, source))?;
+        write_all(writer, &riff_size.to_le_bytes())?;
+    }
     writer
-        .seek(SeekFrom::Start(4))
-        .map_err(|source| write_io_error(path, source))?;
-    write_all(writer, &riff_size.to_le_bytes())?;
-    writer
-        .seek(SeekFrom::Start(riff_output_end))
+        .seek(SeekFrom::Start(container_output_end))
         .map_err(|source| write_io_error(path, source))?;
     copy_exact(reader, writer, file_length - declared_end, path)
+}
+
+fn parse_rf64_write_info(data: &[u8], limits: ParseLimits) -> Result<Rf64WriteInfo> {
+    if data.len() < 28 {
+        return Err(MetraError::UnexpectedEof {
+            context: "WAV RF64 ds64 fields".to_owned(),
+        });
+    }
+    let table_count = usize::try_from(u32::from_le_bytes(
+        data[24..28].try_into().expect("WAV RF64 ds64 table length"),
+    ))
+    .map_err(|_| MetraError::ResourceLimitExceeded {
+        resource: "WAV RF64 ds64 table".to_owned(),
+        limit: limits.max_jpeg_segments,
+    })?;
+    if table_count > limits.max_jpeg_segments {
+        return Err(MetraError::ResourceLimitExceeded {
+            resource: "WAV RF64 ds64 table".to_owned(),
+            limit: limits.max_jpeg_segments,
+        });
+    }
+    let table_bytes = table_count
+        .checked_mul(12)
+        .and_then(|size| 28_usize.checked_add(size))
+        .ok_or(MetraError::InvalidOffset {
+            context: "WAV RF64 ds64 table".to_owned(),
+            offset: 28,
+        })?;
+    if table_bytes > data.len() {
+        return Err(MetraError::UnexpectedEof {
+            context: "WAV RF64 ds64 table".to_owned(),
+        });
+    }
+    if table_bytes > limits.max_value_bytes {
+        return Err(MetraError::ResourceLimitExceeded {
+            resource: "WAV RF64 ds64 table".to_owned(),
+            limit: limits.max_value_bytes,
+        });
+    }
+    let mut chunk_sizes = Vec::with_capacity(table_count);
+    let mut cursor = 28_usize;
+    for _ in 0..table_count {
+        let kind: [u8; 4] = data[cursor..cursor + 4]
+            .try_into()
+            .expect("WAV RF64 ds64 table id");
+        let size = u64::from_le_bytes(
+            data[cursor + 4..cursor + 12]
+                .try_into()
+                .expect("WAV RF64 ds64 table size"),
+        );
+        chunk_sizes.push((kind, size));
+        cursor += 12;
+    }
+    Ok(Rf64WriteInfo {
+        riff_size: u64::from_le_bytes(data[0..8].try_into().expect("WAV RF64 riff size")),
+        data_size: u64::from_le_bytes(data[8..16].try_into().expect("WAV RF64 data size")),
+        chunk_sizes,
+    })
 }
 
 fn info_action(edits: &[WavEdit], limits: ParseLimits) -> Result<Option<InfoAction>> {
@@ -848,6 +1020,31 @@ mod tests {
         bytes
     }
 
+    fn rf64_with_bext() -> Vec<u8> {
+        let riff = wav_with_bext();
+        let old_body = &riff[12..];
+        let old_data_offset = old_body
+            .windows(4)
+            .position(|kind| kind == b"data")
+            .expect("BWF fixture should contain a data chunk");
+        let mut ds64 = vec![0_u8; 28];
+        ds64[8..16].copy_from_slice(&4_u64.to_le_bytes());
+        ds64[16..24].copy_from_slice(&4_u64.to_le_bytes());
+        let mut body = chunk(b"ds64", &ds64);
+        body.extend_from_slice(old_body);
+        let data_offset = chunk(b"ds64", &ds64).len() + old_data_offset;
+        body[data_offset + 4..data_offset + 8].copy_from_slice(&u32::MAX.to_le_bytes());
+        let riff_size = 4_u64 + body.len() as u64;
+        ds64[..8].copy_from_slice(&riff_size.to_le_bytes());
+        body[8..36].copy_from_slice(&ds64);
+
+        let mut bytes = b"RF64".to_vec();
+        bytes.extend_from_slice(&u32::MAX.to_le_bytes());
+        bytes.extend_from_slice(b"WAVE");
+        bytes.extend_from_slice(&body);
+        bytes
+    }
+
     #[test]
     fn replaces_info_and_preserves_audio_chunks() {
         let bytes = wav_with_info("before");
@@ -987,6 +1184,55 @@ mod tests {
                 .windows(12)
                 .any(|window| window == [b'd', b'a', b't', b'a', 4, 0, 0, 0, 9, 8, 7, 6])
         );
+    }
+
+    fn rewrite_rf64_variant(signature: &[u8; 4]) {
+        let mut bytes = rf64_with_bext();
+        bytes[..4].copy_from_slice(signature);
+        let output = rewrite_wav_to_vec(
+            &bytes,
+            info(bytes.len()),
+            ParseLimits::default(),
+            &[WavEdit::SetBext {
+                name: "CodingHistory".to_owned(),
+                value: "A=PCM,F=96000,W=24,M=stereo,T=RF64".to_owned(),
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(&output[..4], signature);
+        assert_eq!(
+            u32::from_le_bytes(output[4..8].try_into().unwrap()),
+            u32::MAX
+        );
+        assert_eq!(
+            u64::from_le_bytes(output[20..28].try_into().unwrap()),
+            (output.len() - 8) as u64
+        );
+        let parsed = read_wav(
+            &mut Cursor::new(output.clone()),
+            info(output.len()),
+            ParseLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            parsed.find("WAV:CodingHistory").unwrap().display_value(),
+            "A=PCM,F=96000,W=24,M=stereo,T=RF64"
+        );
+        assert!(output.windows(12).any(|window| {
+            window[..8] == [b'd', b'a', b't', b'a', 0xff, 0xff, 0xff, 0xff]
+                && window[8..] == [9, 8, 7, 6]
+        }));
+    }
+
+    #[test]
+    fn rewrites_rf64_bext_and_updates_ds64_size() {
+        rewrite_rf64_variant(b"RF64");
+    }
+
+    #[test]
+    fn rewrites_bw64_bext_and_updates_ds64_size() {
+        rewrite_rf64_variant(b"BW64");
     }
 
     #[test]
