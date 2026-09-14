@@ -123,7 +123,7 @@
     "AVI": {
       "read": "partial",
       "write": "partial",
-      "create": "planned",
+      "create": "partial",
       "delete": "partial",
       "lossless_rewrite": "partial",
       "streaming": "partial"
