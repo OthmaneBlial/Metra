@@ -22,6 +22,9 @@ Initial read-first foundation with narrow validated rewrites:
   `--create-wav KEY=VALUE` coverage;
 - added standalone ICC profile creation with validated bounded ASCII text tags,
   a no-overwrite atomic path helper, and CLI `--create-icc KEY=VALUE` coverage;
+- added metadata-only FLAC creation with fixed `STREAMINFO`, bounded UTF-8
+  Vorbis comments, a no-overwrite atomic path helper, and CLI
+  `--create-flac KEY=VALUE` coverage;
 - added bounded CR3 ISO-BMFF text rewrites and zero-fill deletion through
   RAW-variant validation, including generic API, registry, atomic path, and CLI
   `--set`/`--delete`/`--copy`
