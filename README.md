@@ -128,8 +128,8 @@ remain deferred. `TiffCreateOptions` and `create_tiff_to_vec`/
 `create_tiff_path` provide bounded classic TIFF metadata-seed creation, including
 an optional decimal GPS latitude/longitude pair encoded into a new GPS IFD;
 `create_bigtiff_to_vec`/`create_bigtiff_path` provide the corresponding
-BigTIFF seed path for EXIF ASCII fields; GPS creation is not yet supported in
-BigTIFF;
+BigTIFF seed path for EXIF ASCII fields and the same bounded GPS coordinate
+pair encoded with 64-bit IFD offsets;
 the public `CreateRequest` enum with `create_to_vec`/`create_path` provides a
 typed generic dispatch over all currently available creation seams;
 `JpegCreateOptions` and `create_jpeg_to_vec`/`create_jpeg_path` provide a
@@ -499,9 +499,8 @@ bornés avec validation de sortie et refus d’écrasement : AVI émet une frame
 `ftyp`/`moov` metadata-only pour MP4/MOV/M4A ou `ftyp`/`meta` dimensionné pour
 HEIF/AVIF, DNG un conteneur TIFF-like 1x1 avec `DNGVersion` et champs EXIF
 ASCII, et Matroska/WebM un `Segment` EBML metadata-only avec `Info`/`SimpleTag` ;
-le seed TIFF classique accepte aussi une paire GPS décimale encodée en DMS,
-tandis que BigTIFF utilise un IFD à offsets 64 bits et reste ASCII-only pour
-la création GPS ;
+les seeds TIFF classique et BigTIFF acceptent aussi une paire GPS décimale
+encodée en DMS, avec offsets 32 bits pour le premier et 64 bits pour le second ;
 l’encodage vidéo général, les tracks/samples/item
 locations/clusters, les calques/PSB et la création arbitraire de chunks restent
 planifiés.

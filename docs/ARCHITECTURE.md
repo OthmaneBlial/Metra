@@ -273,9 +273,9 @@ acceptance tests exist.
 The CLI also exposes `--create-tiff KEY=VALUE` and
 `--create-bigtiff KEY=VALUE` for the bounded classic TIFF and BigTIFF creation
 seams. Both accept repeated EXIF ASCII assignments and exactly one destination;
-the destination must not already exist. Classic TIFF also accepts one bounded
-decimal GPS latitude/longitude pair and writes a new GPS IFD; BigTIFF remains
-ASCII-only for this creation path until its GPS layout is implemented.
+the destination must not already exist. Both accept one bounded decimal GPS
+latitude/longitude pair and write a new GPS IFD, using the classic or BigTIFF
+entry and offset widths of the selected container.
 
 JPEG creation exposes `JpegCreateOptions`, `create_jpeg_to_vec`,
 `create_jpeg_path`, and the CLI `--create-jpeg KEY=VALUE`. It emits a minimal
@@ -368,8 +368,8 @@ seams are intentionally format-specific: `TiffCreateOptions` can build a
 minimal classic 1x1 TIFF with optional EXIF ASCII fields and a GPS coordinate
 pair, while `create_bigtiff_to_vec` and
 `create_bigtiff_path` build the corresponding BigTIFF seed; both accept bounded
-EXIF ASCII fields, but BigTIFF GPS creation remains deferred. `Mp3CreateOptions`
-and `OggCreateOptions` can build minimal
+EXIF ASCII fields and an optional GPS coordinate pair. `Mp3CreateOptions` and
+`OggCreateOptions` can build minimal
 audio metadata seeds, `SvgCreateOptions` can build a minimal XML metadata seed, and
 `WebpCreateOptions` can build a minimal lossless image metadata seed, while
 `JpegCreateOptions` can build a minimal JPEG metadata container seed; all
