@@ -846,6 +846,32 @@ fn legacy_dash_tag_alias_selects_a_canonical_tag() {
 }
 
 #[test]
+fn legacy_dash_gps_aliases_select_their_raw_tags() {
+    let directory = TemporaryDirectory::new();
+    let scalar_path = directory.file("gps-scalars.tif", &minimal_tiff_with_gps_scalars());
+    let time_path = directory.file("gps-time.tif", &minimal_tiff_with_gps_time());
+    let date_path = directory.file("gps-date.tif", &minimal_tiff_with_gps_date());
+
+    for (alias, path, expected_name) in [
+        ("-GPSImgDirection", scalar_path.as_path(), "GPSImgDirection"),
+        ("-GPSSpeed", scalar_path.as_path(), "GPSSpeed"),
+        ("-GPSTimeStamp", time_path.as_path(), "GPSTimeStamp"),
+        ("-GPSDateStamp", date_path.as_path(), "GPSDateStamp"),
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+            .args([alias, path.to_str().expect("UTF-8 test path")])
+            .output()
+            .expect("Metra CLI should start");
+        assert!(output.status.success(), "{alias}: {:?}", output.stderr);
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains(&format!("GPS:{expected_name}")),
+            "{alias} should select {expected_name}, got {:?}",
+            output.stdout
+        );
+    }
+}
+
+#[test]
 fn legacy_json_alias_keeps_the_metra_schema() {
     let directory = TemporaryDirectory::new();
     let path = directory.file("camera.jpg", &minimal_exif_jpeg());
