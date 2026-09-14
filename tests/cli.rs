@@ -768,6 +768,23 @@ fn minimal_tiff_with_gps_scalars() -> Vec<u8> {
     bytes
 }
 
+fn minimal_tiff_with_gps_time() -> Vec<u8> {
+    let mut bytes = vec![
+        b'I', b'I', 42, 0, 8, 0, 0, 0, 1, 0, // one IFD0 entry
+        0x25, 0x88, 4, 0, 1, 0, 0, 0, 26, 0, 0, 0, // GPS IFD -> offset 26
+        0, 0, 0, 0, // no next IFD
+        1, 0, // one GPS IFD entry
+        7, 0, 5, 0, 3, 0, 0, 0, 44, 0, 0, 0, // GPSTimeStamp -> offset 44
+        0, 0, 0, 0, // no next IFD
+    ];
+    for (numerator, denominator) in [(12_u32, 1_u32), (34, 1), (56, 1)] {
+        bytes.extend_from_slice(&numerator.to_le_bytes());
+        bytes.extend_from_slice(&denominator.to_le_bytes());
+    }
+    assert_eq!(bytes.len(), 68);
+    bytes
+}
+
 fn run(args: &[&Path]) -> std::process::Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_metra"));
     for path in args {
@@ -2670,6 +2687,69 @@ fn cli_can_set_copy_and_delete_gps_scalar_values() {
         metra::read(&target)
             .unwrap()
             .find("GPS:AltitudeMeters")
+            .is_none()
+    );
+}
+
+#[test]
+fn cli_can_set_copy_and_delete_gps_time_of_day() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.file("source.tif", &minimal_tiff_with_gps_time());
+    let target = directory.file("target.tif", &minimal_tiff_with_gps_time());
+
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "GPS:TimeOfDaySeconds=45296.125",
+            source.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+    assert_eq!(
+        metra::read(&source)
+            .unwrap()
+            .find("GPS:GPSTimeStamp")
+            .unwrap()
+            .display_value(),
+        "12:34:56.125"
+    );
+
+    let copy_assignment = format!(
+        "GPS:TimeOfDaySeconds={}",
+        source.to_str().expect("UTF-8 test path")
+    );
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            copy_assignment.as_str(),
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("GPS:TimeOfDaySeconds")
+            .unwrap()
+            .display_value(),
+        "45296.125"
+    );
+
+    let delete = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--delete",
+            "TIFF:GPS:TimeOfDaySeconds",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(delete.status.success(), "stderr: {:?}", delete.stderr);
+    assert!(
+        metra::read(&target)
+            .unwrap()
+            .find("GPS:TimeOfDaySeconds")
             .is_none()
     );
 }

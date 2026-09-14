@@ -522,7 +522,25 @@ impl<R: Read + Seek> TiffParser<'_, R> {
                     denominator: 0,
                 }
             );
-        if !is_empty_string && !is_zeroed_gps_coordinate && !is_zeroed_gps_scalar {
+        let is_zeroed_gps_time = namespace == "GPS"
+            && id == 0x0007
+            && matches!(
+                &value,
+                TagValue::Array(values)
+                    if values.len() == 3
+                        && values.iter().all(|value| matches!(
+                            value,
+                            TagValue::UnsignedRational {
+                                numerator: 0,
+                                denominator: 0,
+                            }
+                        ))
+            );
+        if !is_empty_string
+            && !is_zeroed_gps_coordinate
+            && !is_zeroed_gps_scalar
+            && !is_zeroed_gps_time
+        {
             metadata.add_tag(Tag {
                 namespace: definition.namespace.to_owned(),
                 group: group.to_owned(),
@@ -1173,6 +1191,20 @@ fn gps_time_seconds(metadata: &Metadata) -> Option<f64> {
         .tags
         .iter()
         .find(|tag| tag.namespace == "GPS" && tag.name == "GPSTimeStamp")?;
+    if let TagValue::Time {
+        hour,
+        minute,
+        second,
+        nanosecond,
+    } = &timestamp.value
+    {
+        return Some(
+            f64::from(*hour) * 3_600.0
+                + f64::from(*minute) * 60.0
+                + f64::from(*second)
+                + f64::from(*nanosecond) / 1_000_000_000.0,
+        );
+    }
     let TagValue::Array(values) = &timestamp.value else {
         return None;
     };

@@ -21,6 +21,8 @@ pub enum TiffEdit {
     DeleteGpsDecimal { key: String },
     SetGpsScalar { key: String, value: String },
     DeleteGpsScalar { key: String },
+    SetGpsTime { key: String, value: String },
+    DeleteGpsTime { key: String },
 }
 
 pub fn rewrite_tiff<R: Read + Seek, W: Write + Seek>(
@@ -178,6 +180,8 @@ fn collect_patches<R: Read + Seek>(
                 | TiffEdit::DeleteGpsDecimal { .. }
                 | TiffEdit::SetGpsScalar { .. }
                 | TiffEdit::DeleteGpsScalar { .. }
+                | TiffEdit::SetGpsTime { .. }
+                | TiffEdit::DeleteGpsTime { .. }
         ) {
             let gps_patches = match edit {
                 TiffEdit::SetGpsDecimal { .. } | TiffEdit::DeleteGpsDecimal { .. } => {
@@ -185,6 +189,9 @@ fn collect_patches<R: Read + Seek>(
                 }
                 TiffEdit::SetGpsScalar { .. } | TiffEdit::DeleteGpsScalar { .. } => {
                     collect_gps_scalar_patches(reader, metadata, file_info, limits, variant, edit)?
+                }
+                TiffEdit::SetGpsTime { .. } | TiffEdit::DeleteGpsTime { .. } => {
+                    collect_gps_time_patches(reader, metadata, file_info, limits, variant, edit)?
                 }
                 TiffEdit::SetAscii { .. } | TiffEdit::DeleteAscii { .. } => {
                     unreachable!("ASCII edits are handled by the ASCII collector")
@@ -199,7 +206,9 @@ fn collect_patches<R: Read + Seek>(
             TiffEdit::SetGpsDecimal { .. }
             | TiffEdit::DeleteGpsDecimal { .. }
             | TiffEdit::SetGpsScalar { .. }
-            | TiffEdit::DeleteGpsScalar { .. } => {
+            | TiffEdit::DeleteGpsScalar { .. }
+            | TiffEdit::SetGpsTime { .. }
+            | TiffEdit::DeleteGpsTime { .. } => {
                 unreachable!("GPS edits are handled before ASCII edits")
             }
         };
@@ -385,7 +394,9 @@ fn collect_gps_patches<R: Read + Seek>(
         TiffEdit::SetAscii { .. }
         | TiffEdit::DeleteAscii { .. }
         | TiffEdit::SetGpsScalar { .. }
-        | TiffEdit::DeleteGpsScalar { .. } => {
+        | TiffEdit::DeleteGpsScalar { .. }
+        | TiffEdit::SetGpsTime { .. }
+        | TiffEdit::DeleteGpsTime { .. } => {
             unreachable!("ASCII edits are handled by the ASCII collector")
         }
     };
@@ -681,7 +692,9 @@ fn collect_gps_scalar_patches<R: Read + Seek>(
         TiffEdit::SetAscii { .. }
         | TiffEdit::DeleteAscii { .. }
         | TiffEdit::SetGpsDecimal { .. }
-        | TiffEdit::DeleteGpsDecimal { .. } => {
+        | TiffEdit::DeleteGpsDecimal { .. }
+        | TiffEdit::SetGpsTime { .. }
+        | TiffEdit::DeleteGpsTime { .. } => {
             unreachable!("other edits are handled by their dedicated collectors")
         }
     };
@@ -1003,6 +1016,154 @@ fn encode_gps_scalar(value: f64, key: &str) -> Result<(u32, u32)> {
     Err(MetraError::WriteFailure {
         message: format!("TIFF GPS scalar {key} cannot be represented safely"),
     })
+}
+
+fn collect_gps_time_patches<R: Read + Seek>(
+    reader: &mut R,
+    metadata: &Metadata,
+    file_info: &FileInfo,
+    limits: ParseLimits,
+    variant: Variant,
+    edit: &TiffEdit,
+) -> Result<Vec<Patch>> {
+    let (key, replacement) = match edit {
+        TiffEdit::SetGpsTime { key, value } => (key.as_str(), Some(value.as_str())),
+        TiffEdit::DeleteGpsTime { key } => (key.as_str(), None),
+        TiffEdit::SetAscii { .. }
+        | TiffEdit::DeleteAscii { .. }
+        | TiffEdit::SetGpsDecimal { .. }
+        | TiffEdit::DeleteGpsDecimal { .. }
+        | TiffEdit::SetGpsScalar { .. }
+        | TiffEdit::DeleteGpsScalar { .. } => {
+            unreachable!("other edits are handled by their dedicated collectors")
+        }
+    };
+    if key != "GPS:GPSTimeStamp" {
+        return Err(MetraError::WriteFailure {
+            message: format!("TIFF GPS time key {key} is not writable"),
+        });
+    }
+    if limits.max_value_bytes < 24 {
+        return Err(MetraError::ResourceLimitExceeded {
+            resource: "TIFF GPS time".to_owned(),
+            limit: limits.max_value_bytes,
+        });
+    }
+    let timestamp_tag = match metadata.find_all(key).as_slice() {
+        [tag] => *tag,
+        [] => {
+            return Err(MetraError::WriteFailure {
+                message: "TIFF GPS time stamp does not exist".to_owned(),
+            });
+        }
+        _ => {
+            return Err(MetraError::WriteFailure {
+                message: "TIFF GPS time stamp is repeated".to_owned(),
+            });
+        }
+    };
+    let valid_timestamp_value = matches!(&timestamp_tag.value, TagValue::Time { .. })
+        || matches!(
+            &timestamp_tag.value,
+            TagValue::Array(values)
+                if values.len() == 3
+                    && values
+                        .iter()
+                        .all(|value| matches!(value, TagValue::UnsignedRational { .. }))
+        );
+    if !valid_timestamp_value {
+        return Err(MetraError::WriteFailure {
+            message: "TIFF GPS time stamp is not a three-rational array".to_owned(),
+        });
+    }
+    let entry_offset = timestamp_tag
+        .source
+        .offset
+        .ok_or_else(|| MetraError::WriteFailure {
+            message: "TIFF GPS time stamp has no source entry".to_owned(),
+        })?;
+    let entry = read_at(
+        reader,
+        entry_offset,
+        variant.entry_size(),
+        file_info.size,
+        &file_info.path,
+        "TIFF GPS time entry",
+    )?;
+    let endian = variant.endian();
+    let type_id = read_u16(endian, &entry[2..4]);
+    let count = match variant {
+        Variant::Classic { .. } => u64::from(read_u32(endian, &entry[4..8])),
+        Variant::Big { .. } => read_u64(endian, &entry[4..12]),
+    };
+    if type_id != 5 || count != 3 {
+        return Err(MetraError::WriteFailure {
+            message: "TIFF GPS time stamp must use three unsigned rationals".to_owned(),
+        });
+    }
+    let value_offset = entry_value_offset(variant, entry_offset, &entry, 24)?;
+    let value_end = value_offset
+        .checked_add(24)
+        .ok_or(MetraError::InvalidOffset {
+            context: "TIFF GPS time value".to_owned(),
+            offset: value_offset,
+        })?;
+    if value_end > file_info.size {
+        return Err(MetraError::UnexpectedEof {
+            context: "TIFF GPS time value".to_owned(),
+        });
+    }
+    let mut bytes = vec![0_u8; 24];
+    if let Some(replacement) = replacement {
+        let value = replacement
+            .parse::<f64>()
+            .map_err(|_| MetraError::WriteFailure {
+                message: format!("TIFF GPS time value {replacement:?} is not a number"),
+            })?;
+        let rationals = encode_gps_time(value, key)?;
+        for (index, (numerator, denominator)) in rationals.into_iter().enumerate() {
+            let start = index * 8;
+            write_u32(endian, &mut bytes[start..start + 4], numerator);
+            write_u32(endian, &mut bytes[start + 4..start + 8], denominator);
+        }
+    }
+    Ok(vec![Patch {
+        offset: value_offset,
+        span: 24,
+        bytes,
+    }])
+}
+
+fn encode_gps_time(value: f64, key: &str) -> Result<[(u32, u32); 3]> {
+    const MICROS_PER_SECOND: u64 = 1_000_000;
+    const MICROS_PER_DAY: u64 = 86_400 * MICROS_PER_SECOND;
+    if !value.is_finite()
+        || value < 0.0
+        || value >= MICROS_PER_DAY as f64 / MICROS_PER_SECOND as f64
+    {
+        return Err(MetraError::WriteFailure {
+            message: format!("TIFF GPS time {key} must be finite and within 0..86400 seconds"),
+        });
+    }
+    let micros = (value * MICROS_PER_SECOND as f64).round();
+    if !micros.is_finite() || micros < 0.0 || micros >= MICROS_PER_DAY as f64 {
+        return Err(MetraError::WriteFailure {
+            message: format!("TIFF GPS time {key} rounds outside the day"),
+        });
+    }
+    let micros = micros as u64;
+    let hours = micros / (3_600 * MICROS_PER_SECOND);
+    let remainder = micros % (3_600 * MICROS_PER_SECOND);
+    let minutes = remainder / (60 * MICROS_PER_SECOND);
+    let seconds_micros = remainder % (60 * MICROS_PER_SECOND);
+    Ok([
+        (u32::try_from(hours).expect("GPS hours fit u32"), 1),
+        (u32::try_from(minutes).expect("GPS minutes fit u32"), 1),
+        (
+            u32::try_from(seconds_micros).expect("GPS seconds fit u32"),
+            u32::try_from(MICROS_PER_SECOND).expect("GPS denominator fits u32"),
+        ),
+    ])
 }
 
 fn read_variant<R: Read + Seek>(reader: &mut R, file_length: u64, path: &Path) -> Result<Variant> {
@@ -1336,6 +1497,23 @@ mod tests {
             bytes.extend_from_slice(&denominator.to_le_bytes());
         }
         assert_eq!(bytes.len(), 212);
+        bytes
+    }
+
+    fn tiff_with_gps_time() -> Vec<u8> {
+        let mut bytes = vec![
+            b'I', b'I', 42, 0, 8, 0, 0, 0, 1, 0, // one IFD0 entry
+            0x25, 0x88, 4, 0, 1, 0, 0, 0, 26, 0, 0, 0, // GPS IFD -> offset 26
+            0, 0, 0, 0, // no next IFD
+            1, 0, // one GPS IFD entry
+            7, 0, 5, 0, 3, 0, 0, 0, 44, 0, 0, 0, // GPSTimeStamp -> offset 44
+            0, 0, 0, 0, // no next IFD
+        ];
+        for (numerator, denominator) in [(12_u32, 1_u32), (34, 1), (56, 1)] {
+            bytes.extend_from_slice(&numerator.to_le_bytes());
+            bytes.extend_from_slice(&denominator.to_le_bytes());
+        }
+        assert_eq!(bytes.len(), 68);
         bytes
     }
 
@@ -1685,6 +1863,77 @@ mod tests {
             metadata.find("GPS:GPSSpeedRef").unwrap().display_value(),
             "K"
         );
+    }
+
+    #[test]
+    fn rewrites_gps_time_of_day_without_resizing() {
+        let bytes = tiff_with_gps_time();
+        let output = rewrite_tiff_to_vec(
+            &bytes,
+            info(&bytes),
+            ParseLimits::default(),
+            &[TiffEdit::SetGpsTime {
+                key: "GPS:GPSTimeStamp".to_owned(),
+                value: "45296.125".to_owned(),
+            }],
+        )
+        .expect("GPS time rewrite should succeed");
+        assert_eq!(output.len(), bytes.len());
+        let metadata = read_tiff(
+            &mut Cursor::new(output),
+            info(&bytes),
+            ParseLimits::default(),
+        )
+        .expect("edited GPS time should remain readable");
+        let time = metadata
+            .find("GPS:TimeOfDaySeconds")
+            .unwrap()
+            .display_value()
+            .parse::<f64>()
+            .unwrap();
+        assert!((time - 45296.125).abs() < 0.000001);
+        assert_eq!(
+            metadata.find("GPS:GPSTimeStamp").unwrap().display_value(),
+            "12:34:56.125"
+        );
+    }
+
+    #[test]
+    fn deletes_gps_time_as_a_zeroed_tombstone() {
+        let bytes = tiff_with_gps_time();
+        let output = rewrite_tiff_to_vec(
+            &bytes,
+            info(&bytes),
+            ParseLimits::default(),
+            &[TiffEdit::DeleteGpsTime {
+                key: "GPS:GPSTimeStamp".to_owned(),
+            }],
+        )
+        .expect("GPS time deletion should succeed");
+        assert_eq!(output.len(), bytes.len());
+        let metadata = read_tiff(
+            &mut Cursor::new(output),
+            info(&bytes),
+            ParseLimits::default(),
+        )
+        .expect("deleted GPS time should remain readable");
+        assert!(metadata.find("GPS:GPSTimeStamp").is_none());
+        assert!(metadata.find("GPS:TimeOfDaySeconds").is_none());
+    }
+
+    #[test]
+    fn rejects_gps_time_outside_a_day() {
+        let bytes = tiff_with_gps_time();
+        let result = rewrite_tiff_to_vec(
+            &bytes,
+            info(&bytes),
+            ParseLimits::default(),
+            &[TiffEdit::SetGpsTime {
+                key: "GPS:GPSTimeStamp".to_owned(),
+                value: "86400".to_owned(),
+            }],
+        );
+        assert!(matches!(result, Err(MetraError::WriteFailure { .. })));
     }
 
     #[test]

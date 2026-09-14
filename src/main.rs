@@ -1862,6 +1862,7 @@ enum CopyKey {
     TiffAscii(String),
     TiffGpsDecimal(String),
     TiffGpsScalar(String),
+    TiffGpsTime(String),
     IsobmffText(String),
     IsobmffXmp,
     PngText(String),
@@ -1919,6 +1920,14 @@ fn parse_edits(
             if let Some(gps_key) = gps_scalar_key(key) {
                 return Ok(Some(EditRequest::DirectTiff(vec![
                     metra::TiffEdit::SetGpsScalar {
+                        key: gps_key.to_owned(),
+                        value: value.to_owned(),
+                    },
+                ])));
+            }
+            if let Some(gps_key) = gps_time_key(key) {
+                return Ok(Some(EditRequest::DirectTiff(vec![
+                    metra::TiffEdit::SetGpsTime {
                         key: gps_key.to_owned(),
                         value: value.to_owned(),
                     },
@@ -2095,6 +2104,13 @@ fn parse_edits(
                     },
                 ])));
             }
+            if let Some(gps_key) = gps_time_key(key) {
+                return Ok(Some(EditRequest::DirectTiff(vec![
+                    metra::TiffEdit::DeleteGpsTime {
+                        key: gps_key.to_owned(),
+                    },
+                ])));
+            }
             if let Some(tiff_key) = tiff_ascii_key(key) {
                 return Ok(Some(EditRequest::DirectTiff(vec![
                     metra::TiffEdit::DeleteAscii {
@@ -2250,6 +2266,8 @@ fn parse_edits(
             CopyKey::TiffGpsDecimal(gps_key.to_owned())
         } else if let Some(gps_key) = gps_scalar_key(key) {
             CopyKey::TiffGpsScalar(gps_key.to_owned())
+        } else if let Some(gps_key) = gps_time_key(key) {
+            CopyKey::TiffGpsTime(gps_key.to_owned())
         } else if let Some(tiff_key) = tiff_ascii_key(key) {
             CopyKey::TiffAscii(tiff_key.to_owned())
         } else if let Some(name) = pdf_info_name(key) {
@@ -2337,6 +2355,11 @@ fn gps_scalar_key(key: &str) -> Option<&'static str> {
         "GPS:Speed" | "GPS:SpeedMetersPerSecond" | "GPS:GPSSpeed" => Some("GPS:GPSSpeed"),
         _ => None,
     }
+}
+
+fn gps_time_key(key: &str) -> Option<&'static str> {
+    let key = key.strip_prefix("TIFF:").unwrap_or(key);
+    matches!(key, "GPS:TimeOfDaySeconds" | "GPS:GPSTimeStamp").then_some("GPS:GPSTimeStamp")
 }
 
 fn pdf_info_name(key: &str) -> Option<&str> {
@@ -2504,7 +2527,7 @@ fn svg_text_key(key: &str) -> Option<SvgTextKey> {
 
 fn unsupported_edit_message(key: &str) -> String {
     format!(
-        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:EXIF:<ASCII tag>, JPEG:XMP, IPTC:<dataset>, TIFF:EXIF:<ASCII tag>, GPS:Latitude/Longitude, GPS:Altitude, GPS:ImageDirection, GPS:Speed, PDF:<Info field>, PSD:XMP, AVI:<INFO field>, Matroska:Title/MuxingApp/WritingApp, Matroska:Tag:<name>, ISOBMFF:<text field>, ISOBMFF:XMP, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, Ogg:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
+        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:EXIF:<ASCII tag>, JPEG:XMP, IPTC:<dataset>, TIFF:EXIF:<ASCII tag>, GPS:Latitude/Longitude, GPS:Altitude, GPS:ImageDirection, GPS:Speed, GPS:TimeOfDaySeconds, PDF:<Info field>, PSD:XMP, AVI:<INFO field>, Matroska:Title/MuxingApp/WritingApp, Matroska:Tag:<name>, ISOBMFF:<text field>, ISOBMFF:XMP, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, Ogg:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
     )
 }
 
@@ -3247,6 +3270,45 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path, limits: ParseLimit
                 return ExitCode::from(1);
             };
             let edits = [metra::TiffEdit::SetGpsScalar {
+                key,
+                value: value.to_string(),
+            }];
+            apply_tiff_edits(paths, &edits, limits)
+        }
+        CopyKey::TiffGpsTime(key) => {
+            if !matches!(
+                source_metadata.file_info.format,
+                metra::FileFormat::Tiff | metra::FileFormat::Raw
+            ) {
+                eprintln!(
+                    "metra: {}: source format {} is not TIFF or RAW",
+                    source.display(),
+                    source_metadata.file_info.format
+                );
+                return ExitCode::from(1);
+            }
+            let source_key = match key.as_str() {
+                "GPS:GPSTimeStamp" => "GPS:TimeOfDaySeconds",
+                _ => {
+                    eprintln!("metra: {}: unsupported GPS time {key}", source.display());
+                    return ExitCode::from(1);
+                }
+            };
+            let Some(tag) = source_metadata.find(source_key) else {
+                eprintln!(
+                    "metra: {}: source does not contain a valid {source_key}",
+                    source.display()
+                );
+                return ExitCode::from(1);
+            };
+            let metra::TagValue::Float(value) = tag.value else {
+                eprintln!(
+                    "metra: {}: {source_key} is not a decimal number",
+                    source.display()
+                );
+                return ExitCode::from(1);
+            };
+            let edits = [metra::TiffEdit::SetGpsTime {
                 key,
                 value: value.to_string(),
             }];

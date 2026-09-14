@@ -222,6 +222,7 @@ pub fn copy_metadata_path(
                     | "GPS:AltitudeMeters"
                     | "GPS:ImageDirectionDegrees"
                     | "GPS:SpeedMetersPerSecond"
+                    | "GPS:TimeOfDaySeconds"
             ) =>
         {
             value.to_string()
@@ -262,6 +263,8 @@ fn source_lookup_key(key: &str) -> &str {
             "GPS:GPSSpeed" => "GPS:SpeedMetersPerSecond",
             _ => unreachable!("GPS scalar aliases are normalized above"),
         }
+    } else if gps_time_key(key).is_some() {
+        "GPS:TimeOfDaySeconds"
     } else if let Some(key) = key.strip_prefix("TIFF:") {
         key
     } else if jpeg_xmp_key(key)
@@ -344,6 +347,11 @@ pub(crate) fn collect_tiff(
                         key: key.to_owned(),
                         value: value.clone(),
                     })
+                } else if let Some(key) = gps_time_key(key) {
+                    Ok(crate::TiffEdit::SetGpsTime {
+                        key: key.to_owned(),
+                        value: value.clone(),
+                    })
                 } else {
                     tiff_ascii_key(key)
                         .map(|key| crate::TiffEdit::SetAscii {
@@ -360,6 +368,10 @@ pub(crate) fn collect_tiff(
                     })
                 } else if let Some(key) = gps_scalar_key(key) {
                     Ok(crate::TiffEdit::DeleteGpsScalar {
+                        key: key.to_owned(),
+                    })
+                } else if let Some(key) = gps_time_key(key) {
+                    Ok(crate::TiffEdit::DeleteGpsTime {
                         key: key.to_owned(),
                     })
                 } else {
@@ -753,6 +765,11 @@ fn gps_scalar_key(key: &str) -> Option<&'static str> {
     }
 }
 
+fn gps_time_key(key: &str) -> Option<&'static str> {
+    let key = key.strip_prefix("TIFF:").unwrap_or(key);
+    matches!(key, "GPS:TimeOfDaySeconds" | "GPS:GPSTimeStamp").then_some("GPS:GPSTimeStamp")
+}
+
 fn png_xmp_key(key: &str) -> bool {
     matches!(key, "PNG:XMP" | "PNG:iTXt:XMP")
 }
@@ -1105,6 +1122,17 @@ mod tests {
             .unwrap(),
             vec![crate::TiffEdit::DeleteGpsScalar {
                 key: "GPS:GPSSpeed".to_owned(),
+            }]
+        );
+        assert_eq!(
+            collect_tiff(
+                &[MetadataEdit::set("GPS:TimeOfDaySeconds", "45296.125")],
+                FileFormat::Tiff,
+            )
+            .unwrap(),
+            vec![crate::TiffEdit::SetGpsTime {
+                key: "GPS:GPSTimeStamp".to_owned(),
+                value: "45296.125".to_owned(),
             }]
         );
     }

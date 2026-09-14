@@ -250,6 +250,23 @@ fn minimal_tiff_with_gps_scalars() -> Vec<u8> {
     bytes
 }
 
+fn minimal_tiff_with_gps_time() -> Vec<u8> {
+    let mut bytes = vec![
+        b'I', b'I', 42, 0, 8, 0, 0, 0, 1, 0, // one IFD0 entry
+        0x25, 0x88, 4, 0, 1, 0, 0, 0, 26, 0, 0, 0, // GPS IFD -> offset 26
+        0, 0, 0, 0, // no next IFD
+        1, 0, // one GPS IFD entry
+        7, 0, 5, 0, 3, 0, 0, 0, 44, 0, 0, 0, // GPSTimeStamp -> offset 44
+        0, 0, 0, 0, // no next IFD
+    ];
+    for (numerator, denominator) in [(12_u32, 1_u32), (34, 1), (56, 1)] {
+        bytes.extend_from_slice(&numerator.to_le_bytes());
+        bytes.extend_from_slice(&denominator.to_le_bytes());
+    }
+    assert_eq!(bytes.len(), 68);
+    bytes
+}
+
 #[test]
 fn public_reader_api_detects_and_dispatches_in_memory_tiff() {
     let bytes = b"II*\0\0\0\0\0";
@@ -938,6 +955,46 @@ fn public_generic_copy_api_rewrites_derived_gps_scalar() {
     assert!((speed - 10.0).abs() < 0.000001);
     fs::remove_file(source).expect("source fixture should be removable");
     fs::remove_file(target).expect("target fixture should be removable");
+}
+
+#[test]
+fn public_generic_edit_api_rewrites_gps_time_of_day() {
+    let bytes = minimal_tiff_with_gps_time();
+    let output = metra::rewrite_metadata_to_vec(
+        &bytes,
+        metra::FileInfo::new(
+            "memory.tif".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::set(
+            "GPS:TimeOfDaySeconds",
+            "45296.125",
+        )],
+    )
+    .expect("generic GPS time edit should validate its rewritten bytes");
+    assert_eq!(output.len(), bytes.len());
+    let metadata = metra::read_from(
+        &mut std::io::Cursor::new(output),
+        metra::FileInfo::new(
+            "memory.tif".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+    )
+    .expect("rewritten GPS time should remain readable");
+    let time = metadata
+        .find("GPS:TimeOfDaySeconds")
+        .unwrap()
+        .display_value()
+        .parse::<f64>()
+        .unwrap();
+    assert!((time - 45296.125).abs() < 0.000001);
+    assert_eq!(
+        metadata.find("GPS:GPSTimeStamp").unwrap().display_value(),
+        "12:34:56.125"
+    );
 }
 
 #[test]
