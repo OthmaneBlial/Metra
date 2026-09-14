@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -21,6 +22,8 @@ struct DifferentialSummary {
     metra_read_failures: usize,
     metra_panics: usize,
     metra_tags: usize,
+    oracle_keys: usize,
+    oracle_only_keys: usize,
     oracle_key_matches: usize,
     oracle_key_misses: usize,
     oracle_value_matches: usize,
@@ -143,6 +146,7 @@ fn corpus_supported_tags_can_be_compared_with_oracle() {
             .expect("oracle JSON should contain one metadata object");
         summary.compared_files += 1;
         summary.metra_tags += metadata.tags().len();
+        let mut matched_oracle_keys = HashSet::new();
         for tag in metadata.tags() {
             let Some(key) = oracle_key_candidates(tag)
                 .into_iter()
@@ -152,6 +156,7 @@ fn corpus_supported_tags_can_be_compared_with_oracle() {
                 continue;
             };
             summary.oracle_key_matches += 1;
+            matched_oracle_keys.insert(key.clone());
             if let Some(value) = object.get(&key) {
                 if oracle_tag_matches(tag, value) {
                     summary.oracle_value_matches += 1;
@@ -166,15 +171,19 @@ fn corpus_supported_tags_can_be_compared_with_oracle() {
                 }
             }
         }
+        summary.oracle_keys += object.len();
+        summary.oracle_only_keys += oracle_only_key_count(object, &matched_oracle_keys);
     }
 
     eprintln!(
-        "differential summary: corpus_files={}, compared_files={}, metra_read_failures={}, metra_panics={}, metra_tags={}, oracle_key_matches={}, oracle_key_misses={}, oracle_value_matches={}, oracle_value_mismatches={}",
+        "differential summary: corpus_files={}, compared_files={}, metra_read_failures={}, metra_panics={}, metra_tags={}, oracle_keys={}, oracle_only_keys={}, oracle_key_matches={}, oracle_key_misses={}, oracle_value_matches={}, oracle_value_mismatches={}",
         summary.corpus_files,
         summary.compared_files,
         summary.metra_read_failures,
         summary.metra_panics,
         summary.metra_tags,
+        summary.oracle_keys,
+        summary.oracle_only_keys,
         summary.oracle_key_matches,
         summary.oracle_key_misses,
         summary.oracle_value_matches,
@@ -198,6 +207,13 @@ fn corpus_supported_tags_can_be_compared_with_oracle() {
             "strict differential mode found {} mismatched values",
             summary.oracle_value_mismatches
         );
+        if env_flag("METRA_ORACLE_REQUIRE_ALL") {
+            assert_eq!(
+                summary.oracle_only_keys, 0,
+                "strict differential mode found {} oracle-only keys",
+                summary.oracle_only_keys
+            );
+        }
     }
 }
 
@@ -219,6 +235,16 @@ fn write_json_report<T: serde::Serialize>(variable: &str, report: &T) {
     fs::write(&path, payload)
         .unwrap_or_else(|error| panic!("cannot write {variable} to {}: {error}", path.display()));
     eprintln!("corpus report written: {}", path.display());
+}
+
+fn oracle_only_key_count(
+    object: &serde_json::Map<String, Value>,
+    matched_oracle_keys: &HashSet<String>,
+) -> usize {
+    object
+        .keys()
+        .filter(|key| !matched_oracle_keys.contains(*key))
+        .count()
 }
 
 fn oracle_key_candidates(tag: &metra::Tag) -> Vec<String> {
@@ -431,5 +457,20 @@ mod tests {
         };
         assert!(oracle_tag_matches(&tag, &serde_json::json!(6)));
         assert!(!oracle_tag_matches(&tag, &serde_json::json!(2)));
+    }
+
+    #[test]
+    fn oracle_only_keys_are_counted_separately_from_metra_misses() {
+        let oracle = serde_json::json!({
+            "EXIF:Make": "Metra",
+            "EXIF:Model": "Reference",
+            "SourceFile": "fixture.tif"
+        });
+        let object = oracle
+            .as_object()
+            .expect("fixture oracle should be an object");
+        let matched = HashSet::from(["EXIF:Make".to_owned()]);
+        assert_eq!(object.len(), 3);
+        assert_eq!(oracle_only_key_count(object, &matched), 2);
     }
 }
