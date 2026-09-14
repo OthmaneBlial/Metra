@@ -170,7 +170,7 @@ const FORMAT_CAPABILITIES: &[FormatCapabilities] = &[
         format: FileFormat::Jpeg,
         read: CapabilityStatus::Partial,
         write: CapabilityStatus::Partial,
-        create: CapabilityStatus::Planned,
+        create: CapabilityStatus::Partial,
         delete: CapabilityStatus::Partial,
         lossless_rewrite: CapabilityStatus::Partial,
         streaming: CapabilityStatus::Partial,
