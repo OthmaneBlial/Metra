@@ -1444,6 +1444,39 @@ fn public_wav_creation_api_supports_broadcast_wave_seed() {
 }
 
 #[test]
+fn public_wav_creation_api_supports_rf64_and_bw64_seeds() {
+    for kind in [metra::WavCreateKind::Rf64, metra::WavCreateKind::Bw64] {
+        let options = metra::WavCreateOptions::new()
+            .with_kind(kind)
+            .with_info("Title", "Metra")
+            .with_bext("Description", "extended seed");
+        let bytes = metra::create_wav_to_vec(&options, metra::ParseLimits::default())
+            .expect("public RF64/BW64 creation API should emit a seed");
+        let expected = match kind {
+            metra::WavCreateKind::Rf64 => b"RF64",
+            metra::WavCreateKind::Bw64 => b"BW64",
+            metra::WavCreateKind::Riff => unreachable!(),
+        };
+        assert_eq!(&bytes[..4], expected);
+        assert_eq!(
+            metra::read_from(
+                &mut Cursor::new(bytes.clone()),
+                metra::FileInfo::new(
+                    "public-extended.wav".into(),
+                    bytes.len() as u64,
+                    metra::FileFormat::Wav,
+                ),
+            )
+            .expect("public RF64/BW64 seed should remain readable")
+            .find("WAV:DataSize64")
+            .unwrap()
+            .display_value(),
+            "1"
+        );
+    }
+}
+
+#[test]
 fn public_batch_api_keeps_input_order_and_supports_streaming() {
     let paths = vec![
         std::env::temp_dir().join("metra-batch-z-does-not-exist"),

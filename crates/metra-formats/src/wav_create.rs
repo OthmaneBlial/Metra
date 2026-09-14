@@ -43,9 +43,22 @@ impl WavBextCreateEntry {
     }
 }
 
+/// Container signature emitted by the bounded WAV creator.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum WavCreateKind {
+    /// A classic RIFF/WAVE container with 32-bit chunk sizes.
+    #[default]
+    Riff,
+    /// An RF64/WAVE container with a first `ds64` chunk.
+    Rf64,
+    /// A BW64/WAVE container with a first `ds64` chunk.
+    Bw64,
+}
+
 /// Options for creating a minimal PCM WAV with bounded INFO metadata.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct WavCreateOptions {
+    pub kind: WavCreateKind,
     pub info: Vec<WavCreateEntry>,
     pub bext: Vec<WavBextCreateEntry>,
 }
@@ -54,6 +67,22 @@ impl WavCreateOptions {
     /// Start with no optional INFO fields.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Select the container signature for the generated seed.
+    pub fn with_kind(mut self, kind: WavCreateKind) -> Self {
+        self.kind = kind;
+        self
+    }
+
+    /// Select an RF64 container for the generated seed.
+    pub fn with_rf64(self) -> Self {
+        self.with_kind(WavCreateKind::Rf64)
+    }
+
+    /// Select a BW64 container for the generated seed.
+    pub fn with_bw64(self) -> Self {
+        self.with_kind(WavCreateKind::Bw64)
     }
 
     /// Add one INFO field and return the updated options.
@@ -185,12 +214,28 @@ pub fn create_wav_to_vec(options: &WavCreateOptions, limits: ParseLimits) -> Res
     fmt.extend_from_slice(&1_u16.to_le_bytes()); // block align
     fmt.extend_from_slice(&8_u16.to_le_bytes()); // bits per sample
     let mut body = Vec::new();
+    if !matches!(options.kind, WavCreateKind::Riff) {
+        // The generated seed has one byte of PCM data and one sample. RF64 and
+        // BW64 keep the data chunk at the 32-bit sentinel while ds64 carries
+        // its real 64-bit size.
+        let mut ds64 = vec![0_u8; 28];
+        ds64[8..16].copy_from_slice(&1_u64.to_le_bytes());
+        ds64[16..24].copy_from_slice(&1_u64.to_le_bytes());
+        write_chunk(&mut body, b"ds64", &ds64)?;
+    }
     write_chunk(&mut body, b"fmt ", &fmt)?;
     if let Some(bext) = bext {
         write_chunk(&mut body, b"bext", &bext)?;
     }
     write_chunk(&mut body, b"LIST", &info)?;
-    write_chunk(&mut body, b"data", &[0])?;
+    if matches!(options.kind, WavCreateKind::Riff) {
+        write_chunk(&mut body, b"data", &[0])?;
+    } else {
+        body.extend_from_slice(b"data");
+        body.extend_from_slice(&u32::MAX.to_le_bytes());
+        body.push(0);
+        body.push(0);
+    }
 
     let riff_size =
         4_usize
@@ -199,12 +244,29 @@ pub fn create_wav_to_vec(options: &WavCreateOptions, limits: ParseLimits) -> Res
                 resource: "WAV creation metadata".to_owned(),
                 limit: limits.max_metadata_bytes,
             })?;
-    let riff_size = u32::try_from(riff_size).map_err(|_| MetraError::ResourceLimitExceeded {
-        resource: "WAV creation metadata".to_owned(),
-        limit: limits.max_metadata_bytes,
-    })?;
-    let mut output = b"RIFF".to_vec();
-    output.extend_from_slice(&riff_size.to_le_bytes());
+    if !matches!(options.kind, WavCreateKind::Riff) {
+        let riff_size =
+            u64::try_from(riff_size).map_err(|_| MetraError::ResourceLimitExceeded {
+                resource: "WAV RF64 creation metadata".to_owned(),
+                limit: limits.max_metadata_bytes,
+            })?;
+        body[8..16].copy_from_slice(&riff_size.to_le_bytes());
+    }
+    let mut output = match options.kind {
+        WavCreateKind::Riff => b"RIFF".to_vec(),
+        WavCreateKind::Rf64 => b"RF64".to_vec(),
+        WavCreateKind::Bw64 => b"BW64".to_vec(),
+    };
+    if matches!(options.kind, WavCreateKind::Riff) {
+        let riff_size =
+            u32::try_from(riff_size).map_err(|_| MetraError::ResourceLimitExceeded {
+                resource: "WAV creation metadata".to_owned(),
+                limit: limits.max_metadata_bytes,
+            })?;
+        output.extend_from_slice(&riff_size.to_le_bytes());
+    } else {
+        output.extend_from_slice(&u32::MAX.to_le_bytes());
+    }
     output.extend_from_slice(b"WAVE");
     output.extend_from_slice(&body);
     if output.len() > limits.max_metadata_bytes {
@@ -375,6 +437,59 @@ mod tests {
             metadata.find("WAV:CodingHistory").unwrap().display_value(),
             "A=PCM,F=48000,W=8,M=mono"
         );
+    }
+
+    #[test]
+    fn creates_readable_rf64_and_bw64_seeds() {
+        for kind in [WavCreateKind::Rf64, WavCreateKind::Bw64] {
+            let options = WavCreateOptions::new()
+                .with_kind(kind)
+                .with_info("Title", "Metra")
+                .with_bext("Description", "RF64 seed");
+            let bytes = create_wav_to_vec(&options, ParseLimits::default())
+                .expect("RF64/BW64 creation should succeed");
+            let signature = match kind {
+                WavCreateKind::Rf64 => b"RF64",
+                WavCreateKind::Bw64 => b"BW64",
+                WavCreateKind::Riff => unreachable!("the loop only covers extended WAV kinds"),
+            };
+            assert_eq!(&bytes[..4], signature);
+            assert_eq!(
+                u32::from_le_bytes(bytes[4..8].try_into().unwrap()),
+                u32::MAX
+            );
+            assert_eq!(&bytes[12..16], b"ds64");
+            assert_eq!(
+                u64::from_le_bytes(bytes[20..28].try_into().unwrap()),
+                (bytes.len() - 8) as u64
+            );
+            let metadata = read_wav(
+                &mut std::io::Cursor::new(bytes.clone()),
+                FileInfo::new(
+                    "created-rf64.wav".into(),
+                    bytes.len() as u64,
+                    FileFormat::Wav,
+                ),
+                ParseLimits::default(),
+            )
+            .expect("RF64/BW64 seed should remain readable");
+            assert_eq!(metadata.find("WAV:Title").unwrap().display_value(), "Metra");
+            assert_eq!(
+                metadata.find("WAV:DataSize64").unwrap().display_value(),
+                "1"
+            );
+            assert_eq!(
+                metadata
+                    .find("WAV:NumberOfSamples64")
+                    .unwrap()
+                    .display_value(),
+                "1"
+            );
+            assert!(bytes.windows(10).any(|window| {
+                window[..8] == [b'd', b'a', b't', b'a', 0xff, 0xff, 0xff, 0xff]
+                    && window[8..] == [0, 0]
+            }));
+        }
     }
 
     #[test]

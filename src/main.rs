@@ -529,7 +529,8 @@ struct Arguments {
     create_xmp: Option<String>,
 
     /// Create a new minimal PCM WAV with LIST/INFO and optional Broadcast Wave
-    /// `bext` fields (`BWF:Field=VALUE`).
+    /// `bext` fields (`BWF:Field=VALUE`). Use `Container=RF64` or
+    /// `Container=BW64` to select an extended WAVE container.
     #[arg(
         long = "create-wav",
         value_name = "KEY=VALUE",
@@ -1881,6 +1882,19 @@ fn parse_wav_create(entries: &[String]) -> Result<metra::WavCreateOptions, Strin
             return Err("--create-wav requires a non-empty KEY".to_owned());
         }
         let key = key.strip_prefix("WAV:").unwrap_or(key);
+        if key.eq_ignore_ascii_case("Container") {
+            options.kind = match value.to_ascii_lowercase().as_str() {
+                "riff" => metra::WavCreateKind::Riff,
+                "rf64" => metra::WavCreateKind::Rf64,
+                "bw64" => metra::WavCreateKind::Bw64,
+                _ => {
+                    return Err(
+                        "--create-wav Container accepts only RIFF, RF64, or BW64".to_owned()
+                    );
+                }
+            };
+            continue;
+        }
         if let Some(name) = key
             .strip_prefix("BWF:")
             .or_else(|| key.strip_prefix("bext:"))

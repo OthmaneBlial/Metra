@@ -1786,6 +1786,41 @@ fn cli_can_create_minimal_wav_seed_without_overwrite() {
 }
 
 #[test]
+fn cli_can_create_rf64_and_bw64_wav_seeds() {
+    let directory = TemporaryDirectory::new();
+    for (container, filename, signature) in [
+        ("RF64", "created.rf64.wav", "RF64"),
+        ("BW64", "created.bw64.wav", "BW64"),
+    ] {
+        let path = directory.path.join(filename);
+        let container_arg = format!("Container={container}");
+        let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+            .args([
+                "--create-wav",
+                container_arg.as_str(),
+                "--create-wav",
+                "Title=Extended",
+                path.to_str().expect("UTF-8 test path"),
+            ])
+            .output()
+            .expect("Metra CLI should start");
+
+        assert!(output.status.success(), "stderr: {:?}", output.stderr);
+        let bytes = fs::read(&path).expect("created extended WAV should be readable");
+        assert_eq!(&bytes[..4], signature.as_bytes());
+        let metadata = metra::read(&path).expect("created extended WAV should remain readable");
+        assert_eq!(
+            metadata.find("WAV:DataSize64").unwrap().display_value(),
+            "1"
+        );
+        assert_eq!(
+            metadata.find("WAV:Title").unwrap().display_value(),
+            "Extended"
+        );
+    }
+}
+
+#[test]
 fn cli_can_create_minimal_flac_seed_without_overwrite() {
     let directory = TemporaryDirectory::new();
     let path = directory.path.join("created.flac");
