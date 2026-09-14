@@ -411,6 +411,35 @@ fn public_generic_edit_api_rewrites_and_revalidates_standalone_xmp() {
 }
 
 #[test]
+fn public_generic_edit_api_clears_standalone_xmp_properties() {
+    let bytes = minimal_xmp_packet("old");
+    let output = metra::rewrite_metadata_to_vec(
+        &bytes,
+        metra::FileInfo::new(
+            "memory.xmp".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::delete("XMP:Packet")],
+    )
+    .expect("generic standalone XMP deletion should validate its rewritten bytes");
+
+    assert_eq!(output.len(), bytes.len());
+    let metadata = metra::read_from(
+        &mut std::io::Cursor::new(output),
+        metra::FileInfo::new(
+            "memory.xmp".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+    )
+    .expect("cleared standalone XMP should remain readable");
+    assert!(metadata.find("XMP:dc:format").is_none());
+    assert!(metadata.find("XMP:Packet").is_some());
+}
+
+#[test]
 fn public_generic_edit_api_rewrites_and_revalidates_icc_text() {
     let bytes = metra::create_icc_to_vec(
         &metra::IccCreateOptions::new().with_text("Description", "old"),

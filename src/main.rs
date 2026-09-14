@@ -1693,6 +1693,11 @@ fn parse_edits(
                     metra::PsdEdit::DeleteXmp,
                 ])));
             }
+            if key == "XMP:Packet" {
+                return Ok(Some(EditRequest::DirectXmp(vec![
+                    metra::XmpEdit::DeletePacket,
+                ])));
+            }
             if jpeg_xmp_key(key) {
                 return Ok(Some(EditRequest::DirectJpeg(vec![
                     metra::JpegEdit::DeleteXmp,

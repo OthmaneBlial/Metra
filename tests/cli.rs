@@ -1546,6 +1546,24 @@ fn cli_can_set_and_copy_standalone_xmp_packet() {
 }
 
 #[test]
+fn cli_can_delete_standalone_xmp_properties() {
+    let directory = TemporaryDirectory::new();
+    let target = directory.file("target.xmp", &xmp_packet("target").into_bytes());
+    let delete = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--delete",
+            "XMP:Packet",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(delete.status.success(), "stderr: {:?}", delete.stderr);
+    let metadata = metra::read(&target).expect("cleared XMP should remain readable");
+    assert!(metadata.find("XMP:dc:format").is_none());
+    assert!(metadata.find("XMP:Packet").is_some());
+}
+
+#[test]
 fn cli_can_set_delete_and_copy_icc_text() {
     let directory = TemporaryDirectory::new();
     let source = directory.path.join("source.icc");

@@ -523,6 +523,7 @@ pub(crate) fn collect_xmp(
             MetadataEdit::Set { key, value } if xmp_packet_key(key) => {
                 Ok(crate::XmpEdit::SetPacket(value.clone()))
             }
+            MetadataEdit::Delete { key } if xmp_packet_key(key) => Ok(crate::XmpEdit::DeletePacket),
             _ => Err(unsupported_edit(format, edit.key())),
         })
         .collect()

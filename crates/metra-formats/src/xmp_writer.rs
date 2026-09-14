@@ -15,6 +15,8 @@ use crate::xmp::{parse_xmp, read_xmp};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum XmpEdit {
     SetPacket(String),
+    /// Clear XMP properties while retaining a valid empty packet envelope.
+    DeletePacket,
 }
 
 pub fn rewrite_xmp<R: Read + Seek, W: Write + Seek>(
@@ -139,12 +141,16 @@ fn collect_replacement(
     limits: ParseLimits,
     edits: &[XmpEdit],
 ) -> Result<Vec<u8>> {
-    let [XmpEdit::SetPacket(packet)] = edits else {
+    if !matches!(edits, [XmpEdit::SetPacket(_) | XmpEdit::DeletePacket]) {
         return Err(MetraError::WriteFailure {
             message: "standalone XMP requires exactly one packet replacement".to_owned(),
         });
+    }
+    let replacement = match edits {
+        [XmpEdit::SetPacket(packet)] => packet.as_bytes().to_vec(),
+        [XmpEdit::DeletePacket] => empty_packet(file_info.size, limits)?,
+        _ => unreachable!("validated standalone XMP edit shape"),
     };
-    let replacement = packet.as_bytes().to_vec();
     if replacement.len() > limits.max_value_bytes {
         return Err(MetraError::ResourceLimitExceeded {
             resource: "standalone XMP packet".to_owned(),
@@ -176,6 +182,32 @@ fn collect_replacement(
         });
     }
     Ok(replacement)
+}
+
+fn empty_packet(source_length: u64, limits: ParseLimits) -> Result<Vec<u8>> {
+    const EMPTY_PACKET: &[u8] = br#"<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"/></x:xmpmeta>"#;
+    let source_length = usize::try_from(source_length).map_err(|_| MetraError::WriteFailure {
+        message: "standalone XMP source is too large to rewrite".to_owned(),
+    })?;
+    if source_length < EMPTY_PACKET.len() {
+        return Err(MetraError::WriteFailure {
+            message: format!(
+                "standalone XMP packet is too short for an empty RDF packet ({} bytes needed, {} available)",
+                EMPTY_PACKET.len(),
+                source_length
+            ),
+        });
+    }
+    if source_length > limits.max_value_bytes {
+        return Err(MetraError::ResourceLimitExceeded {
+            resource: "standalone XMP packet".to_owned(),
+            limit: limits.max_value_bytes,
+        });
+    }
+    let mut packet = Vec::with_capacity(source_length);
+    packet.extend_from_slice(EMPTY_PACKET);
+    packet.resize(source_length, b' ');
+    Ok(packet)
 }
 
 fn temporary_path(path: &Path) -> Result<PathBuf> {
@@ -256,5 +288,26 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.to_string().contains("fixed length"));
+    }
+
+    #[test]
+    fn deletes_standalone_properties_with_an_empty_padded_packet() {
+        let bytes = packet("old");
+        let output = rewrite_xmp_to_vec(
+            &bytes,
+            info(&bytes),
+            ParseLimits::default(),
+            &[XmpEdit::DeletePacket],
+        )
+        .unwrap();
+        assert_eq!(output.len(), bytes.len());
+        let metadata = read_xmp(
+            &mut Cursor::new(output),
+            info(&bytes),
+            ParseLimits::default(),
+        )
+        .unwrap();
+        assert!(metadata.find("XMP:dc:format").is_none());
+        assert!(metadata.find("XMP:Packet").is_some());
     }
 }
