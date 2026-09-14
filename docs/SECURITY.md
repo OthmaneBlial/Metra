@@ -118,7 +118,7 @@ packet payload on deletion. Element/box sizes, names, UUID bytes, and media
 bytes remain unchanged before the validated atomic replacement.
 RAW TIFF-like writes are limited to existing TIFF/BigTIFF ASCII slots; set and
 delete operations only replace or zero-fill those slots, so the payload layout
-remains unchanged. CR3 writes are limited to existing ISO-BMFF text slots after
+remains unchanged. CR3 writes are limited to existing ISO-BMFF text or XMP slots after
 the RAW reader has identified the container; both paths re-read the result
 before replacement. RAF, CRW, MRW, and X3F are rejected before any write is
 attempted.

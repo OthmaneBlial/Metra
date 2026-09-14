@@ -8,6 +8,8 @@ Initial read-first foundation with narrow validated rewrites:
   copying for direct `xml ` packets and the standard Adobe XMP `uuid` user type,
   with root validation, generic API, CLI alias, atomic output validation, and
   direct/UUID regression coverage;
+- added CR3 adapter regression coverage for fixed-span embedded ISO-BMFF XMP
+  rewrites, preserving the RAW identity and container layout;
 - added bounded ISO-BMFF `uuid` handling for the standard Adobe XMP user type
   and identifiable direct TIFF/`Exif\0\0` payloads, with shared XMP/EXIF
   delegation, absolute source offsets, unknown-UUID warnings, and payload-limit
