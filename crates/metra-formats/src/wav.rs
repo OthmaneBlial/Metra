@@ -597,56 +597,195 @@ fn parse_list_info(data: &[u8], offset: u64, limits: ParseLimits, metadata: &mut
 }
 
 fn parse_bext(data: &[u8], offset: u64, metadata: &mut Metadata) {
-    let fields = [
+    if data.len() < 348 {
+        metadata.add_warning(
+            Warning::new(
+                "truncated-wav-bext",
+                "Broadcast Wave bext base fields are truncated",
+            )
+            .at(offset + data.len() as u64),
+        );
+    }
+
+    for (name, start, length) in [
         ("Description", 0_usize, 256_usize),
         ("Originator", 256, 32),
         ("OriginatorReference", 288, 32),
-        ("OriginationDate", 320, 10),
-        ("OriginationTime", 330, 8),
-    ];
-    for (name, start, length) in fields {
-        let Some(value) = data.get(start..start + length) else {
-            return;
+    ] {
+        let Some(raw) = data.get(start..start + length) else {
+            continue;
         };
-        let value = String::from_utf8_lossy(value)
-            .trim_end_matches('\0')
-            .trim_end()
-            .to_owned();
+        let value = bext_text(raw);
         if !value.is_empty() {
-            add_tag(
+            add_bext_tag(
                 metadata,
                 name,
                 TagValue::String(value),
                 ValueType::String,
-                "bext",
                 offset + start as u64,
-                length as u64,
+                raw,
             );
         }
     }
-    if data.len() >= 348 {
-        let time_reference =
-            u64::from_le_bytes(data[338..346].try_into().expect("BWF time reference"));
-        let version = u16::from_le_bytes(data[346..348].try_into().expect("BWF version"));
-        add_tag(
+
+    if let (Some(date), Some(time), Some(raw)) = (
+        data.get(320..330).map(bext_text),
+        data.get(330..338).map(bext_text),
+        data.get(320..338),
+    ) && !date.is_empty()
+        && !time.is_empty()
+    {
+        let combined = format!("{date} {time}");
+        let value =
+            parse_bwf_datetime(&combined).unwrap_or_else(|| TagValue::String(combined.clone()));
+        let value_type = match &value {
+            TagValue::DateTime { .. } => ValueType::DateTime,
+            _ => ValueType::String,
+        };
+        add_bext_tag(
+            metadata,
+            "DateTimeOriginal",
+            value,
+            value_type,
+            offset + 320,
+            raw,
+        );
+    }
+
+    if let Some(raw) = data.get(338..346) {
+        let time_reference = u64::from_le_bytes(raw.try_into().expect("BWF time reference"));
+        add_bext_tag(
             metadata,
             "TimeReference",
             TagValue::Unsigned(time_reference),
             ValueType::UnsignedInteger,
-            "bext",
             offset + 338,
-            8,
-        );
-        add_tag(
-            metadata,
-            "Version",
-            TagValue::Unsigned(u64::from(version)),
-            ValueType::UnsignedInteger,
-            "bext",
-            offset + 346,
-            2,
+            raw,
         );
     }
+    if let Some(raw) = data.get(346..348) {
+        let version = u16::from_le_bytes(raw.try_into().expect("BWF version"));
+        add_bext_tag(
+            metadata,
+            "BWFVersion",
+            TagValue::Unsigned(u64::from(version)),
+            ValueType::UnsignedInteger,
+            offset + 346,
+            raw,
+        );
+    }
+    if let Some(raw) = data.get(348..412) {
+        let value = bext_umid(raw);
+        if !value.is_empty() {
+            add_bext_tag(
+                metadata,
+                "BWF_UMID",
+                TagValue::String(value),
+                ValueType::String,
+                offset + 348,
+                raw,
+            );
+        }
+    }
+    if let Some(raw) = data.get(602..) {
+        let value = bext_text(raw);
+        if !value.is_empty() {
+            add_bext_tag(
+                metadata,
+                "CodingHistory",
+                TagValue::String(value),
+                ValueType::String,
+                offset + 602,
+                raw,
+            );
+        }
+    }
+}
+
+fn add_bext_tag(
+    metadata: &mut Metadata,
+    name: &str,
+    value: TagValue,
+    value_type: ValueType,
+    offset: u64,
+    raw: &[u8],
+) {
+    metadata.add_tag(Tag {
+        namespace: "WAV".to_owned(),
+        group: "bext".to_owned(),
+        id: None,
+        name: name.to_owned(),
+        description: Some("Broadcast Wave bext metadata".to_owned()),
+        raw_value: Some(raw.to_vec()),
+        value,
+        value_type,
+        source: Source::new("WAV/bext", Some(offset), Some(raw.len() as u64)),
+        writable: false,
+    });
+}
+
+fn bext_text(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes)
+        .trim_end_matches('\0')
+        .trim_end()
+        .to_owned()
+}
+
+fn bext_umid(bytes: &[u8]) -> String {
+    let mut value = bytes
+        .iter()
+        .map(|byte| format!("{byte:02X}"))
+        .collect::<String>();
+    let reserved_suffix = "0".repeat(64);
+    if value.ends_with(&reserved_suffix) {
+        value.truncate(value.len() - reserved_suffix.len());
+    }
+    value
+}
+
+fn parse_bwf_datetime(value: &str) -> Option<TagValue> {
+    let mut parts = value.split([':', ' ', '-']);
+    let year = parts.next()?.parse().ok()?;
+    let month = parts.next()?.parse().ok()?;
+    let day = parts.next()?.parse().ok()?;
+    let hour = parts.next()?.parse().ok()?;
+    let minute = parts.next()?.parse().ok()?;
+    let second = parts.next()?.parse().ok()?;
+    if parts.next().is_some()
+        || !valid_bwf_date(year, month, day)
+        || !valid_bwf_time(hour, minute, second)
+    {
+        return None;
+    }
+    Some(TagValue::DateTime {
+        year,
+        month,
+        day,
+        hour,
+        minute,
+        second,
+        nanosecond: 0,
+        offset_minutes: None,
+    })
+}
+
+fn valid_bwf_date(year: u16, month: u8, day: u8) -> bool {
+    (1..=12).contains(&month) && (1..=bwf_days_in_month(year, month)).contains(&day)
+}
+
+fn bwf_days_in_month(year: u16, month: u8) -> u8 {
+    match month {
+        2 if year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400)) => {
+            29
+        }
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    }
+}
+
+fn valid_bwf_time(hour: u8, minute: u8, second: u8) -> bool {
+    hour < 24 && minute < 60 && second < 60
 }
 
 fn parse_id3_chunk(data: &[u8], offset: u64, limits: ParseLimits, metadata: &mut Metadata) {
@@ -840,6 +979,76 @@ mod tests {
         assert_eq!(
             metadata.find("WAV:Artist").unwrap().display_value(),
             "Artist"
+        );
+    }
+
+    #[test]
+    fn reads_canonical_broadcast_wave_bext_fields() {
+        let mut bext = vec![0_u8; 602];
+        bext[..10].copy_from_slice(b"Metra take");
+        bext[256..266].copy_from_slice(b"Metra crew");
+        bext[288..300].copy_from_slice(b"session-42\0\0");
+        bext[320..330].copy_from_slice(b"2026-09-14");
+        bext[330..338].copy_from_slice(b"12:34:56");
+        bext[338..346].copy_from_slice(&0x0000_0002_0000_0003_u64.to_le_bytes());
+        bext[346..348].copy_from_slice(&2_u16.to_le_bytes());
+        bext[348..380].fill(0xAB);
+        bext[380..412].fill(0);
+        bext.extend_from_slice(b"A=PCM,F=48000,W=24,M=stereo,T=Metra\0");
+
+        let mut body = chunk(b"bext", &bext);
+        body.extend(chunk(b"data", &[0, 0]));
+        let mut bytes = b"RIFF".to_vec();
+        bytes.extend_from_slice(&((4 + body.len()) as u32).to_le_bytes());
+        bytes.extend_from_slice(b"WAVE");
+        bytes.extend(body);
+        let info = FileInfo::new("bwf.wav".into(), bytes.len() as u64, FileFormat::Wav);
+        let metadata = read_wav(&mut Cursor::new(bytes), info, ParseLimits::default()).unwrap();
+
+        let date_time = metadata
+            .find("WAV:DateTimeOriginal")
+            .expect("BWF date/time should be present");
+        assert!(matches!(date_time.value, TagValue::DateTime { .. }));
+        assert_eq!(date_time.display_value(), "2026:09:14 12:34:56");
+        assert_eq!(
+            metadata.find("WAV:TimeReference").unwrap().display_value(),
+            "8589934595"
+        );
+        assert_eq!(
+            metadata.find("WAV:BWFVersion").unwrap().display_value(),
+            "2"
+        );
+        assert_eq!(
+            metadata.find("WAV:BWF_UMID").unwrap().display_value(),
+            "AB".repeat(32)
+        );
+        assert_eq!(
+            metadata.find("WAV:CodingHistory").unwrap().display_value(),
+            "A=PCM,F=48000,W=24,M=stereo,T=Metra"
+        );
+        let description = metadata.find("WAV:Description").unwrap();
+        assert_eq!(
+            description.raw_value.as_deref().unwrap()[..10],
+            *b"Metra take"
+        );
+        assert_eq!(description.raw_value.as_deref().unwrap().len(), 256);
+    }
+
+    #[test]
+    fn warns_when_broadcast_wave_base_fields_are_truncated() {
+        let mut body = chunk(b"bext", &[1, 2, 3]);
+        body.extend(chunk(b"data", &[0]));
+        let mut bytes = b"RIFF".to_vec();
+        bytes.extend_from_slice(&((4 + body.len()) as u32).to_le_bytes());
+        bytes.extend_from_slice(b"WAVE");
+        bytes.extend(body);
+        let info = FileInfo::new("short-bwf.wav".into(), bytes.len() as u64, FileFormat::Wav);
+        let metadata = read_wav(&mut Cursor::new(bytes), info, ParseLimits::default()).unwrap();
+        assert!(
+            metadata
+                .warnings
+                .iter()
+                .any(|warning| warning.code == "truncated-wav-bext")
         );
     }
 
