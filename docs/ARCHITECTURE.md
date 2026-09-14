@@ -282,6 +282,11 @@ WebP creation exposes `WebpCreateOptions`, `create_webp_to_vec`,
 1x1 lossless WebP seed with an optional bounded XMP chunk, validates it through
 the WebP reader, and refuses to overwrite an existing destination.
 
+The public `CreateRequest` enum is the common creation dispatch boundary for
+the validated format-specific seams. `create_to_vec` supports in-memory
+staging, while `create_path` delegates to the corresponding no-overwrite
+atomic path helper; the CLI remains a consumer of these same format APIs.
+
 Legacy read queries are handled by a thin argument normalizer: selected
 single-dash aliases such as `-Make` and `-GPSLatitude` become `--tag` selectors,
 while `-json` and `-jsonl` become the corresponding Metra output flags. The
