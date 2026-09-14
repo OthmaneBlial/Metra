@@ -153,7 +153,7 @@ fn corpus_supported_tags_can_be_compared_with_oracle() {
             };
             summary.oracle_key_matches += 1;
             if let Some(value) = object.get(&key) {
-                if oracle_value_matches(&tag.value, value) {
+                if oracle_tag_matches(tag, value) {
                     summary.oracle_value_matches += 1;
                 } else {
                     summary.oracle_value_mismatches += 1;
@@ -354,6 +354,17 @@ fn oracle_value_matches(value: &metra::TagValue, oracle: &Value) -> bool {
     }
 }
 
+fn oracle_tag_matches(tag: &metra::Tag, oracle: &Value) -> bool {
+    oracle_value_matches(&tag.value, oracle)
+        || (tag.namespace == "PNG"
+            && tag.group == "IHDR"
+            && matches!(tag.value, metra::TagValue::String(_))
+            && tag
+                .raw_value
+                .as_deref()
+                .is_some_and(|raw| raw.len() == 1 && oracle.as_u64() == Some(u64::from(raw[0]))))
+}
+
 fn oracle_number_matches(value: f64, oracle: &Value) -> bool {
     oracle
         .as_f64()
@@ -402,5 +413,23 @@ mod tests {
         assert!(oracle_value_matches(&value, &serde_json::json!([1, 2])));
         assert!(!oracle_value_matches(&value, &serde_json::json!([1])));
         assert!(!oracle_value_matches(&value, &serde_json::json!([1, 3])));
+    }
+
+    #[test]
+    fn png_enum_labels_can_match_their_raw_oracle_code() {
+        let tag = metra::Tag {
+            namespace: "PNG".into(),
+            group: "IHDR".into(),
+            id: None,
+            name: "ColorType".into(),
+            description: None,
+            raw_value: Some(vec![6]),
+            value: metra::TagValue::String("TrueColorAlpha".into()),
+            value_type: metra::ValueType::String,
+            source: metra::Source::default(),
+            writable: false,
+        };
+        assert!(oracle_tag_matches(&tag, &serde_json::json!(6)));
+        assert!(!oracle_tag_matches(&tag, &serde_json::json!(2)));
     }
 }
