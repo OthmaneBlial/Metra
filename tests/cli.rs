@@ -490,6 +490,33 @@ fn minimal_wav(title: &str) -> Vec<u8> {
     bytes
 }
 
+fn minimal_wav_with_bext() -> Vec<u8> {
+    let mut fmt = Vec::new();
+    fmt.extend_from_slice(&1_u16.to_le_bytes());
+    fmt.extend_from_slice(&1_u16.to_le_bytes());
+    fmt.extend_from_slice(&48_000_u32.to_le_bytes());
+    fmt.extend_from_slice(&48_000_u32.to_le_bytes());
+    fmt.extend_from_slice(&1_u16.to_le_bytes());
+    fmt.extend_from_slice(&8_u16.to_le_bytes());
+
+    let mut bext = vec![0_u8; 602];
+    bext[..13].copy_from_slice(b"Original take");
+    bext[320..330].copy_from_slice(b"2026-09-14");
+    bext[330..338].copy_from_slice(b"12:34:56");
+    bext[338..346].copy_from_slice(&17_u64.to_le_bytes());
+    bext[346..348].copy_from_slice(&1_u16.to_le_bytes());
+    bext.extend_from_slice(b"A=PCM,F=48000,W=8,M=mono\0");
+
+    let mut body = wav_chunk(b"fmt ", &fmt);
+    body.extend(wav_chunk(b"bext", &bext));
+    body.extend(wav_chunk(b"data", &[9, 8, 7, 6]));
+    let mut bytes = b"RIFF".to_vec();
+    bytes.extend_from_slice(&((4 + body.len()) as u32).to_le_bytes());
+    bytes.extend_from_slice(b"WAVE");
+    bytes.extend(body);
+    bytes
+}
+
 fn flac_block(last: bool, kind: u8, data: &[u8]) -> Vec<u8> {
     let length = u32::try_from(data.len()).expect("fixture block should fit");
     let mut block = vec![if last { 0x80 | kind } else { kind }];
@@ -3703,6 +3730,64 @@ fn cli_can_edit_and_copy_wav_info() {
             .unwrap()
             .display_value(),
         "source title"
+    );
+}
+
+#[test]
+fn cli_can_edit_broadcast_wave_bext_fields() {
+    let directory = TemporaryDirectory::new();
+    let target = directory.file("bwf.wav", &minimal_wav_with_bext());
+
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "WAV:DateTimeOriginal=2026:09:15 01:02:03",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("WAV:DateTimeOriginal")
+            .unwrap()
+            .display_value(),
+        "2026:09:15 01:02:03"
+    );
+
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            "WAV:Description=Edited take",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("WAV:Description")
+            .unwrap()
+            .display_value(),
+        "Edited take"
+    );
+
+    let delete = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--delete",
+            "WAV:CodingHistory",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(delete.status.success(), "stderr: {:?}", delete.stderr);
+    assert!(
+        metra::read(&target)
+            .unwrap()
+            .find("WAV:CodingHistory")
+            .is_none()
     );
 }
 

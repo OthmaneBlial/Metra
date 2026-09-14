@@ -71,6 +71,43 @@ fn minimal_avi_with_title(title: &str) -> Vec<u8> {
     bytes
 }
 
+fn minimal_wav_with_bext() -> Vec<u8> {
+    fn chunk(kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
+        let mut output = kind.to_vec();
+        output.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        output.extend_from_slice(data);
+        if data.len() % 2 == 1 {
+            output.push(0);
+        }
+        output
+    }
+
+    let mut fmt = Vec::new();
+    fmt.extend_from_slice(&1_u16.to_le_bytes());
+    fmt.extend_from_slice(&1_u16.to_le_bytes());
+    fmt.extend_from_slice(&48_000_u32.to_le_bytes());
+    fmt.extend_from_slice(&48_000_u32.to_le_bytes());
+    fmt.extend_from_slice(&1_u16.to_le_bytes());
+    fmt.extend_from_slice(&8_u16.to_le_bytes());
+
+    let mut bext = vec![0_u8; 602];
+    bext[..13].copy_from_slice(b"Original take");
+    bext[320..330].copy_from_slice(b"2026-09-14");
+    bext[330..338].copy_from_slice(b"12:34:56");
+    bext[338..346].copy_from_slice(&17_u64.to_le_bytes());
+    bext[346..348].copy_from_slice(&1_u16.to_le_bytes());
+    bext.extend_from_slice(b"A=PCM,F=48000,W=8,M=mono\0");
+
+    let mut body = chunk(b"fmt ", &fmt);
+    body.extend(chunk(b"bext", &bext));
+    body.extend(chunk(b"data", &[9, 8, 7, 6]));
+    let mut bytes = b"RIFF".to_vec();
+    bytes.extend_from_slice(&((4 + body.len()) as u32).to_le_bytes());
+    bytes.extend_from_slice(b"WAVE");
+    bytes.extend(body);
+    bytes
+}
+
 fn minimal_webm_with_title(title: &str) -> Vec<u8> {
     fn element(id: &[u8], data: &[u8]) -> Vec<u8> {
         assert!(data.len() < 127);
@@ -1273,6 +1310,65 @@ fn public_tiff_creation_api_supports_full_gps_seed() {
             .abs()
             < 0.000001
     );
+}
+
+#[test]
+fn public_generic_edit_api_rewrites_broadcast_wave_fields() {
+    let bytes = minimal_wav_with_bext();
+    let output = metra::rewrite_metadata_to_vec(
+        &bytes,
+        metra::FileInfo::new(
+            "memory.wav".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[
+            metra::MetadataEdit::set("WAV:Description", "Edited take"),
+            metra::MetadataEdit::set("WAV:DateTimeOriginal", "2026:09:15 01:02:03"),
+        ],
+    )
+    .expect("generic BWF edits should validate their rewritten bytes");
+
+    let metadata = metra::read_from(
+        &mut Cursor::new(output.clone()),
+        metra::FileInfo::new(
+            "memory.wav".into(),
+            output.len() as u64,
+            metra::FileFormat::Wav,
+        ),
+    )
+    .expect("rewritten BWF should remain readable");
+    assert_eq!(
+        metadata.find("WAV:Description").unwrap().display_value(),
+        "Edited take"
+    );
+    assert_eq!(
+        metadata
+            .find("WAV:DateTimeOriginal")
+            .unwrap()
+            .display_value(),
+        "2026:09:15 01:02:03"
+    );
+
+    let deleted = metra::rewrite_metadata_to_vec(
+        &output,
+        metra::FileInfo::new(
+            "memory.wav".into(),
+            output.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::delete("WAV:CodingHistory")],
+    )
+    .expect("generic BWF deletion should validate its rewritten bytes");
+    let deleted_size = deleted.len() as u64;
+    let metadata = metra::read_from(
+        &mut Cursor::new(deleted),
+        metra::FileInfo::new("memory.wav".into(), deleted_size, metra::FileFormat::Wav),
+    )
+    .expect("deleted BWF should remain readable");
+    assert!(metadata.find("WAV:CodingHistory").is_none());
 }
 
 #[test]

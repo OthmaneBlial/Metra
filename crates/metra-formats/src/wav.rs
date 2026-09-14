@@ -743,7 +743,7 @@ fn bext_umid(bytes: &[u8]) -> String {
     value
 }
 
-fn parse_bwf_datetime(value: &str) -> Option<TagValue> {
+pub(crate) fn parse_bwf_datetime(value: &str) -> Option<TagValue> {
     let mut parts = value.split([':', ' ', '-']);
     let year = parts.next()?.parse().ok()?;
     let month = parts.next()?.parse().ok()?;

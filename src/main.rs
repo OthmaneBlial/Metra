@@ -2290,6 +2290,14 @@ fn parse_edits(
                     },
                 ])));
             }
+            if let Some(name) = wav_bext_name(key) {
+                return Ok(Some(EditRequest::DirectWav(vec![
+                    metra::WavEdit::SetBext {
+                        name: name.to_owned(),
+                        value: value.to_owned(),
+                    },
+                ])));
+            }
             if let Some(name) = flac_comment_name(key) {
                 return Ok(Some(EditRequest::DirectFlac(vec![
                     metra::FlacEdit::SetComment {
@@ -2431,6 +2439,13 @@ fn parse_edits(
             if let Some(name) = wav_info_name(key) {
                 return Ok(Some(EditRequest::DirectWav(vec![
                     metra::WavEdit::DeleteInfo {
+                        name: name.to_owned(),
+                    },
+                ])));
+            }
+            if let Some(name) = wav_bext_name(key) {
+                return Ok(Some(EditRequest::DirectWav(vec![
+                    metra::WavEdit::DeleteBext {
                         name: name.to_owned(),
                     },
                 ])));
@@ -2793,7 +2808,7 @@ fn svg_text_key(key: &str) -> Option<SvgTextKey> {
 
 fn unsupported_edit_message(key: &str) -> String {
     format!(
-        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:EXIF:<ASCII tag>, JPEG:XMP, IPTC:<dataset>, TIFF:EXIF:<ASCII tag>, GPS:Latitude/Longitude, GPS:Altitude, GPS:ImageDirection, GPS:Speed, GPS:TimeOfDaySeconds, GPS:Date, GPS:*, PDF:<Info field>, PSD:XMP, AVI:<INFO field>, Matroska:Title/MuxingApp/WritingApp, Matroska:Tag:<name>, ISOBMFF:<text field>, ISOBMFF:XMP, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, FLAC:<Vorbis field>, Ogg:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
+        "unsupported metadata key {key}; writable keys are JPEG:Comment, JPEG:EXIF:<ASCII tag>, JPEG:XMP, IPTC:<dataset>, TIFF:EXIF:<ASCII tag>, GPS:Latitude/Longitude, GPS:Altitude, GPS:ImageDirection, GPS:Speed, GPS:TimeOfDaySeconds, GPS:Date, GPS:*, PDF:<Info field>, PSD:XMP, AVI:<INFO field>, Matroska:Title/MuxingApp/WritingApp, Matroska:Tag:<name>, ISOBMFF:<text field>, ISOBMFF:XMP, PNG:XMP, PNG:Text:<keyword>, WAV:<INFO field>, WAV:<bext field>, FLAC:<Vorbis field>, Ogg:<Vorbis field>, ID3:<text field>, GIF:Comment, WebP:XMP, or SVG:Title/Description/Comment"
     )
 }
 
@@ -2900,6 +2915,22 @@ fn wav_info_name(key: &str) -> Option<&str> {
             | "Technician"
             | "Subject"
             | "Source"
+    )
+    .then_some(name)
+}
+
+fn wav_bext_name(key: &str) -> Option<&str> {
+    let name = key.strip_prefix("WAV:")?;
+    matches!(
+        name,
+        "Description"
+            | "Originator"
+            | "OriginatorReference"
+            | "DateTimeOriginal"
+            | "TimeReference"
+            | "BWFVersion"
+            | "BWF_UMID"
+            | "CodingHistory"
     )
     .then_some(name)
 }

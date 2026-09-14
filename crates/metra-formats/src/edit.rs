@@ -707,17 +707,34 @@ pub(crate) fn collect_wav(
     edits
         .iter()
         .map(|edit| match edit {
-            MetadataEdit::Set { key, value } => wav_info_name(key)
-                .map(|name| crate::WavEdit::SetInfo {
-                    name: name.to_owned(),
-                    value: value.clone(),
-                })
-                .ok_or_else(|| unsupported_edit(format, key)),
-            MetadataEdit::Delete { key } => wav_info_name(key)
-                .map(|name| crate::WavEdit::DeleteInfo {
-                    name: name.to_owned(),
-                })
-                .ok_or_else(|| unsupported_edit(format, key)),
+            MetadataEdit::Set { key, value } => {
+                if let Some(name) = wav_info_name(key) {
+                    Ok(crate::WavEdit::SetInfo {
+                        name: name.to_owned(),
+                        value: value.clone(),
+                    })
+                } else if let Some(name) = wav_bext_name(key) {
+                    Ok(crate::WavEdit::SetBext {
+                        name: name.to_owned(),
+                        value: value.clone(),
+                    })
+                } else {
+                    Err(unsupported_edit(format, key))
+                }
+            }
+            MetadataEdit::Delete { key } => {
+                if let Some(name) = wav_info_name(key) {
+                    Ok(crate::WavEdit::DeleteInfo {
+                        name: name.to_owned(),
+                    })
+                } else if let Some(name) = wav_bext_name(key) {
+                    Ok(crate::WavEdit::DeleteBext {
+                        name: name.to_owned(),
+                    })
+                } else {
+                    Err(unsupported_edit(format, key))
+                }
+            }
         })
         .collect()
 }
@@ -932,6 +949,22 @@ fn wav_info_name(key: &str) -> Option<&str> {
             | "Technician"
             | "Subject"
             | "Source"
+    )
+    .then_some(name)
+}
+
+fn wav_bext_name(key: &str) -> Option<&str> {
+    let name = key.strip_prefix("WAV:")?;
+    matches!(
+        name,
+        "Description"
+            | "Originator"
+            | "OriginatorReference"
+            | "DateTimeOriginal"
+            | "TimeReference"
+            | "BWFVersion"
+            | "BWF_UMID"
+            | "CodingHistory"
     )
     .then_some(name)
 }
