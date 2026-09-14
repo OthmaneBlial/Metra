@@ -318,6 +318,51 @@ fn minimal_mrw() -> Vec<u8> {
     bytes
 }
 
+fn minimal_x3f() -> Vec<u8> {
+    fn push_utf16le(output: &mut Vec<u8>, value: &str) {
+        for character in value.encode_utf16().chain(std::iter::once(0)) {
+            output.extend_from_slice(&character.to_le_bytes());
+        }
+    }
+
+    let mut bytes = vec![0_u8; 232];
+    bytes[..4].copy_from_slice(b"FOVb");
+    bytes[4..8].copy_from_slice(&0x0002_0002_u32.to_le_bytes());
+    bytes[8..24].copy_from_slice(b"X3F-CLI-IDENT\0\0\0");
+    bytes[28..32].copy_from_slice(&2640_u32.to_le_bytes());
+    bytes[32..36].copy_from_slice(&1760_u32.to_le_bytes());
+    bytes[40..48].copy_from_slice(b"Sunlight");
+    bytes[72] = 1;
+    bytes[104..108].copy_from_slice(&1.5_f32.to_le_bytes());
+
+    let section_offset = bytes.len();
+    let mut prop = Vec::new();
+    prop.extend_from_slice(b"SECp");
+    prop.extend_from_slice(&0x0002_0000_u32.to_le_bytes());
+    prop.extend_from_slice(&1_u32.to_le_bytes());
+    prop.extend_from_slice(&0_u32.to_le_bytes());
+    prop.extend_from_slice(&0_u32.to_le_bytes());
+    prop.extend_from_slice(&13_u32.to_le_bytes());
+    prop.extend_from_slice(&0_u32.to_le_bytes());
+    prop.extend_from_slice(&9_u32.to_le_bytes());
+    push_utf16le(&mut prop, "CAMMODEL");
+    push_utf16le(&mut prop, "SD1");
+    while prop.len() % 4 != 0 {
+        prop.push(0);
+    }
+    bytes.extend_from_slice(&prop);
+
+    let directory_offset = bytes.len();
+    bytes.extend_from_slice(b"SECd");
+    bytes.extend_from_slice(&0x0002_0000_u32.to_le_bytes());
+    bytes.extend_from_slice(&1_u32.to_le_bytes());
+    bytes.extend_from_slice(&(section_offset as u32).to_le_bytes());
+    bytes.extend_from_slice(&(prop.len() as u32).to_le_bytes());
+    bytes.extend_from_slice(b"PROP");
+    bytes.extend_from_slice(&(directory_offset as u32).to_le_bytes());
+    bytes
+}
+
 fn minimal_svg_document(title: &str, description: &str, comment: &str) -> Vec<u8> {
     format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\"><!-- {comment} --><title>{title}</title><desc>{description}</desc><rect width=\"2\" height=\"2\"/></svg>"
@@ -1007,6 +1052,37 @@ fn mrw_json_output_exposes_bounded_prd_metadata() {
     assert!(
         tags.iter()
             .any(|tag| tag["name"] == "ImageWidth" && tag["value"]["unsigned"] == 3000)
+    );
+    assert!(
+        document["warnings"]
+            .as_array()
+            .expect("warnings should be an array")
+            .is_empty()
+    );
+}
+
+#[test]
+fn x3f_json_output_exposes_bounded_header_and_properties() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.file("capture.x3f", &minimal_x3f());
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args(["--json", path.to_str().expect("UTF-8 test path")])
+        .output()
+        .expect("Metra CLI should start");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let document: Value = serde_json::from_slice(&output.stdout).expect("JSON output should parse");
+    assert_eq!(document["file_info"]["format"], "RAW");
+    let tags = document["tags"]
+        .as_array()
+        .expect("tags should be an array");
+    assert!(
+        tags.iter()
+            .any(|tag| tag["name"] == "ImageColumns" && tag["value"]["unsigned"] == 2640)
+    );
+    assert!(
+        tags.iter()
+            .any(|tag| tag["name"] == "PROP:CAMMODEL" && tag["value"]["string"] == "SD1")
     );
     assert!(
         document["warnings"]
