@@ -24,6 +24,7 @@ mod gif_writer;
 mod handler;
 mod icc;
 mod icc_create;
+mod icc_writer;
 mod id3;
 mod id3_create;
 mod id3_writer;
@@ -81,6 +82,7 @@ pub use gif_writer::{GifEdit, rewrite_gif, rewrite_gif_path, rewrite_gif_to_vec}
 pub use handler::{FormatHandler, ReadSeek, WriteSeek, format_handlers, handler_for_format};
 pub use icc::read_icc;
 pub use icc_create::{IccCreateEntry, IccCreateOptions, create_icc_path, create_icc_to_vec};
+pub use icc_writer::{IccEdit, rewrite_icc, rewrite_icc_path, rewrite_icc_to_vec};
 pub use id3::read_mp3;
 pub use id3_create::{Mp3CreateEntry, Mp3CreateOptions, create_mp3_path, create_mp3_to_vec};
 pub use id3_writer::{Mp3Edit, rewrite_mp3, rewrite_mp3_path, rewrite_mp3_to_vec};
