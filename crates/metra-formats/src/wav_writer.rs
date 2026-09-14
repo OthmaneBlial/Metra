@@ -19,6 +19,7 @@ pub enum WavEdit {
     DeleteBext { name: String },
     SetIxml { value: String },
     DeleteIxml,
+    SetId3 { edit: crate::id3_writer::Mp3Edit },
 }
 
 pub fn rewrite_wav<R: Read + Seek, W: Write + Seek>(
@@ -144,6 +145,9 @@ enum IxmlAction {
 }
 
 #[derive(Debug)]
+struct Id3Actions(Vec<crate::id3_writer::Mp3Edit>);
+
+#[derive(Debug)]
 struct Rf64WriteInfo {
     riff_size: u64,
     data_size: u64,
@@ -174,6 +178,7 @@ fn rewrite_wav_stream<R: Read, W: Write + Seek>(
     let action = info_action(edits, limits)?;
     let bext_actions = bext_actions(edits, limits)?;
     let ixml_action = ixml_action(edits, limits)?;
+    let id3_actions = id3_actions(edits);
     let mut header = [0_u8; 12];
     read_exact(reader, &mut header, path)?;
     let container_kind = &header[..4];
@@ -214,6 +219,7 @@ fn rewrite_wav_stream<R: Read, W: Write + Seek>(
     let mut inserted = false;
     let mut bext_found = false;
     let mut ixml_found = false;
+    let mut id3_found = false;
     while input_offset < declared_end {
         if chunk_count >= limits.max_jpeg_segments {
             return Err(MetraError::ResourceLimitExceeded {
@@ -396,6 +402,34 @@ fn rewrite_wav_stream<R: Read, W: Write + Seek>(
                 }
                 IxmlAction::Delete => {}
             }
+        } else if &kind == b"id3 " && !id3_actions.0.is_empty() {
+            let length =
+                usize::try_from(length).map_err(|_| MetraError::ResourceLimitExceeded {
+                    resource: "WAV ID3 chunk during rewrite".to_owned(),
+                    limit: limits.max_metadata_bytes,
+                })?;
+            if length > limits.max_metadata_bytes {
+                return Err(MetraError::ResourceLimitExceeded {
+                    resource: "WAV ID3 chunk during rewrite".to_owned(),
+                    limit: limits.max_metadata_bytes,
+                });
+            }
+            if is_rf64 && stored_length == u32::MAX {
+                return Err(MetraError::WriteFailure {
+                    message: "WAV ID3 edits do not support RF64 sentinel-sized ID3 chunks"
+                        .to_owned(),
+                });
+            }
+            let mut data = vec![0_u8; length];
+            read_exact(reader, &mut data, path)?;
+            if length % 2 == 1 {
+                let mut padding = [0_u8; 1];
+                read_exact(reader, &mut padding, path)?;
+            }
+            let rewritten =
+                crate::id3_writer::rewrite_id3v2_packet_to_vec(&data, limits, &id3_actions.0)?;
+            id3_found = true;
+            write_chunk(writer, &kind, &rewritten)?;
         } else {
             write_all(writer, &chunk_header)?;
             copy_exact(reader, writer, length, path)?;
@@ -419,6 +453,11 @@ fn rewrite_wav_stream<R: Read, W: Write + Seek>(
     if ixml_action.is_some() && !ixml_found {
         return Err(MetraError::WriteFailure {
             message: "WAV iXML edits require an existing iXML chunk".to_owned(),
+        });
+    }
+    if !id3_actions.0.is_empty() && !id3_found {
+        return Err(MetraError::WriteFailure {
+            message: "WAV ID3 edits require an existing id3 chunk".to_owned(),
         });
     }
 
@@ -552,7 +591,8 @@ fn info_action(edits: &[WavEdit], limits: ParseLimits) -> Result<Option<InfoActi
             WavEdit::SetBext { .. }
             | WavEdit::DeleteBext { .. }
             | WavEdit::SetIxml { .. }
-            | WavEdit::DeleteIxml => {}
+            | WavEdit::DeleteIxml
+            | WavEdit::SetId3 { .. } => {}
         }
     }
     Ok(action)
@@ -574,7 +614,8 @@ fn bext_actions(edits: &[WavEdit], limits: ParseLimits) -> Result<Vec<BextAction
             WavEdit::SetInfo { .. }
             | WavEdit::DeleteInfo { .. }
             | WavEdit::SetIxml { .. }
-            | WavEdit::DeleteIxml => None,
+            | WavEdit::DeleteIxml
+            | WavEdit::SetId3 { .. } => None,
         })
         .collect()
 }
@@ -592,10 +633,28 @@ fn ixml_action(edits: &[WavEdit], limits: ParseLimits) -> Result<Option<IxmlActi
             WavEdit::SetInfo { .. }
             | WavEdit::DeleteInfo { .. }
             | WavEdit::SetBext { .. }
-            | WavEdit::DeleteBext { .. } => {}
+            | WavEdit::DeleteBext { .. }
+            | WavEdit::SetId3 { .. } => {}
         }
     }
     Ok(action)
+}
+
+fn id3_actions(edits: &[WavEdit]) -> Id3Actions {
+    Id3Actions(
+        edits
+            .iter()
+            .filter_map(|edit| match edit {
+                WavEdit::SetId3 { edit } => Some(edit.clone()),
+                WavEdit::SetInfo { .. }
+                | WavEdit::DeleteInfo { .. }
+                | WavEdit::SetBext { .. }
+                | WavEdit::DeleteBext { .. }
+                | WavEdit::SetIxml { .. }
+                | WavEdit::DeleteIxml => None,
+            })
+            .collect(),
+    )
 }
 
 pub(crate) fn encode_bext_value(name: &str, value: &str, limits: ParseLimits) -> Result<Vec<u8>> {
@@ -1116,6 +1175,29 @@ mod tests {
         bytes
     }
 
+    fn wav_with_id3(title: &str) -> Vec<u8> {
+        let id3 = crate::id3_create::create_mp3_to_vec(
+            &crate::Mp3CreateOptions::new().with_text("Title", title),
+            ParseLimits::default(),
+        )
+        .unwrap();
+        let mut fmt = Vec::new();
+        fmt.extend_from_slice(&1_u16.to_le_bytes());
+        fmt.extend_from_slice(&1_u16.to_le_bytes());
+        fmt.extend_from_slice(&8_000_u32.to_le_bytes());
+        fmt.extend_from_slice(&8_000_u32.to_le_bytes());
+        fmt.extend_from_slice(&1_u16.to_le_bytes());
+        fmt.extend_from_slice(&8_u16.to_le_bytes());
+        let mut body = chunk(b"fmt ", &fmt);
+        body.extend(chunk(b"id3 ", &id3));
+        body.extend(chunk(b"data", &[9, 8, 7, 6]));
+        let mut bytes = b"RIFF".to_vec();
+        bytes.extend_from_slice(&((4 + body.len()) as u32).to_le_bytes());
+        bytes.extend_from_slice(b"WAVE");
+        bytes.extend(body);
+        bytes
+    }
+
     fn rf64_with_bext() -> Vec<u8> {
         let riff = wav_with_bext();
         let old_body = &riff[12..];
@@ -1354,6 +1436,35 @@ mod tests {
         )
         .unwrap_err();
         assert!(resized.to_string().contains("existing packet size"));
+    }
+
+    #[test]
+    fn rewrites_embedded_id3_text_without_touching_audio() {
+        let bytes = wav_with_id3("before");
+        let output = rewrite_wav_to_vec(
+            &bytes,
+            info(bytes.len()),
+            ParseLimits::default(),
+            &[WavEdit::SetId3 {
+                edit: crate::Mp3Edit::SetText {
+                    name: "Title".to_owned(),
+                    value: "after".to_owned(),
+                },
+            }],
+        )
+        .unwrap();
+        let parsed = read_wav(
+            &mut Cursor::new(output.clone()),
+            info(output.len()),
+            ParseLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(parsed.find("ID3:Title").unwrap().display_value(), "after");
+        assert!(
+            output
+                .windows(12)
+                .any(|window| window == [b'd', b'a', b't', b'a', 4, 0, 0, 0, 9, 8, 7, 6])
+        );
     }
 
     fn rewrite_rf64_variant(signature: &[u8; 4]) {

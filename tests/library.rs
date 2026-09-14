@@ -137,6 +137,39 @@ fn minimal_wav_with_ixml(project: &str) -> Vec<u8> {
     bytes
 }
 
+fn minimal_wav_with_id3(title: &str) -> Vec<u8> {
+    fn chunk(kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
+        let mut output = kind.to_vec();
+        output.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        output.extend_from_slice(data);
+        if data.len() % 2 == 1 {
+            output.push(0);
+        }
+        output
+    }
+
+    let id3 = metra::create_mp3_to_vec(
+        &metra::Mp3CreateOptions::new().with_text("Title", title),
+        metra::ParseLimits::default(),
+    )
+    .expect("ID3 fixture should be creatable");
+    let mut fmt = Vec::new();
+    fmt.extend_from_slice(&1_u16.to_le_bytes());
+    fmt.extend_from_slice(&1_u16.to_le_bytes());
+    fmt.extend_from_slice(&8_000_u32.to_le_bytes());
+    fmt.extend_from_slice(&8_000_u32.to_le_bytes());
+    fmt.extend_from_slice(&1_u16.to_le_bytes());
+    fmt.extend_from_slice(&8_u16.to_le_bytes());
+    let mut body = chunk(b"fmt ", &fmt);
+    body.extend(chunk(b"id3 ", &id3));
+    body.extend(chunk(b"data", &[9, 8, 7, 6]));
+    let mut bytes = b"RIFF".to_vec();
+    bytes.extend_from_slice(&((4 + body.len()) as u32).to_le_bytes());
+    bytes.extend_from_slice(b"WAVE");
+    bytes.extend(body);
+    bytes
+}
+
 fn minimal_webm_with_title(title: &str) -> Vec<u8> {
     fn element(id: &[u8], data: &[u8]) -> Vec<u8> {
         assert!(data.len() < 127);
@@ -1461,6 +1494,57 @@ fn public_generic_edit_api_rewrites_and_deletes_wav_ixml() {
 }
 
 #[test]
+fn public_generic_edit_api_rewrites_embedded_wav_id3() {
+    let bytes = minimal_wav_with_id3("before");
+    let output = metra::rewrite_metadata_to_vec(
+        &bytes,
+        metra::FileInfo::new(
+            "memory.wav".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::set("ID3:Title", "after")],
+    )
+    .expect("generic embedded ID3 edit should validate its rewritten bytes");
+    let metadata = metra::read_from(
+        &mut Cursor::new(output.clone()),
+        metra::FileInfo::new(
+            "memory.wav".into(),
+            output.len() as u64,
+            metra::FileFormat::Wav,
+        ),
+    )
+    .expect("rewritten embedded ID3 WAV should remain readable");
+    assert_eq!(metadata.find("ID3:Title").unwrap().display_value(), "after");
+
+    let deleted = metra::rewrite_metadata_to_vec(
+        &output,
+        metra::FileInfo::new(
+            "memory.wav".into(),
+            output.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::delete("ID3:Title")],
+    )
+    .expect("generic embedded ID3 deletion should validate its rewritten bytes");
+    assert!(
+        metra::read_from(
+            &mut Cursor::new(deleted.clone()),
+            metra::FileInfo::new(
+                "memory.wav".into(),
+                deleted.len() as u64,
+                metra::FileFormat::Wav,
+            ),
+        )
+        .unwrap()
+        .find("ID3:Title")
+        .is_none()
+    );
+}
+
+#[test]
 fn public_generic_copy_api_rewrites_broadcast_wave_typed_fields() {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1524,6 +1608,31 @@ fn public_generic_copy_api_rewrites_wav_ixml_packet() {
         metra::read(&target)
             .unwrap()
             .find("WAV:iXML:BWFXML.PROJECT")
+            .unwrap()
+            .display_value(),
+        "source"
+    );
+    fs::remove_file(source).expect("source fixture should be removable");
+    fs::remove_file(target).expect("target fixture should be removable");
+}
+
+#[test]
+fn public_generic_copy_api_rewrites_embedded_wav_id3() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock should be after the Unix epoch")
+        .as_nanos();
+    let source = std::env::temp_dir().join(format!("metra-copy-id3-source-{nonce}.wav"));
+    let target = std::env::temp_dir().join(format!("metra-copy-id3-target-{nonce}.wav"));
+    fs::write(&source, minimal_wav_with_id3("source")).expect("source fixture should be writable");
+    fs::write(&target, minimal_wav_with_id3("target")).expect("target fixture should be writable");
+
+    metra::copy_metadata_path(&source, &target, metra::ParseLimits::default(), "ID3:Title")
+        .expect("generic embedded ID3 copy should rewrite the target");
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("ID3:Title")
             .unwrap()
             .display_value(),
         "source"

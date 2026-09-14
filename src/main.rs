@@ -2114,7 +2114,7 @@ enum EditRequest {
     DirectIcc(Vec<metra::IccEdit>),
     DirectAvi(Vec<metra::AviEdit>),
     DirectMatroska(Vec<metra::MatroskaEdit>),
-    DirectMp3(Vec<metra::Mp3Edit>),
+    DirectId3(Vec<metra::Mp3Edit>),
     DirectGif(Vec<metra::GifEdit>),
     DirectWebp(Vec<metra::WebpEdit>),
     DirectSvg(Vec<metra::SvgEdit>),
@@ -2355,12 +2355,12 @@ fn parse_edits(
                 ])));
             }
             if key == "ID3:Comment" {
-                return Ok(Some(EditRequest::DirectMp3(vec![
+                return Ok(Some(EditRequest::DirectId3(vec![
                     metra::Mp3Edit::SetComment(value.to_owned()),
                 ])));
             }
             if let Some(name) = mp3_text_name(key) {
-                return Ok(Some(EditRequest::DirectMp3(vec![
+                return Ok(Some(EditRequest::DirectId3(vec![
                     metra::Mp3Edit::SetText {
                         name: name.to_owned(),
                         value: value.to_owned(),
@@ -2543,12 +2543,12 @@ fn parse_edits(
                 ])));
             }
             if key == "ID3:Comment" {
-                return Ok(Some(EditRequest::DirectMp3(vec![
+                return Ok(Some(EditRequest::DirectId3(vec![
                     metra::Mp3Edit::DeleteComments,
                 ])));
             }
             if let Some(name) = mp3_text_name(key) {
-                return Ok(Some(EditRequest::DirectMp3(vec![
+                return Ok(Some(EditRequest::DirectId3(vec![
                     metra::Mp3Edit::DeleteText {
                         name: name.to_owned(),
                     },
@@ -3002,7 +3002,7 @@ fn apply_request(paths: &[PathBuf], request: EditRequest, limits: ParseLimits) -
         EditRequest::DirectIcc(edits) => apply_icc_edits(paths, &edits, limits),
         EditRequest::DirectAvi(edits) => apply_avi_edits(paths, &edits, limits),
         EditRequest::DirectMatroska(edits) => apply_matroska_edits(paths, &edits, limits),
-        EditRequest::DirectMp3(edits) => apply_mp3_edits(paths, &edits, limits),
+        EditRequest::DirectId3(edits) => apply_id3_edits(paths, &edits, limits),
         EditRequest::DirectGif(edits) => apply_gif_edits(paths, &edits, limits),
         EditRequest::DirectWebp(edits) => apply_webp_edits(paths, &edits, limits),
         EditRequest::DirectSvg(edits) => apply_svg_edits(paths, &edits, limits),
@@ -4145,9 +4145,12 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path, limits: ParseLimit
             apply_ogg_edits(paths, &edits, limits)
         }
         CopyKey::Mp3Comment => {
-            if source_metadata.file_info.format != metra::FileFormat::Mp3 {
+            if !matches!(
+                source_metadata.file_info.format,
+                metra::FileFormat::Mp3 | metra::FileFormat::Wav
+            ) {
                 eprintln!(
-                    "metra: {}: source format {} is not MP3",
+                    "metra: {}: source format {} is not MP3 or WAV",
                     source.display(),
                     source_metadata.file_info.format
                 );
@@ -4165,12 +4168,15 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path, limits: ParseLimit
                 return ExitCode::from(1);
             };
             let edits = [metra::Mp3Edit::SetComment(comment.clone())];
-            apply_mp3_edits(paths, &edits, limits)
+            apply_id3_edits(paths, &edits, limits)
         }
         CopyKey::Mp3Text(name) => {
-            if source_metadata.file_info.format != metra::FileFormat::Mp3 {
+            if !matches!(
+                source_metadata.file_info.format,
+                metra::FileFormat::Mp3 | metra::FileFormat::Wav
+            ) {
                 eprintln!(
-                    "metra: {}: source format {} is not MP3",
+                    "metra: {}: source format {} is not MP3 or WAV",
                     source.display(),
                     source_metadata.file_info.format
                 );
@@ -4189,7 +4195,7 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path, limits: ParseLimit
                 name,
                 value: text.clone(),
             }];
-            apply_mp3_edits(paths, &edits, limits)
+            apply_id3_edits(paths, &edits, limits)
         }
         CopyKey::GifComment => {
             if source_metadata.file_info.format != metra::FileFormat::Gif {
@@ -4343,7 +4349,7 @@ fn apply_ogg_edits(paths: &[PathBuf], edits: &[metra::OggEdit], limits: ParseLim
     }
 }
 
-fn apply_mp3_edits(paths: &[PathBuf], edits: &[metra::Mp3Edit], limits: ParseLimits) -> ExitCode {
+fn apply_id3_edits(paths: &[PathBuf], edits: &[metra::Mp3Edit], limits: ParseLimits) -> ExitCode {
     let mut failures = 0_usize;
     for path in paths {
         match metra::read_with_limits(path, limits) {
@@ -4355,9 +4361,22 @@ fn apply_mp3_edits(paths: &[PathBuf], edits: &[metra::Mp3Edit], limits: ParseLim
                     println!("updated: {}", path.display());
                 }
             }
+            Ok(metadata) if metadata.file_info.format == metra::FileFormat::Wav => {
+                let wav_edits = edits
+                    .iter()
+                    .cloned()
+                    .map(|edit| metra::WavEdit::SetId3 { edit })
+                    .collect::<Vec<_>>();
+                if let Err(error) = metra::rewrite_wav_path(path, limits, &wav_edits) {
+                    eprintln!("metra: {}: {error}", path.display());
+                    failures += 1;
+                } else {
+                    println!("updated: {}", path.display());
+                }
+            }
             Ok(metadata) => {
                 eprintln!(
-                    "metra: {}: {} edits are supported only for MP3 files",
+                    "metra: {}: {} edits are supported only for MP3 or WAV files",
                     path.display(),
                     metadata.file_info.format
                 );

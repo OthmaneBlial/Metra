@@ -49,6 +49,32 @@ pub fn rewrite_mp3_to_vec(
     Ok(output)
 }
 
+pub(crate) fn rewrite_id3v2_packet_to_vec(
+    bytes: &[u8],
+    limits: ParseLimits,
+    edits: &[Mp3Edit],
+) -> Result<Vec<u8>> {
+    let mut reader = std::io::Cursor::new(bytes);
+    let mut output = Vec::new();
+    rewrite_mp3_stream(
+        &mut reader,
+        &mut output,
+        Path::new("<embedded WAV ID3>"),
+        limits,
+        edits,
+    )?;
+    read_mp3(
+        &mut std::io::Cursor::new(output.as_slice()),
+        FileInfo::new(
+            "<embedded WAV ID3>".into(),
+            output.len() as u64,
+            FileFormat::Mp3,
+        ),
+        limits,
+    )?;
+    Ok(output)
+}
+
 pub fn rewrite_mp3_path(
     path: impl AsRef<Path>,
     limits: ParseLimits,

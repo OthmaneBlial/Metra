@@ -805,6 +805,17 @@ pub(crate) fn collect_wav(
                     Ok(crate::WavEdit::SetIxml {
                         value: value.clone(),
                     })
+                } else if key == "ID3:Comment" {
+                    Ok(crate::WavEdit::SetId3 {
+                        edit: crate::Mp3Edit::SetComment(value.clone()),
+                    })
+                } else if let Some(name) = id3_text_name(key) {
+                    Ok(crate::WavEdit::SetId3 {
+                        edit: crate::Mp3Edit::SetText {
+                            name: name.to_owned(),
+                            value: value.clone(),
+                        },
+                    })
                 } else {
                     Err(unsupported_edit(format, key))
                 }
@@ -820,6 +831,16 @@ pub(crate) fn collect_wav(
                     })
                 } else if wav_ixml_key(key) {
                     Ok(crate::WavEdit::DeleteIxml)
+                } else if key == "ID3:Comment" {
+                    Ok(crate::WavEdit::SetId3 {
+                        edit: crate::Mp3Edit::DeleteComments,
+                    })
+                } else if let Some(name) = id3_text_name(key) {
+                    Ok(crate::WavEdit::SetId3 {
+                        edit: crate::Mp3Edit::DeleteText {
+                            name: name.to_owned(),
+                        },
+                    })
                 } else {
                     Err(unsupported_edit(format, key))
                 }
@@ -1060,6 +1081,40 @@ fn wav_bext_name(key: &str) -> Option<&str> {
 
 fn wav_ixml_key(key: &str) -> bool {
     matches!(key, "WAV:iXML:Packet" | "WAV:IXML:Packet")
+}
+
+fn id3_text_name(key: &str) -> Option<&str> {
+    let name = key.strip_prefix("ID3:")?;
+    matches!(
+        name,
+        "Title"
+            | "Artist"
+            | "AlbumArtist"
+            | "Album"
+            | "RecordingDate"
+            | "Genre"
+            | "TrackNumber"
+            | "DiscNumber"
+            | "Composer"
+            | "BPM"
+            | "DurationMilliseconds"
+            | "Copyright"
+            | "Publisher"
+            | "EncodedBy"
+            | "EncoderSettings"
+            | "AlbumSortOrder"
+            | "ArtistSortOrder"
+            | "TitleSortOrder"
+            | "OriginalReleaseDate"
+            | "ReleaseDate"
+            | "InitialKey"
+            | "Language"
+            | "ContentGroup"
+            | "Subtitle"
+            | "FileType"
+            | "MediaType"
+    )
+    .then_some(name)
 }
 
 fn flac_comment_name(key: &str) -> Option<&str> {
