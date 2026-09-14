@@ -1009,7 +1009,7 @@ mod tests {
         let jpeg = format_capabilities(FileFormat::Jpeg);
         assert_eq!(jpeg.read, CapabilityStatus::Partial);
         assert_eq!(jpeg.write, CapabilityStatus::Partial);
-        assert_eq!(jpeg.create, CapabilityStatus::Planned);
+        assert_eq!(jpeg.create, CapabilityStatus::Partial);
 
         let ogg = format_capabilities(FileFormat::Ogg);
         assert_eq!(ogg.write, CapabilityStatus::Partial);
@@ -1036,6 +1036,10 @@ mod tests {
         );
         assert_eq!(
             format_capabilities(FileFormat::Tiff).create,
+            CapabilityStatus::Partial
+        );
+        assert_eq!(
+            format_capabilities(FileFormat::Jpeg).create,
             CapabilityStatus::Partial
         );
         assert_eq!(
