@@ -174,8 +174,10 @@ creates a bounded APP13 resource when needed.
 The PDF writer accepts only existing Info Title, Author, Subject, Keywords,
 Creator, Producer, CreationDate, or ModifyDate literal/hexadecimal string
 tokens. It preserves the token encoding and requires an exactly equal encoded
-byte span, so it never creates objects, rewrites xref tables, or moves unrelated
-PDF bytes.
+byte span for replacements, so it never creates objects, rewrites xref tables,
+or moves unrelated PDF bytes. Deletion replaces a token at least four bytes
+long with a padded `null` object and the reader omits that field; shorter tokens
+are rejected because they cannot preserve the layout safely.
 The AVI writer accepts existing known `LIST/INFO` string chunks, writes only
 within their allocated payloads, preserves a NUL terminator when space exists,
 and never changes RIFF chunk sizes or media data. Delete operations zero-fill
