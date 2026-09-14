@@ -39,12 +39,16 @@
       "read": "partial",
       "write": "partial",
       "create": "partial",
+      "delete": "partial",
+      "lossless_rewrite": "partial",
       "streaming": "partial"
     },
     "AVIF": {
       "read": "partial",
       "write": "partial",
       "create": "partial",
+      "delete": "partial",
+      "lossless_rewrite": "partial",
       "streaming": "partial"
     },
     "GIF": {
@@ -59,18 +63,24 @@
       "read": "partial",
       "write": "partial",
       "create": "partial",
+      "delete": "partial",
+      "lossless_rewrite": "partial",
       "streaming": "partial"
     },
     "MOV": {
       "read": "partial",
       "write": "partial",
       "create": "partial",
+      "delete": "partial",
+      "lossless_rewrite": "partial",
       "streaming": "partial"
     },
     "M4A": {
       "read": "partial",
       "write": "partial",
       "create": "partial",
+      "delete": "partial",
+      "lossless_rewrite": "partial",
       "streaming": "partial"
     },
     "PDF": {
