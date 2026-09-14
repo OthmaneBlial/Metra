@@ -322,10 +322,10 @@ const FORMAT_CAPABILITIES: &[FormatCapabilities] = &[
     FormatCapabilities {
         format: FileFormat::Xmp,
         read: CapabilityStatus::Partial,
-        write: CapabilityStatus::Planned,
+        write: CapabilityStatus::Partial,
         create: CapabilityStatus::Partial,
         delete: CapabilityStatus::Planned,
-        lossless_rewrite: CapabilityStatus::Planned,
+        lossless_rewrite: CapabilityStatus::Partial,
         streaming: CapabilityStatus::Partial,
     },
     FormatCapabilities {
@@ -1048,6 +1048,14 @@ mod tests {
         );
         assert_eq!(
             format_capabilities(FileFormat::Xmp).create,
+            CapabilityStatus::Partial
+        );
+        assert_eq!(
+            format_capabilities(FileFormat::Xmp).write,
+            CapabilityStatus::Partial
+        );
+        assert_eq!(
+            format_capabilities(FileFormat::Xmp).lossless_rewrite,
             CapabilityStatus::Partial
         );
         assert_eq!(
