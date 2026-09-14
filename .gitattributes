@@ -1,0 +1,2 @@
+# Corpus fixtures are byte-addressed test inputs; never normalize line endings.
+fixtures/corpus/* binary
