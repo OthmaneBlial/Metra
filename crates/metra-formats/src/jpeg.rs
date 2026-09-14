@@ -636,7 +636,13 @@ fn rewrite_exif_ascii_segment(
                 message: format!("JPEG EXIF tag {} is repeated", edit.key),
             });
         }
-        if !matches!(tag.value, TagValue::String(_)) {
+        if !matches!(
+            tag.value,
+            TagValue::String(_)
+                | TagValue::Date { .. }
+                | TagValue::Time { .. }
+                | TagValue::DateTime { .. }
+        ) {
             return Err(MetraError::WriteFailure {
                 message: format!("JPEG EXIF tag {} is not an ASCII string", edit.key),
             });
@@ -1728,6 +1734,28 @@ mod tests {
         bytes
     }
 
+    fn jpeg_with_exif_datetime() -> Vec<u8> {
+        let mut tiff = vec![
+            b'I', b'I', 42, 0, 8, 0, 0, 0, 1, 0, // one IFD0 entry
+            0x69, 0x87, 4, 0, 1, 0, 0, 0, 26, 0, 0, 0, // ExifIFD -> offset 26
+            0, 0, 0, 0, // no next IFD
+            1, 0, // one Exif IFD entry
+            0x03, 0x90, 2, 0, 20, 0, 0, 0, 44, 0, 0, 0, // DateTimeOriginal
+            0, 0, 0, 0, // no next IFD
+        ];
+        tiff.extend_from_slice(b"2026:09:13 12:34:56\0");
+        assert_eq!(tiff.len(), 64);
+
+        let mut app1 = b"Exif\0\0".to_vec();
+        app1.extend_from_slice(&tiff);
+        let length = u16::try_from(app1.len() + 2).unwrap();
+        let mut bytes = vec![0xFF, 0xD8, 0xFF, 0xE1];
+        bytes.extend_from_slice(&length.to_be_bytes());
+        bytes.extend_from_slice(&app1);
+        bytes.extend_from_slice(&[0xFF, 0xD9]);
+        bytes
+    }
+
     fn gopro_record(
         fourcc: &[u8; 4],
         record_type: u8,
@@ -1932,6 +1960,35 @@ mod tests {
             missing
                 .to_string()
                 .contains("did not match an existing ASCII field")
+        );
+    }
+
+    #[test]
+    fn rewrites_typed_exif_datetime_values_backed_by_ascii_slots() {
+        let bytes = jpeg_with_exif_datetime();
+        let output = rewrite_jpeg_to_vec(
+            &bytes,
+            FileInfo::new("datetime.jpg".into(), bytes.len() as u64, FileFormat::Jpeg),
+            ParseLimits::default(),
+            &[JpegEdit::SetExifAscii {
+                key: "EXIF:DateTimeOriginal".to_owned(),
+                value: "2027:10:14 13:35:57".to_owned(),
+            }],
+        )
+        .expect("typed DateTimeOriginal should remain writable as ASCII");
+        assert_eq!(output.len(), bytes.len());
+        let metadata = read_jpeg(
+            &mut Cursor::new(output),
+            FileInfo::new("datetime.jpg".into(), 0, FileFormat::Jpeg),
+            ParseLimits::default(),
+        )
+        .expect("edited DateTimeOriginal should remain readable");
+        assert_eq!(
+            metadata
+                .find("EXIF:DateTimeOriginal")
+                .unwrap()
+                .display_value(),
+            "2027:10:14 13:35:57"
         );
     }
 

@@ -213,7 +213,15 @@ fn collect_patches<R: Read + Seek>(
         )?;
         let endian = variant.endian();
         let type_id = read_u16(endian, &entry[2..4]);
-        if type_id != 2 || !matches!(tag.value, TagValue::String(_)) {
+        if type_id != 2
+            || !matches!(
+                tag.value,
+                TagValue::String(_)
+                    | TagValue::Date { .. }
+                    | TagValue::Time { .. }
+                    | TagValue::DateTime { .. }
+            )
+        {
             return Err(MetraError::WriteFailure {
                 message: format!("TIFF tag {key} is not an existing ASCII value"),
             });
@@ -530,6 +538,20 @@ mod tests {
         bytes
     }
 
+    fn tiff_with_datetime() -> Vec<u8> {
+        let mut bytes = vec![
+            b'I', b'I', 42, 0, 8, 0, 0, 0, 1, 0, // one IFD0 entry
+            0x69, 0x87, 4, 0, 1, 0, 0, 0, 26, 0, 0, 0, // ExifIFD -> offset 26
+            0, 0, 0, 0, // no next IFD
+            1, 0, // one Exif IFD entry
+            0x03, 0x90, 2, 0, 20, 0, 0, 0, 44, 0, 0, 0, // DateTimeOriginal
+            0, 0, 0, 0, // no next IFD
+        ];
+        bytes.extend_from_slice(b"2026:09:13 12:34:56\0");
+        assert_eq!(bytes.len(), 64);
+        bytes
+    }
+
     fn info(bytes: &[u8]) -> FileInfo {
         FileInfo::new("editable.tif".into(), bytes.len() as u64, FileFormat::Tiff)
     }
@@ -620,5 +642,34 @@ mod tests {
         )
         .expect("edited BigTIFF should remain readable");
         assert_eq!(metadata.find("EXIF:Make").unwrap().display_value(), "Sony");
+    }
+
+    #[test]
+    fn rewrites_typed_datetime_values_backed_by_ascii_slots() {
+        let bytes = tiff_with_datetime();
+        let output = rewrite_tiff_to_vec(
+            &bytes,
+            info(&bytes),
+            ParseLimits::default(),
+            &[TiffEdit::SetAscii {
+                key: "EXIF:DateTimeOriginal".to_owned(),
+                value: "2027:10:14 13:35:57".to_owned(),
+            }],
+        )
+        .expect("typed DateTimeOriginal should remain writable as ASCII");
+        assert_eq!(output.len(), bytes.len());
+        let metadata = read_tiff(
+            &mut Cursor::new(output),
+            info(&bytes),
+            ParseLimits::default(),
+        )
+        .expect("edited DateTimeOriginal should remain readable");
+        assert_eq!(
+            metadata
+                .find("EXIF:DateTimeOriginal")
+                .unwrap()
+                .display_value(),
+            "2027:10:14 13:35:57"
+        );
     }
 }
