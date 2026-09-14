@@ -82,6 +82,7 @@ pub fn rewrite_metadata_path(
         FileFormat::Mkv | FileFormat::Webm => {
             crate::rewrite_matroska_path(path, limits, &collect_matroska(edits, format)?)
         }
+        FileFormat::Icc => crate::rewrite_icc_path(path, limits, &collect_icc(edits, format)?),
         FileFormat::Xmp => crate::rewrite_xmp_path(path, limits, &collect_xmp(edits, format)?),
         _ => Err(unsupported_format(format)),
     }
@@ -175,6 +176,9 @@ pub fn rewrite_metadata_to_vec(
             limits,
             &collect_matroska(edits, detected)?,
         ),
+        FileFormat::Icc => {
+            crate::rewrite_icc_to_vec(bytes, file_info, limits, &collect_icc(edits, detected)?)
+        }
         FileFormat::Xmp => {
             crate::rewrite_xmp_to_vec(bytes, file_info, limits, &collect_xmp(edits, detected)?)
         }
@@ -524,6 +528,28 @@ pub(crate) fn collect_xmp(
         .collect()
 }
 
+pub(crate) fn collect_icc(
+    edits: &[MetadataEdit],
+    format: FileFormat,
+) -> Result<Vec<crate::IccEdit>> {
+    edits
+        .iter()
+        .map(|edit| match edit {
+            MetadataEdit::Set { key, value } => icc_text_name(key)
+                .map(|name| crate::IccEdit::SetText {
+                    name: name.to_owned(),
+                    value: value.clone(),
+                })
+                .ok_or_else(|| unsupported_edit(format, key)),
+            MetadataEdit::Delete { key } => icc_text_name(key)
+                .map(|name| crate::IccEdit::DeleteText {
+                    name: name.to_owned(),
+                })
+                .ok_or_else(|| unsupported_edit(format, key)),
+        })
+        .collect()
+}
+
 pub(crate) fn collect_avi(
     edits: &[MetadataEdit],
     format: FileFormat,
@@ -664,6 +690,15 @@ fn psd_xmp_key(key: &str) -> bool {
 
 fn xmp_packet_key(key: &str) -> bool {
     key == "XMP:Packet"
+}
+
+fn icc_text_name(key: &str) -> Option<&str> {
+    let name = key.strip_prefix("ICC:")?;
+    matches!(
+        name,
+        "Description" | "Copyright" | "ManufacturerDescription" | "ModelDescription"
+    )
+    .then_some(name)
 }
 
 fn avi_info_name(key: &str) -> Option<&str> {
@@ -936,6 +971,27 @@ mod tests {
             collect_matroska(&[MetadataEdit::delete("Matroska:Title")], FileFormat::Webm,).unwrap(),
             vec![crate::MatroskaEdit::DeleteString {
                 key: "Matroska:Title".to_owned(),
+            }]
+        );
+    }
+
+    #[test]
+    fn icc_collector_accepts_canonical_text_edits() {
+        assert_eq!(
+            collect_icc(
+                &[MetadataEdit::set("ICC:Description", "new")],
+                FileFormat::Icc,
+            )
+            .unwrap(),
+            vec![crate::IccEdit::SetText {
+                name: "Description".to_owned(),
+                value: "new".to_owned(),
+            }]
+        );
+        assert_eq!(
+            collect_icc(&[MetadataEdit::delete("ICC:Copyright")], FileFormat::Icc,).unwrap(),
+            vec![crate::IccEdit::DeleteText {
+                name: "Copyright".to_owned(),
             }]
         );
     }

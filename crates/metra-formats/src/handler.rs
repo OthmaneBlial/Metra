@@ -223,6 +223,11 @@ writer_adapter!(
     super::xmp_writer::rewrite_xmp,
     super::edit::collect_xmp
 );
+writer_adapter!(
+    write_icc,
+    super::icc_writer::rewrite_icc,
+    super::edit::collect_icc
+);
 
 fn write_raw(
     mut reader: &mut dyn ReadSeek,
@@ -338,7 +343,7 @@ static FORMAT_HANDLERS: &[RegisteredFormatHandler] = &[
     RegisteredFormatHandler {
         format: FileFormat::Icc,
         reader: read_icc,
-        writer: None,
+        writer: Some(write_icc),
     },
     RegisteredFormatHandler {
         format: FileFormat::Xmp,
@@ -452,6 +457,42 @@ mod tests {
         .expect("registered writer output should remain readable");
         assert_eq!(
             metadata.find("JPEG:Comment").unwrap().display_value(),
+            "new"
+        );
+    }
+
+    #[test]
+    fn registered_icc_writer_dispatches_canonical_edits() {
+        let bytes = crate::icc_create::create_icc_to_vec(
+            &crate::icc_create::IccCreateOptions::new().with_text("Description", "old"),
+            ParseLimits::default(),
+        )
+        .expect("ICC fixture should be created");
+        let handler = handler_for_format(FileFormat::Icc).expect("ICC handler should exist");
+        let mut reader = std::io::Cursor::new(bytes.clone());
+        let mut writer = std::io::Cursor::new(Vec::new());
+        handler
+            .write_metadata(
+                &mut reader,
+                &mut writer,
+                FileInfo::new("handler.icc".into(), bytes.len() as u64, FileFormat::Icc),
+                ParseLimits::default(),
+                &[MetadataEdit::set("ICC:Description", "new")],
+            )
+            .expect("registered ICC writer should accept canonical edits");
+
+        let output = writer.into_inner();
+        let metadata = crate::read_reader(
+            &mut std::io::Cursor::new(output),
+            FileInfo::new(
+                "handler.icc".into(),
+                bytes.len() as u64,
+                FileFormat::Unknown,
+            ),
+        )
+        .expect("registered ICC output should remain readable");
+        assert_eq!(
+            metadata.find("ICC:Description").unwrap().display_value(),
             "new"
         );
     }
