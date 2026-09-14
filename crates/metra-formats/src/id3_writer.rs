@@ -307,7 +307,7 @@ fn unsupported_name(name: &str) -> MetraError {
     }
 }
 
-fn text_frame_id(name: &str, version: u8) -> Option<Vec<u8>> {
+pub(crate) fn text_frame_id(name: &str, version: u8) -> Option<Vec<u8>> {
     let id = match version {
         2 => match name {
             "Title" => b"TT2".as_slice(),
@@ -385,7 +385,7 @@ fn text_frame_id(name: &str, version: u8) -> Option<Vec<u8>> {
     Some(id.to_vec())
 }
 
-fn comment_frame_id(version: u8) -> Vec<u8> {
+pub(crate) fn comment_frame_id(version: u8) -> Vec<u8> {
     if version == 2 {
         b"COM".to_vec()
     } else {
@@ -393,7 +393,11 @@ fn comment_frame_id(version: u8) -> Vec<u8> {
     }
 }
 
-fn encode_text_payload(version: u8, value: &str, limits: ParseLimits) -> Result<Vec<u8>> {
+pub(crate) fn encode_text_payload(
+    version: u8,
+    value: &str,
+    limits: ParseLimits,
+) -> Result<Vec<u8>> {
     if value.contains('\0') {
         return Err(MetraError::WriteFailure {
             message: "ID3 text values cannot contain NUL".to_owned(),
@@ -416,7 +420,11 @@ fn encode_text_payload(version: u8, value: &str, limits: ParseLimits) -> Result<
     Ok(std::mem::take(&mut payload))
 }
 
-fn encode_comment_payload(version: u8, value: &str, limits: ParseLimits) -> Result<Vec<u8>> {
+pub(crate) fn encode_comment_payload(
+    version: u8,
+    value: &str,
+    limits: ParseLimits,
+) -> Result<Vec<u8>> {
     if value.contains('\0') {
         return Err(MetraError::WriteFailure {
             message: "ID3 comment values cannot contain NUL".to_owned(),
@@ -531,7 +539,7 @@ fn parse_frames_for_rewrite(
     Ok((frames, Vec::new()))
 }
 
-fn append_frame(
+pub(crate) fn append_frame(
     output: &mut Vec<u8>,
     version: u8,
     id: &[u8],
@@ -585,7 +593,7 @@ fn parse_synchsafe(bytes: &[u8], context: &str) -> Result<u32> {
     Ok(value)
 }
 
-fn synchsafe(value: usize) -> Result<[u8; 4]> {
+pub(crate) fn synchsafe(value: usize) -> Result<[u8; 4]> {
     if value > 0x0FFF_FFFF {
         return Err(MetraError::WriteFailure {
             message: "value exceeds the ID3 synchsafe size limit".to_owned(),
