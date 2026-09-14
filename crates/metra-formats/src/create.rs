@@ -3,22 +3,24 @@ use std::path::Path;
 use metra_core::{ParseLimits, Result};
 
 use crate::{
-    AviCreateOptions, FlacCreateOptions, GifCreateOptions, IccCreateOptions, JpegCreateOptions,
-    MatroskaCreateOptions, Mp3CreateOptions, OggCreateOptions, PdfCreateOptions, PngCreateOptions,
-    PsdCreateOptions, SvgCreateOptions, TiffCreateOptions, WavCreateOptions, WebpCreateOptions,
-    create_avi_path, create_avi_to_vec, create_flac_path, create_flac_to_vec, create_gif_path,
-    create_gif_to_vec, create_icc_path, create_icc_to_vec, create_jpeg_path, create_jpeg_to_vec,
-    create_matroska_path, create_matroska_to_vec, create_mp3_path, create_mp3_to_vec,
-    create_ogg_path, create_ogg_to_vec, create_pdf_path, create_pdf_to_vec, create_png_path,
-    create_png_to_vec, create_psd_path, create_psd_to_vec, create_svg_path, create_svg_to_vec,
-    create_tiff_path, create_tiff_to_vec, create_wav_path, create_wav_to_vec, create_webp_path,
-    create_webp_to_vec, create_xmp_path, create_xmp_to_vec,
+    AviCreateOptions, FlacCreateOptions, GifCreateOptions, IccCreateOptions, IsobmffCreateOptions,
+    JpegCreateOptions, MatroskaCreateOptions, Mp3CreateOptions, OggCreateOptions, PdfCreateOptions,
+    PngCreateOptions, PsdCreateOptions, SvgCreateOptions, TiffCreateOptions, WavCreateOptions,
+    WebpCreateOptions, create_avi_path, create_avi_to_vec, create_flac_path, create_flac_to_vec,
+    create_gif_path, create_gif_to_vec, create_icc_path, create_icc_to_vec, create_isobmff_path,
+    create_isobmff_to_vec, create_jpeg_path, create_jpeg_to_vec, create_matroska_path,
+    create_matroska_to_vec, create_mp3_path, create_mp3_to_vec, create_ogg_path, create_ogg_to_vec,
+    create_pdf_path, create_pdf_to_vec, create_png_path, create_png_to_vec, create_psd_path,
+    create_psd_to_vec, create_svg_path, create_svg_to_vec, create_tiff_path, create_tiff_to_vec,
+    create_wav_path, create_wav_to_vec, create_webp_path, create_webp_to_vec, create_xmp_path,
+    create_xmp_to_vec,
 };
 
 /// Typed creation request dispatching to a format-specific validated creator.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CreateRequest {
     Avi(AviCreateOptions),
+    Isobmff(IsobmffCreateOptions),
     Matroska(MatroskaCreateOptions),
     Jpeg(JpegCreateOptions),
     Tiff(TiffCreateOptions),
@@ -40,6 +42,7 @@ pub enum CreateRequest {
 pub fn create_to_vec(request: &CreateRequest, limits: ParseLimits) -> Result<Vec<u8>> {
     match request {
         CreateRequest::Avi(options) => create_avi_to_vec(options, limits),
+        CreateRequest::Isobmff(options) => create_isobmff_to_vec(options, limits),
         CreateRequest::Matroska(options) => create_matroska_to_vec(options, limits),
         CreateRequest::Jpeg(options) => create_jpeg_to_vec(options, limits),
         CreateRequest::Tiff(options) => create_tiff_to_vec(options, limits),
@@ -66,6 +69,7 @@ pub fn create_path(
 ) -> Result<()> {
     match request {
         CreateRequest::Avi(options) => create_avi_path(path, options, limits),
+        CreateRequest::Isobmff(options) => create_isobmff_path(path, options, limits),
         CreateRequest::Matroska(options) => create_matroska_path(path, options, limits),
         CreateRequest::Jpeg(options) => create_jpeg_path(path, options, limits),
         CreateRequest::Tiff(options) => create_tiff_path(path, options, limits),
