@@ -133,5 +133,10 @@ bounded Vorbis Comment block. Keys are printable ASCII without `=` or NUL,
 values are bounded UTF-8 without NUL, duplicate keys and oversized blocks are
 rejected, and the output is re-read before an atomic no-overwrite path create.
 
+GIF creation emits only a fixed 1x1 image and bounded comment extensions.
+Comment values reject NUL bytes and are checked against the configured value
+budget; sub-block framing, the LZW seed, and the trailer are fixed, and the
+result is re-read before an atomic no-overwrite path create.
+
 Security reports should include the smallest reproducible input and the exact
 Metra version. Do not include private media or secrets in an issue.

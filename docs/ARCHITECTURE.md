@@ -237,6 +237,12 @@ metadata-only stream with fixed `STREAMINFO` and bounded UTF-8 Vorbis comments,
 validates it through the FLAC reader, and refuses to overwrite an existing
 destination.
 
+GIF creation exposes `GifCreateOptions`, `create_gif_to_vec`,
+`create_gif_path`, and the CLI `--create-gif COMMENT`. It emits a fixed 1x1
+GIF with bounded comment extensions and a valid one-pixel image data stream,
+validates it through the GIF reader, and refuses to overwrite an existing
+destination.
+
 Legacy read queries are handled by a thin argument normalizer: selected
 single-dash aliases such as `-Make` and `-GPSLatitude` become `--tag` selectors,
 while `-json` and `-jsonl` become the corresponding Metra output flags. The
