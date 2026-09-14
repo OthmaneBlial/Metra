@@ -48,6 +48,7 @@ struct Arguments {
             "create_png",
             "create_xmp",
             "create_flac",
+            "create_gif",
             "create_wav",
             "create_icc",
             "compare"
@@ -93,6 +94,7 @@ struct Arguments {
             "create_png",
             "create_xmp",
             "create_flac",
+            "create_gif",
             "create_wav",
             "create_icc",
             "json",
@@ -118,6 +120,7 @@ struct Arguments {
             "create_tiff",
             "create_xmp",
             "create_flac",
+            "create_gif",
             "create_wav",
             "create_icc",
             "json",
@@ -142,6 +145,7 @@ struct Arguments {
             "create_tiff",
             "create_png",
             "create_flac",
+            "create_gif",
             "create_wav",
             "create_icc",
             "json",
@@ -169,6 +173,7 @@ struct Arguments {
             "create_png",
             "create_xmp",
             "create_flac",
+            "create_gif",
             "create_icc",
             "json",
             "jsonl",
@@ -195,6 +200,7 @@ struct Arguments {
             "create_png",
             "create_xmp",
             "create_wav",
+            "create_gif",
             "create_icc",
             "json",
             "jsonl",
@@ -207,6 +213,33 @@ struct Arguments {
         ]
     )]
     create_flac: Vec<String>,
+
+    /// Create a new minimal 1x1 GIF with one or more comment extensions.
+    #[arg(
+        long = "create-gif",
+        value_name = "COMMENT",
+        action = clap::ArgAction::Append,
+        conflicts_with_all = [
+            "set",
+            "delete",
+            "copy",
+            "create_tiff",
+            "create_png",
+            "create_xmp",
+            "create_wav",
+            "create_flac",
+            "create_icc",
+            "json",
+            "jsonl",
+            "csv",
+            "toml",
+            "yaml",
+            "tag",
+            "validate",
+            "compare"
+        ]
+    )]
+    create_gif: Vec<String>,
 
     /// Create a new minimal RGB ICC profile with one or more text tags.
     #[arg(
@@ -222,6 +255,7 @@ struct Arguments {
             "create_xmp",
             "create_flac",
             "create_wav",
+            "create_gif",
             "json",
             "jsonl",
             "csv",
@@ -378,6 +412,29 @@ fn main() -> ExitCode {
             }
         };
         return match metra::create_flac_path(&arguments.files[0], &options, limits) {
+            Ok(()) => {
+                println!("created: {}", arguments.files[0].display());
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", arguments.files[0].display());
+                ExitCode::from(1)
+            }
+        };
+    }
+    if !arguments.create_gif.is_empty() {
+        if arguments.files.len() != 1 {
+            eprintln!("metra: --create-gif requires exactly one destination path");
+            return ExitCode::from(2);
+        }
+        let options = match parse_gif_create(&arguments.create_gif) {
+            Ok(options) => options,
+            Err(message) => {
+                eprintln!("metra: {message}");
+                return ExitCode::from(2);
+            }
+        };
+        return match metra::create_gif_path(&arguments.files[0], &options, limits) {
             Ok(()) => {
                 println!("created: {}", arguments.files[0].display());
                 ExitCode::SUCCESS
@@ -619,6 +676,14 @@ fn parse_flac_create(entries: &[String]) -> Result<metra::FlacCreateOptions, Str
             return Err("--create-flac requires a non-empty KEY".to_owned());
         }
         options.push_comment(key, value);
+    }
+    Ok(options)
+}
+
+fn parse_gif_create(entries: &[String]) -> Result<metra::GifCreateOptions, String> {
+    let mut options = metra::GifCreateOptions::new();
+    for comment in entries {
+        options.push_comment(comment);
     }
     Ok(options)
 }
