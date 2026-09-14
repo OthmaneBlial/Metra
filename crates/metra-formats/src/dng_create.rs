@@ -37,6 +37,7 @@ impl DngCreateOptions {
 pub fn create_dng_to_vec(options: &DngCreateOptions, limits: ParseLimits) -> Result<Vec<u8>> {
     let tiff_options = TiffCreateOptions {
         entries: options.entries.clone(),
+        gps: None,
     };
     let mut output = create_tiff_to_vec(&tiff_options, limits)?;
     let next_ifd_offset = 8_usize

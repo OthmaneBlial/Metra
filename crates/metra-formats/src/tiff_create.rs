@@ -9,6 +9,8 @@ use crate::atomic::atomic_replace;
 use crate::tiff::read_tiff;
 
 const BASE_ENTRY_COUNT: usize = 9;
+const GPS_ENTRY_COUNT: usize = 5;
+const GPS_IFD_BYTES: usize = 2 + GPS_ENTRY_COUNT * 12 + 4 + 48;
 
 /// One bounded ASCII value to place in the initial IFD of a new TIFF.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,6 +29,23 @@ impl TiffCreateEntry {
     }
 }
 
+/// Bounded decimal coordinates to place in a new TIFF GPS IFD.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TiffGpsCreateOptions {
+    pub latitude: String,
+    pub longitude: String,
+}
+
+impl TiffGpsCreateOptions {
+    /// Create a GPS seed from decimal latitude and longitude values.
+    pub fn new(latitude: impl Into<String>, longitude: impl Into<String>) -> Self {
+        Self {
+            latitude: latitude.into(),
+            longitude: longitude.into(),
+        }
+    }
+}
+
 /// Options for creating a minimal, readable classic TIFF container.
 ///
 /// The generated file contains a valid 1x1 monochrome image and an IFD0 with
@@ -35,6 +54,7 @@ impl TiffCreateEntry {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TiffCreateOptions {
     pub entries: Vec<TiffCreateEntry>,
+    pub gps: Option<TiffGpsCreateOptions>,
 }
 
 impl TiffCreateOptions {
@@ -53,10 +73,25 @@ impl TiffCreateOptions {
     pub fn push_ascii(&mut self, key: impl Into<String>, value: impl Into<String>) {
         self.entries.push(TiffCreateEntry::ascii(key, value));
     }
+
+    /// Add a bounded GPS latitude/longitude pair to the new TIFF.
+    pub fn with_gps_coordinates(
+        mut self,
+        latitude: impl Into<String>,
+        longitude: impl Into<String>,
+    ) -> Self {
+        self.gps = Some(TiffGpsCreateOptions::new(latitude, longitude));
+        self
+    }
 }
 
 /// Create a minimal classic little-endian TIFF in memory.
 pub fn create_tiff_to_vec(options: &TiffCreateOptions, limits: ParseLimits) -> Result<Vec<u8>> {
+    let gps = options
+        .gps
+        .as_ref()
+        .map(|gps| encode_gps_coordinates(gps, limits))
+        .transpose()?;
     let mut entries = Vec::with_capacity(options.entries.len());
     for entry in &options.entries {
         let tag = ascii_tag_id(&entry.key).ok_or_else(|| MetraError::InvalidTag {
@@ -93,12 +128,13 @@ pub fn create_tiff_to_vec(options: &TiffCreateOptions, limits: ParseLimits) -> R
         entries.push((tag, entry.key.clone(), entry.value.clone()));
     }
 
-    let entry_count = BASE_ENTRY_COUNT.checked_add(entries.len()).ok_or_else(|| {
-        MetraError::ResourceLimitExceeded {
+    let entry_count = BASE_ENTRY_COUNT
+        .checked_add(entries.len())
+        .and_then(|count| count.checked_add(usize::from(gps.is_some())))
+        .ok_or_else(|| MetraError::ResourceLimitExceeded {
             resource: "TIFF creation IFD entries".to_owned(),
             limit: limits.max_ifd_entries,
-        }
-    })?;
+        })?;
     if entry_count > limits.max_ifd_entries || entry_count > u16::MAX as usize {
         return Err(MetraError::ResourceLimitExceeded {
             resource: "TIFF creation IFD entries".to_owned(),
@@ -114,13 +150,19 @@ pub fn create_tiff_to_vec(options: &TiffCreateOptions, limits: ParseLimits) -> R
             resource: "TIFF creation metadata".to_owned(),
             limit: limits.max_metadata_bytes,
         })?;
-    let data_offset =
+    let ifd_end =
         8usize
             .checked_add(ifd_bytes)
             .ok_or_else(|| MetraError::ResourceLimitExceeded {
                 resource: "TIFF creation metadata".to_owned(),
                 limit: limits.max_metadata_bytes,
             })?;
+    let data_offset = ifd_end
+        .checked_add(usize::from(gps.is_some()).saturating_mul(GPS_IFD_BYTES))
+        .ok_or_else(|| MetraError::ResourceLimitExceeded {
+            resource: "TIFF creation metadata".to_owned(),
+            limit: limits.max_metadata_bytes,
+        })?;
     let ascii_bytes = entries.iter().try_fold(0usize, |total, (_, _, value)| {
         total
             .checked_add(value.len() + 1)
@@ -165,6 +207,9 @@ pub fn create_tiff_to_vec(options: &TiffCreateOptions, limits: ParseLimits) -> R
     push_short_entry(&mut output, 0x0115, 1); // SamplesPerPixel
     push_long_entry(&mut output, 0x0116, 1); // RowsPerStrip
     push_long_entry(&mut output, 0x0117, 1); // StripByteCounts
+    if gps.is_some() {
+        push_long_entry(&mut output, 0x8825, ifd_end as u32); // GPSInfoIFDPointer
+    }
 
     let mut next_data_offset = data_offset;
     for (tag, _, value) in &entries {
@@ -183,6 +228,11 @@ pub fn create_tiff_to_vec(options: &TiffCreateOptions, limits: ParseLimits) -> R
         next_data_offset += length;
     }
     output.extend_from_slice(&0u32.to_le_bytes());
+
+    if let Some(gps) = &gps {
+        write_gps_ifd(&mut output, ifd_end, gps);
+    }
+
     for (_, _, value) in &entries {
         output.extend_from_slice(value.as_bytes());
         output.push(0);
@@ -280,6 +330,151 @@ fn push_long_entry(output: &mut Vec<u8>, tag: u16, value: u32) {
     output.extend_from_slice(&value.to_le_bytes());
 }
 
+#[derive(Debug)]
+struct EncodedGpsCoordinates {
+    latitude_reference: u8,
+    longitude_reference: u8,
+    rationals: Vec<u8>,
+}
+
+fn encode_gps_coordinates(
+    options: &TiffGpsCreateOptions,
+    limits: ParseLimits,
+) -> Result<EncodedGpsCoordinates> {
+    if limits.max_value_bytes < 48 {
+        return Err(MetraError::ResourceLimitExceeded {
+            resource: "TIFF GPS creation values".to_owned(),
+            limit: limits.max_value_bytes,
+        });
+    }
+    let latitude = parse_coordinate(&options.latitude, 90.0, b'N', b'S', "latitude")?;
+    let longitude = parse_coordinate(&options.longitude, 180.0, b'E', b'W', "longitude")?;
+    let mut rationals = Vec::with_capacity(48);
+    for (numerator, denominator) in latitude.parts.into_iter().chain(longitude.parts) {
+        rationals.extend_from_slice(&numerator.to_le_bytes());
+        rationals.extend_from_slice(&denominator.to_le_bytes());
+    }
+    Ok(EncodedGpsCoordinates {
+        latitude_reference: latitude.reference,
+        longitude_reference: longitude.reference,
+        rationals,
+    })
+}
+
+#[derive(Debug)]
+struct EncodedCoordinate {
+    reference: u8,
+    parts: [(u32, u32); 3],
+}
+
+fn parse_coordinate(
+    raw: &str,
+    maximum: f64,
+    positive_reference: u8,
+    negative_reference: u8,
+    label: &str,
+) -> Result<EncodedCoordinate> {
+    let value = raw.parse::<f64>().map_err(|_| MetraError::InvalidTag {
+        context: "TIFF GPS creation".to_owned(),
+        message: format!("{label} {raw:?} is not a decimal number"),
+    })?;
+    if !value.is_finite() || value.abs() > maximum {
+        return Err(MetraError::InvalidTag {
+            context: "TIFF GPS creation".to_owned(),
+            message: format!("{label} must be finite and within -{maximum}..={maximum}"),
+        });
+    }
+    let absolute = value.abs();
+    let degrees = absolute.floor();
+    let minute_value = (absolute - degrees) * 60.0;
+    let mut minutes = minute_value.floor();
+    let mut seconds = (minute_value - minutes) * 60.0;
+    if seconds >= 60.0 {
+        seconds = 0.0;
+        minutes += 1.0;
+    }
+    let mut degrees = degrees;
+    if minutes >= 60.0 {
+        minutes = 0.0;
+        degrees += 1.0;
+    }
+    if degrees > maximum {
+        return Err(MetraError::InvalidTag {
+            context: "TIFF GPS creation".to_owned(),
+            message: format!("{label} rounds outside the supported range"),
+        });
+    }
+    Ok(EncodedCoordinate {
+        reference: if value.is_sign_negative() && value != 0.0 {
+            negative_reference
+        } else {
+            positive_reference
+        },
+        parts: [
+            bounded_rational(degrees, label)?,
+            bounded_rational(minutes, label)?,
+            bounded_rational(seconds, label)?,
+        ],
+    })
+}
+
+fn bounded_rational(value: f64, label: &str) -> Result<(u32, u32)> {
+    if !value.is_finite() || value < 0.0 || value > f64::from(u32::MAX) {
+        return Err(MetraError::InvalidTag {
+            context: "TIFF GPS creation".to_owned(),
+            message: format!("{label} component is outside the rational range"),
+        });
+    }
+    if value == 0.0 {
+        return Ok((0, 1));
+    }
+    let denominator_limit = (f64::from(u32::MAX) / value).floor().min(1_000_000.0);
+    let denominator = denominator_limit.max(1.0) as u32;
+    let numerator = (value * f64::from(denominator)).round();
+    if !numerator.is_finite() || numerator > f64::from(u32::MAX) {
+        return Err(MetraError::InvalidTag {
+            context: "TIFF GPS creation".to_owned(),
+            message: format!("{label} component cannot be represented safely"),
+        });
+    }
+    Ok((numerator as u32, denominator))
+}
+
+fn write_gps_ifd(output: &mut Vec<u8>, ifd_offset: usize, gps: &EncodedGpsCoordinates) {
+    debug_assert_eq!(output.len(), ifd_offset);
+    let values_offset = ifd_offset + 2 + GPS_ENTRY_COUNT * 12 + 4;
+    output.extend_from_slice(&(GPS_ENTRY_COUNT as u16).to_le_bytes());
+    push_gps_byte_entry(output, 0x0000, [2, 3, 0, 0]);
+    push_gps_ascii_reference(output, 0x0001, gps.latitude_reference);
+    push_gps_rational_entry(output, 0x0002, values_offset as u32);
+    push_gps_ascii_reference(output, 0x0003, gps.longitude_reference);
+    push_gps_rational_entry(output, 0x0004, (values_offset + 24) as u32);
+    output.extend_from_slice(&0_u32.to_le_bytes());
+    output.extend_from_slice(&gps.rationals);
+    debug_assert_eq!(output.len(), ifd_offset + GPS_IFD_BYTES);
+}
+
+fn push_gps_byte_entry(output: &mut Vec<u8>, tag: u16, value: [u8; 4]) {
+    output.extend_from_slice(&tag.to_le_bytes());
+    output.extend_from_slice(&1_u16.to_le_bytes());
+    output.extend_from_slice(&4_u32.to_le_bytes());
+    output.extend_from_slice(&value);
+}
+
+fn push_gps_ascii_reference(output: &mut Vec<u8>, tag: u16, reference: u8) {
+    output.extend_from_slice(&tag.to_le_bytes());
+    output.extend_from_slice(&2_u16.to_le_bytes());
+    output.extend_from_slice(&2_u32.to_le_bytes());
+    output.extend_from_slice(&[reference, 0, 0, 0]);
+}
+
+fn push_gps_rational_entry(output: &mut Vec<u8>, tag: u16, value_offset: u32) {
+    output.extend_from_slice(&tag.to_le_bytes());
+    output.extend_from_slice(&5_u16.to_le_bytes());
+    output.extend_from_slice(&3_u32.to_le_bytes());
+    output.extend_from_slice(&value_offset.to_le_bytes());
+}
+
 fn temporary_path(path: &Path) -> Result<PathBuf> {
     let filename = path
         .file_name()
@@ -336,6 +531,60 @@ mod tests {
             metadata.find("EXIF:ImageWidth").unwrap().display_value(),
             "1"
         );
+    }
+
+    #[test]
+    fn creates_readable_tiff_with_gps_coordinates() {
+        let options = TiffCreateOptions::new().with_gps_coordinates("-48.8566", "2.3522");
+        let bytes = create_tiff_to_vec(&options, ParseLimits::default())
+            .expect("GPS TIFF creation should succeed");
+        let metadata = read_tiff(
+            &mut std::io::Cursor::new(bytes.clone()),
+            FileInfo::new(
+                "created-gps.tif".into(),
+                bytes.len() as u64,
+                FileFormat::Tiff,
+            ),
+            ParseLimits::default(),
+        )
+        .expect("created GPS TIFF should remain readable");
+
+        let latitude = metadata
+            .find("GPS:LatitudeDecimal")
+            .expect("derived latitude should be present")
+            .display_value()
+            .parse::<f64>()
+            .expect("derived latitude should be numeric");
+        let longitude = metadata
+            .find("GPS:LongitudeDecimal")
+            .expect("derived longitude should be present")
+            .display_value()
+            .parse::<f64>()
+            .expect("derived longitude should be numeric");
+        assert!((latitude + 48.8566).abs() < 0.000001);
+        assert!((longitude - 2.3522).abs() < 0.000001);
+        assert_eq!(
+            metadata.find("GPS:GPSLatitudeRef").unwrap().display_value(),
+            "S"
+        );
+        assert_eq!(
+            metadata
+                .find("GPS:GPSLongitudeRef")
+                .unwrap()
+                .display_value(),
+            "E"
+        );
+    }
+
+    #[test]
+    fn rejects_out_of_range_gps_coordinates() {
+        for (latitude, longitude) in [("90.0001", "0"), ("NaN", "0"), ("0", "180.0001")] {
+            let options = TiffCreateOptions::new().with_gps_coordinates(latitude, longitude);
+            assert!(matches!(
+                create_tiff_to_vec(&options, ParseLimits::default()),
+                Err(MetraError::InvalidTag { .. })
+            ));
+        }
     }
 
     #[test]

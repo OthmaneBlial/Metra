@@ -1589,6 +1589,8 @@ fn parse_matroska_create(
 
 fn parse_tiff_create(entries: &[String]) -> Result<metra::TiffCreateOptions, String> {
     let mut options = metra::TiffCreateOptions::new();
+    let mut latitude = None;
+    let mut longitude = None;
     for assignment in entries {
         let (key, value) = assignment
             .split_once('=')
@@ -1596,9 +1598,45 @@ fn parse_tiff_create(entries: &[String]) -> Result<metra::TiffCreateOptions, Str
         if key.is_empty() {
             return Err("--create-tiff requires a non-empty KEY".to_owned());
         }
-        options.push_ascii(key, value);
+        match tiff_create_gps_coordinate_key(key) {
+            Some("Latitude") => {
+                if latitude.replace(value).is_some() {
+                    return Err("--create-tiff accepts only one GPS latitude".to_owned());
+                }
+            }
+            Some("Longitude") => {
+                if longitude.replace(value).is_some() {
+                    return Err("--create-tiff accepts only one GPS longitude".to_owned());
+                }
+            }
+            None => options.push_ascii(key, value),
+            _ => unreachable!("GPS creation key is normalized above"),
+        }
+    }
+    match (latitude, longitude) {
+        (Some(latitude), Some(longitude)) => {
+            options = options.with_gps_coordinates(latitude, longitude);
+        }
+        (Some(_), None) | (None, Some(_)) => {
+            return Err(
+                "--create-tiff GPS creation requires both Latitude and Longitude".to_owned(),
+            );
+        }
+        (None, None) => {}
     }
     Ok(options)
+}
+
+fn tiff_create_gps_coordinate_key(key: &str) -> Option<&'static str> {
+    match key {
+        "GPS:Latitude" | "GPS:GPSLatitude" | "TIFF:GPS:Latitude" | "TIFF:GPS:GPSLatitude" => {
+            Some("Latitude")
+        }
+        "GPS:Longitude" | "GPS:GPSLongitude" | "TIFF:GPS:Longitude" | "TIFF:GPS:GPSLongitude" => {
+            Some("Longitude")
+        }
+        _ => None,
+    }
 }
 
 fn parse_dng_create(entries: &[String]) -> Result<metra::DngCreateOptions, String> {

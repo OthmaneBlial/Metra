@@ -1341,6 +1341,69 @@ fn cli_can_create_minimal_tiff_seed_without_overwrite() {
 }
 
 #[test]
+fn cli_can_create_tiff_seed_with_gps_coordinates() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.path.join("created-gps.tif");
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--create-tiff",
+            "GPS:Latitude=-48.8566",
+            "--create-tiff",
+            "GPS:Longitude=2.3522",
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let metadata = metra::read(&path).expect("created GPS TIFF should remain readable");
+    let latitude = metadata
+        .find("GPS:LatitudeDecimal")
+        .expect("derived latitude should be present")
+        .display_value()
+        .parse::<f64>()
+        .expect("derived latitude should be numeric");
+    let longitude = metadata
+        .find("GPS:LongitudeDecimal")
+        .expect("derived longitude should be present")
+        .display_value()
+        .parse::<f64>()
+        .expect("derived longitude should be numeric");
+    assert!((latitude + 48.8566).abs() < 0.000001);
+    assert!((longitude - 2.3522).abs() < 0.000001);
+    assert_eq!(
+        metadata.find("GPS:GPSLatitudeRef").unwrap().display_value(),
+        "S"
+    );
+    assert_eq!(
+        metadata
+            .find("GPS:GPSLongitudeRef")
+            .unwrap()
+            .display_value(),
+        "E"
+    );
+}
+
+#[test]
+fn cli_rejects_partial_tiff_gps_coordinates() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.path.join("incomplete-gps.tif");
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--create-tiff",
+            "GPS:Latitude=48.8566",
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("requires both Latitude and Longitude")
+    );
+}
+
+#[test]
 fn cli_can_create_minimal_bigtiff_seed_without_overwrite() {
     let directory = TemporaryDirectory::new();
     let path = directory.path.join("created.btf");

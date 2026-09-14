@@ -16,6 +16,12 @@ const BASE_ENTRY_COUNT: usize = 9;
 /// The seed contains the standard image directory plus bounded ASCII EXIF
 /// fields. It is intended for metadata workflows, not general image authoring.
 pub fn create_bigtiff_to_vec(options: &TiffCreateOptions, limits: ParseLimits) -> Result<Vec<u8>> {
+    if options.gps.is_some() {
+        return Err(MetraError::InvalidTag {
+            context: "BigTIFF creation".to_owned(),
+            message: "GPS creation is currently supported only for classic TIFF".to_owned(),
+        });
+    }
     let entries = collect_ascii_entries(&options.entries, limits)?;
     let entry_count = BASE_ENTRY_COUNT.checked_add(entries.len()).ok_or_else(|| {
         MetraError::ResourceLimitExceeded {
@@ -354,6 +360,18 @@ mod tests {
             metadata.find("EXIF:ImageWidth").unwrap().display_value(),
             "1"
         );
+    }
+
+    #[test]
+    fn rejects_gps_creation_until_bigtiff_layout_is_supported() {
+        let options = TiffCreateOptions::new().with_gps_coordinates("48.8566", "2.3522");
+        let error = create_bigtiff_to_vec(&options, ParseLimits::default())
+            .expect_err("BigTIFF GPS creation should remain explicitly bounded");
+        assert!(matches!(
+            error,
+            MetraError::InvalidTag { message, .. }
+                if message.contains("only for classic TIFF")
+        ));
     }
 
     #[test]

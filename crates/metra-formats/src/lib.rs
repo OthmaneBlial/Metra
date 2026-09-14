@@ -139,7 +139,9 @@ pub use svg::read_svg;
 pub use svg_create::{SvgCreateOptions, create_svg_path, create_svg_to_vec};
 pub use svg_writer::{SvgEdit, rewrite_svg, rewrite_svg_path, rewrite_svg_to_vec};
 pub use tiff::read_tiff;
-pub use tiff_create::{TiffCreateEntry, TiffCreateOptions, create_tiff_path, create_tiff_to_vec};
+pub use tiff_create::{
+    TiffCreateEntry, TiffCreateOptions, TiffGpsCreateOptions, create_tiff_path, create_tiff_to_vec,
+};
 pub use tiff_writer::{TiffEdit, rewrite_tiff, rewrite_tiff_path, rewrite_tiff_to_vec};
 pub use wav::read_wav;
 pub use wav_create::{WavCreateEntry, WavCreateOptions, create_wav_path, create_wav_to_vec};
