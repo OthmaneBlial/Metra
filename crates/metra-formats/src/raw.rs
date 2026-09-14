@@ -63,12 +63,7 @@ pub fn read_raw<R: Read + Seek>(
             "Canon CIFF RAW container identified; CIFF metadata and image payload are not decoded",
         ))
     } else if prefix.starts_with(MRW_SIGNATURE) {
-        Ok(read_partial_container(
-            file_info,
-            "MRW",
-            "raw-mrw-partial",
-            "Minolta MRW container identified; MRW metadata and image payload are not decoded",
-        ))
+        crate::mrw::read_mrw(reader, file_info, limits)
     } else if prefix.starts_with(X3F_SIGNATURE) {
         Ok(read_partial_container(
             file_info,

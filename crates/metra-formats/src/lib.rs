@@ -43,6 +43,7 @@ mod makers;
 mod matroska;
 mod matroska_create;
 mod matroska_writer;
+mod mrw;
 mod ogg;
 mod ogg_create;
 mod ogg_writer;
@@ -114,6 +115,7 @@ pub use matroska_create::{
 pub use matroska_writer::{
     MatroskaEdit, rewrite_matroska, rewrite_matroska_path, rewrite_matroska_to_vec,
 };
+pub use mrw::read_mrw;
 pub use ogg::read_ogg;
 pub use ogg_create::{OggCreateEntry, OggCreateOptions, create_ogg_path, create_ogg_to_vec};
 pub use ogg_writer::{OggEdit, rewrite_ogg, rewrite_ogg_path, rewrite_ogg_to_vec};
