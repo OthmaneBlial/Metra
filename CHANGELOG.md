@@ -12,6 +12,10 @@ Initial read-first foundation with narrow validated rewrites:
   directory, UTF-16 PROP properties, and IMAG/IMA2 descriptors, with checked
   section ranges, generic RAW dispatch, and CLI JSON coverage; X3F image
   payloads remain untouched and X3F writes remain unsupported;
+- added bounded Canon CIFF/CRW decoding for the root directory, common ASCII
+  Make/Model and dimension entries, relative value checks, preview descriptors,
+  generic RAW dispatch, and CLI JSON coverage; CRW image payloads remain
+  untouched and CRW writes remain unsupported;
 - added bounded RAF header and Fuji-directory decoding with firmware, preview
   and directory offsets, selected raw-image/zoom fields, raw-value retention,
   range/entry/resource-limit checks, truncated-structure warnings, generic
