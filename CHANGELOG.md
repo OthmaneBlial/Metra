@@ -12,6 +12,9 @@ Initial read-first foundation with narrow validated rewrites:
   replacement, and CLI `--set`/`--delete`/`--copy` coverage;
 - extended standalone ICC text replacement to the first localized `mluc`
   record with bounded UTF-16 encoding and fixed profile layout;
+- added a bounded 1x1 uncompressed-video AVI seed creator with one DIB frame,
+  minimal index/header structures, `LIST/INFO` fields, output revalidation, and
+  CLI `--create-avi KEY=VALUE` coverage;
 - added standalone XMP packet creation with bounded XML validation, atomic
   no-overwrite path creation, resource-limit checks, and CLI
   `--create-xmp PACKET` coverage;

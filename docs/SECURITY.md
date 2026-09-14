@@ -155,6 +155,12 @@ values are non-empty printable ASCII without NUL bytes, duplicate tags and
 resource-limit violations are rejected, and path creation uses a
 same-directory temporary file with no-overwrite and cleanup guarantees.
 
+AVI creation emits only a bounded 1x1 uncompressed-video seed with fixed stream,
+bitmap, frame, index, and RIFF structures. INFO names and values are
+allowlisted and size-checked; the output is re-read through the AVI parser
+before atomic no-overwrite creation. It does not accept arbitrary media frames
+or general chunk structures.
+
 FLAC creation emits only a metadata-only stream with fixed `STREAMINFO` and a
 bounded Vorbis Comment block. Keys are printable ASCII without `=` or NUL,
 values are bounded UTF-8 without NUL, duplicate keys and oversized blocks are

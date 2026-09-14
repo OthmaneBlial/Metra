@@ -193,6 +193,10 @@ The standalone ICC writer accepts existing `Description`, `Copyright`,
 `desc`, `text`, or `mluc` storage. Replacements fit the existing payload;
 `mluc` updates only the first locale record, and deletion zero-fills the whole
 payload. Profile tag-table restructuring remains deferred.
+AVI creation exposes `AviCreateOptions`, `create_avi_to_vec`, `create_avi_path`,
+and `--create-avi KEY=VALUE`. It emits one bounded 1x1 24-bit DIB frame,
+minimal stream/index headers, and optional `LIST/INFO` text; general video
+encoding and arbitrary AVI chunk creation remain outside this seam.
 The AVI writer accepts existing known `LIST/INFO` string chunks, writes only
 within their allocated payloads, preserves a NUL terminator when space exists,
 and never changes RIFF chunk sizes or media data. Delete operations zero-fill
