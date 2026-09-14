@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 #[derive(Debug, serde::Serialize)]
 struct InspectionSummary {
@@ -128,6 +129,9 @@ fn checked_in_corpus_matches_manifest() {
             let size = object["size_bytes"]
                 .as_u64()
                 .expect("corpus manifest entries should have sizes");
+            let expected_sha256 = object["sha256"]
+                .as_str()
+                .expect("corpus manifest entries should have SHA-256 checksums");
             let file = checked_in_corpus_root().join(name);
             assert!(
                 file.is_file(),
@@ -140,6 +144,12 @@ fn checked_in_corpus_matches_manifest() {
                     .len(),
                 size,
                 "manifest size drift for {name}"
+            );
+            let digest = Sha256::digest(fs::read(&file).expect("manifest file should be readable"));
+            let actual_sha256 = format!("{digest:x}");
+            assert_eq!(
+                actual_sha256, expected_sha256,
+                "manifest checksum drift for {name}"
             );
             name.to_owned()
         })
