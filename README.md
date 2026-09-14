@@ -27,7 +27,7 @@ Implemented today:
 | Area | Current behavior |
 | --- | --- |
 | JPEG | Magic-byte detection, segment walking, JFIF properties, JPEG comments, EXIF APP1, structured XMP, reassembled typed ICC profiles with common table values, IPTC resources from Photoshop blocks, bounded GoPro APP6 `DEVC`/`STRM` fields, and minimal metadata-container seed creation |
-| TIFF/EXIF | Little- and big-endian classic TIFF and BigTIFF headers, 64-bit IFD counts/offsets, nested EXIF/GPS/Interop directories, bounded multiple `SubIFD` offsets, chained IFD0/IFD1/IFD2 thumbnail directories, common image/exposure/lens tag names, rational values, typed EXIF date-time and GPS date/time values, ASCII/Unicode `UserComment`, common MakerNote container detection with bounded Nikon Type 1/2, Canon, Fujifilm, Panasonic, Olympus, legacy Sony, and Apple IFD fields, bounded Apple runtime binary-plist structures, Samsung STMN header/preview fields and DJI IFD fields, GoPro family detection, retained unknown MakerNote values, unknown tags, thumbnail range checks, and validated decimal GPS latitude/longitude, altitude, direction, time, and speed helpers, safe bounded ASCII deletion, and minimal 1×1 classic TIFF and BigTIFF creation with EXIF ASCII seeds |
+| TIFF/EXIF | Little- and big-endian classic TIFF and BigTIFF headers, 64-bit IFD counts/offsets, nested EXIF/GPS/Interop directories, bounded multiple `SubIFD` offsets, chained IFD0/IFD1/IFD2 thumbnail directories, common image/exposure/lens tag names, rational values, typed EXIF date-time and GPS date/time values, ASCII/Unicode `UserComment`, common MakerNote container detection with bounded Nikon Type 1/2, Canon, Fujifilm, Panasonic, Olympus, legacy Sony, and Apple IFD fields, bounded Apple runtime binary-plist structures, Samsung STMN header/preview fields and DJI IFD fields, GoPro family detection, retained unknown MakerNote values, unknown tags, thumbnail range checks, and validated decimal GPS latitude/longitude, altitude, direction, time, and speed helpers, safe bounded ASCII deletion, and minimal 1×1 classic TIFF and BigTIFF creation with EXIF ASCII seeds; classic TIFF seeds may also include a validated GPS latitude/longitude pair |
 | PNG | Chunk walking, IHDR dimensions and encoding parameters, CRC warnings, tEXt/zTXt/iTXt including bounded zlib text, eXIf, tIME, pHYs, structured XMP, bounded ICC profile headers from `iCCP`, and minimal 1×1 RGBA creation with bounded `tEXt` seeds |
 | WebP | RIFF chunk walking, VP8X/VP8/VP8L dimensions, EXIF, structured XMP, typed ICC profiles, and minimal 1x1 lossless seed creation with bounded XMP |
 | GIF | GIF87a/GIF89a headers, logical-screen dimensions, comments, bounded extension validation, and minimal 1x1 creation with comment extensions |
@@ -125,9 +125,11 @@ canonical-key surface without requiring callers to depend on a format-specific
 writer enum. They dispatch only to the validated writers available for the
 detected format; typed numeric/binary mutation and creation for other formats
 remain deferred. `TiffCreateOptions` and `create_tiff_to_vec`/
-`create_tiff_path` provide bounded classic TIFF metadata-seed creation;
+`create_tiff_path` provide bounded classic TIFF metadata-seed creation, including
+an optional decimal GPS latitude/longitude pair encoded into a new GPS IFD;
 `create_bigtiff_to_vec`/`create_bigtiff_path` provide the corresponding
-BigTIFF seed path;
+BigTIFF seed path for EXIF ASCII fields; GPS creation is not yet supported in
+BigTIFF;
 the public `CreateRequest` enum with `create_to_vec`/`create_path` provides a
 typed generic dispatch over all currently available creation seams;
 `JpegCreateOptions` and `create_jpeg_to_vec`/`create_jpeg_path` provide a
@@ -205,6 +207,7 @@ cargo run -- --set 'JPEG:Comment=reviewed' photo.jpg
 cargo run -- --delete JPEG:Comment photo.jpg
 cargo run -- --copy JPEG:Comment=source.jpg target.jpg
 cargo run -- --create-tiff 'EXIF:Make=Metra' --create-tiff 'EXIF:Artist=Othmane' new.tif
+cargo run -- --create-tiff 'GPS:Latitude=-48.8566' --create-tiff 'GPS:Longitude=2.3522' gps.tif
 cargo run -- --create-bigtiff 'EXIF:Make=Metra' --create-bigtiff 'Software=BigTIFF' new.btf
 cargo run -- --create-dng 'DNG:Make=Metra' --create-dng 'Artist=Othmane' new.dng
 cargo run -- --create-jpeg 'Comment=Metra' --create-jpeg 'XMP=<x:xmpmeta><rdf:RDF/></x:xmpmeta>' new.jpg
@@ -496,7 +499,9 @@ bornés avec validation de sortie et refus d’écrasement : AVI émet une frame
 `ftyp`/`moov` metadata-only pour MP4/MOV/M4A ou `ftyp`/`meta` dimensionné pour
 HEIF/AVIF, DNG un conteneur TIFF-like 1x1 avec `DNGVersion` et champs EXIF
 ASCII, et Matroska/WebM un `Segment` EBML metadata-only avec `Info`/`SimpleTag` ;
-BigTIFF utilise un IFD à offsets 64 bits ;
+le seed TIFF classique accepte aussi une paire GPS décimale encodée en DMS,
+tandis que BigTIFF utilise un IFD à offsets 64 bits et reste ASCII-only pour
+la création GPS ;
 l’encodage vidéo général, les tracks/samples/item
 locations/clusters, les calques/PSB et la création arbitraire de chunks restent
 planifiés.

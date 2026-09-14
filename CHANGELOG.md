@@ -15,6 +15,9 @@ Initial read-first foundation with narrow validated rewrites:
   direction, speed, timestamp, and date aliases;
 - added bounded `GPS:*` deletion through the public edit API and CLI, preserving
   unknown or incomplete GPS structures and refusing empty wildcard targets;
+- added bounded classic TIFF seed creation with decimal GPS latitude/longitude,
+  DMS rational encoding, coordinate-range validation, CLI coverage, and an
+  explicit BigTIFF rejection until its GPS layout is supported;
 - added bounded TIFF GPS latitude/longitude decimal rewrites, reference-field
   updates, zero-fill deletion tombstones, generic API aliases, CLI set/delete/
   copy support, and round-trip coverage for positive and negative coordinates;

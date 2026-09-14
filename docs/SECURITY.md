@@ -161,8 +161,12 @@ round-trip and recovery tests exist.
 The TIFF creation API is bounded separately from read-modify-write: it accepts
 only an allowlisted set of EXIF ASCII tags, rejects NUL bytes and duplicates,
 enforces metadata/value limits, emits a fixed 1x1 seed image, and validates the
-result through the TIFF reader before returning it. Its path helper refuses an
-existing destination and removes its temporary file on failure.
+result through the TIFF reader before returning it. An optional classic-TIFF
+GPS coordinate pair accepts only finite decimal latitude/longitude values within
+their legal ranges, converts them to bounded DMS rationals, and requires both
+coordinates before emitting a new GPS IFD. BigTIFF creation rejects this option
+until its equivalent layout is implemented. The path helper refuses an existing
+destination and removes its temporary file on failure.
 
 The BigTIFF creation API applies the same allowlist, duplicate/NUL checks,
 resource limits, reader revalidation, temporary-file cleanup, and no-overwrite
