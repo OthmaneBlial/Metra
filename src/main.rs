@@ -146,6 +146,39 @@ struct Arguments {
     )]
     create_jpeg: Vec<String>,
 
+    /// Create a minimal PDF with bounded Info dictionary fields.
+    #[arg(
+        long = "create-pdf",
+        value_name = "KEY=VALUE",
+        action = clap::ArgAction::Append,
+        conflicts_with_all = [
+            "set",
+            "delete",
+            "copy",
+            "create_tiff",
+            "create_jpeg",
+            "create_png",
+            "create_xmp",
+            "create_flac",
+            "create_gif",
+            "create_wav",
+            "create_icc",
+            "create_mp3",
+            "create_ogg",
+            "create_svg",
+            "create_webp_xmp",
+            "json",
+            "jsonl",
+            "csv",
+            "toml",
+            "yaml",
+            "tag",
+            "validate",
+            "compare"
+        ]
+    )]
+    create_pdf: Vec<String>,
+
     /// Create a new minimal PNG with one or more tEXt metadata fields.
     #[arg(
         long = "create-png",
@@ -502,6 +535,29 @@ fn main() -> ExitCode {
             }
         };
         return match metra::create_jpeg_path(&arguments.files[0], &options, limits) {
+            Ok(()) => {
+                println!("created: {}", arguments.files[0].display());
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", arguments.files[0].display());
+                ExitCode::from(1)
+            }
+        };
+    }
+    if !arguments.create_pdf.is_empty() {
+        if arguments.files.len() != 1 {
+            eprintln!("metra: --create-pdf requires exactly one destination path");
+            return ExitCode::from(2);
+        }
+        let options = match parse_pdf_create(&arguments.create_pdf) {
+            Ok(options) => options,
+            Err(message) => {
+                eprintln!("metra: {message}");
+                return ExitCode::from(2);
+            }
+        };
+        return match metra::create_pdf_path(&arguments.files[0], &options, limits) {
             Ok(()) => {
                 println!("created: {}", arguments.files[0].display());
                 ExitCode::SUCCESS
@@ -944,6 +1000,21 @@ fn parse_jpeg_create(entries: &[String]) -> Result<metra::JpegCreateOptions, Str
             }
             _ => return Err(format!("unsupported --create-jpeg field {key}")),
         }
+    }
+    Ok(options)
+}
+
+fn parse_pdf_create(entries: &[String]) -> Result<metra::PdfCreateOptions, String> {
+    let mut options = metra::PdfCreateOptions::new();
+    for assignment in entries {
+        let (key, value) = assignment
+            .split_once('=')
+            .ok_or_else(|| "--create-pdf expects KEY=VALUE".to_owned())?;
+        let key = key.strip_prefix("PDF:").unwrap_or(key);
+        if key.is_empty() {
+            return Err("--create-pdf requires a non-empty KEY".to_owned());
+        }
+        options.push_info(key, value);
     }
     Ok(options)
 }
