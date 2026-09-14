@@ -36,6 +36,7 @@ mod makers;
 mod matroska;
 mod matroska_writer;
 mod ogg;
+mod ogg_create;
 mod ogg_writer;
 mod pdf;
 mod pdf_writer;
@@ -86,6 +87,7 @@ pub use matroska_writer::{
     MatroskaEdit, rewrite_matroska, rewrite_matroska_path, rewrite_matroska_to_vec,
 };
 pub use ogg::read_ogg;
+pub use ogg_create::{OggCreateEntry, OggCreateOptions, create_ogg_path, create_ogg_to_vec};
 pub use ogg_writer::{OggEdit, rewrite_ogg, rewrite_ogg_path, rewrite_ogg_to_vec};
 pub use pdf::read_pdf;
 pub use pdf_writer::{PdfEdit, rewrite_pdf, rewrite_pdf_path, rewrite_pdf_to_vec};

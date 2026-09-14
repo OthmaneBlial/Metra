@@ -246,7 +246,7 @@ fn page_crc(header: &[u8], lacing: &[u8], body: &[u8]) -> u32 {
     ogg_crc(&crc_input)
 }
 
-fn ogg_crc(bytes: &[u8]) -> u32 {
+pub(crate) fn ogg_crc(bytes: &[u8]) -> u32 {
     let mut crc = 0_u32;
     for byte in bytes {
         crc ^= u32::from(*byte) << 24;
