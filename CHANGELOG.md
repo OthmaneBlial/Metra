@@ -14,6 +14,8 @@ Initial read-first foundation with narrow validated rewrites:
   fixed-width encoding, duplicate validation, and output revalidation;
 - added generic Rust API and CLI `--copy` support for Broadcast Wave `bext`
   fields, including canonical conversion of typed date/time and integer values;
+- added bounded RF64/BW64 WAV detection and `ds64` 64-bit size resolution,
+  including safe handling of sentinel-sized `data` chunks without reading audio;
 - extended the opt-in differential JSON report with symmetric oracle-side key
   totals and oracle-only coverage, plus an opt-in strict gate for requiring all
   oracle keys to be matched;

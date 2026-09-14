@@ -56,6 +56,9 @@ before allocating or traversing metadata.
 - XML readers accept predefined and numeric character references only; custom
   entities and DOCTYPE declarations are rejected;
 - no parser invokes Perl, Python, Node, or another external metadata process.
+- RF64/BW64 `ds64` tables are bounded before materialization, and sentinel-sized
+  audio chunks are resolved from checked 64-bit entries without loading the
+  audio payload.
 
 ## Limits
 
