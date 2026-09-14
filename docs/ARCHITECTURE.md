@@ -366,8 +366,11 @@ normalizer is deliberately outside the parser and writers, so compatibility
 aliases cannot expand the format implementation surface or invoke an external
 oracle.
 
-The public `MetadataEdit` API is the common string-edit boundary for the
-currently supported narrow operations. `FormatHandler::write_metadata` gives
+The public `MetadataEdit` API is the common edit boundary for the currently
+supported narrow operations. `MetadataEdit::set_value` converts only validated
+strings, finite scalars, GPS date/time values, BWF datetimes, and UTF-8
+standalone XMP packets to the canonical text accepted by the selected writer.
+`FormatHandler::write_metadata` gives
 the same dispatch a stream-oriented contract, while `rewrite_metadata_path` keeps the
 safe writer contract by detecting the input first and delegating to the
 format-specific atomic implementation; `rewrite_metadata_to_vec` provides the
@@ -376,8 +379,9 @@ reads the source value before rewriting the target. For Broadcast Wave, the
 generic copy path converts typed `DateTimeOriginal`, `TimeReference`, and
 `BWFVersion` values to the canonical text accepted by the validated `bext`
 writer.
-Numeric/binary mutation, new metadata block creation, and deletion semantics
-that require layout changes remain intentionally outside this API. Creation
+General rational/array/binary mutation, new metadata block creation, and
+deletion semantics that require layout changes remain intentionally outside this
+API. Creation
 seams are intentionally format-specific: `TiffCreateOptions` can build a
 minimal classic 1x1 TIFF with optional EXIF ASCII fields and GPS coordinate
 fields, while `create_bigtiff_to_vec` and

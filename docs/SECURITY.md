@@ -167,6 +167,12 @@ only after validation. Failures remove the temporary file and leave the source
 untouched. Generic tag writes and other formats remain disabled until their
 round-trip and recovery tests exist.
 
+The typed `MetadataEdit::set_value` constructor accepts only finite scalar
+values and explicitly validated temporal forms that have a canonical text
+encoding in the selected writer. Arrays, structures, unsupported rationals,
+non-finite floats, and invalid UTF-8 packet bytes are rejected before any
+container rewrite begins.
+
 The TIFF creation API is bounded separately from read-modify-write: it accepts
 only an allowlisted set of EXIF ASCII tags, rejects NUL bytes and duplicates,
 enforces metadata/value limits, emits a fixed 1x1 seed image, and validates the

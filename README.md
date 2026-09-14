@@ -129,8 +129,10 @@ The public `MetadataEdit::set`/`delete` operations,
 `copy_metadata_path` helpers provide the same
 canonical-key surface without requiring callers to depend on a format-specific
 writer enum. They dispatch only to the validated writers available for the
-detected format; typed numeric/binary mutation and creation for other formats
-remain deferred. `TiffCreateOptions` and `create_tiff_to_vec`/
+detected format. `MetadataEdit::set_value` is a fallible typed constructor for
+canonical strings, finite scalar values, GPS date/time values, BWF datetimes,
+and UTF-8 standalone XMP packets; general rational/array/binary mutation and
+creation for other formats remain deferred. `TiffCreateOptions` and `create_tiff_to_vec`/
 `create_tiff_path` provide bounded classic TIFF metadata-seed creation, including
 an optional decimal GPS latitude/longitude pair plus altitude, image direction,
 speed, time-of-day, and date fields encoded into a new GPS IFD;

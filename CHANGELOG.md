@@ -15,6 +15,8 @@ Initial read-first foundation with narrow validated rewrites:
 - extended WAV seed creation with selectable bounded RIFF, RF64, and BW64
   containers through `WavCreateKind` and `--create-wav Container=...`, including
   `ds64` data/sample sizes and a validated sentinel-sized `data` chunk;
+- added the fallible `MetadataEdit::set_value` API for bounded canonical text,
+  finite scalars, GPS temporal values, BWF datetimes, and UTF-8 XMP packets;
 - added generic Rust API and CLI `--copy` support for Broadcast Wave `bext`
   fields, including canonical conversion of typed date/time and integer values;
 - added bounded RF64/BW64 WAV detection and `ds64` 64-bit size resolution,
