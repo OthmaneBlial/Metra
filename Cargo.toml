@@ -22,8 +22,8 @@ resolver = "3"
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
 ctrlc = "3.4"
-metra-core = { path = "crates/metra-core" }
-metra-formats = { path = "crates/metra-formats" }
+metra-core = { path = "crates/metra-core", version = "0.1.0" }
+metra-formats = { path = "crates/metra-formats", version = "0.1.0" }
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true

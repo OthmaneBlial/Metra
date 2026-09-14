@@ -8,7 +8,7 @@ description = "Metadata format detection and defensive Rust readers"
 
 [dependencies]
 flate2.workspace = true
-metra-core = { path = "../metra-core" }
+metra-core = { path = "../metra-core", version = "0.1.0" }
 quick-xml.workspace = true
 thiserror.workspace = true
 
