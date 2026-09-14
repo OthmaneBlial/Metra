@@ -144,5 +144,11 @@ payloads, frame counts, tag size, and the total output are checked before
 allocation; the result is re-read before an atomic no-overwrite path create.
 This seed is metadata-oriented and does not claim to encode playable audio.
 
+Ogg creation emits only a minimal Opus stream with bounded UTF-8 `OpusTags`
+comments and fixed `OpusHead` fields. Comment keys, values, packet size, page
+segmentation, page counts, CRCs, and total output are bounded before creation;
+the result is re-read before an atomic no-overwrite path create. The seed does
+not encode an Opus audio payload.
+
 Security reports should include the smallest reproducible input and the exact
 Metra version. Do not include private media or secrets in an issue.
