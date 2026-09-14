@@ -35,6 +35,10 @@ before allocating or traversing metadata.
 - MRW metadata-region boundaries, segment lengths/counts, PRD/WBG/RIF field
   reads, and embedded TTW TIFF regions are checked and budgeted before
   inspection; MRW image payloads are never loaded by the metadata reader;
+- X3F header versions, final directory pointers, entry counts, section ranges,
+  PROP UTF-16 offsets, and image-section descriptor reads are checked and
+  budgeted before inspection; X3F image payloads are never loaded by the
+  metadata reader;
 - typed EXIF/GPS date and time values are materialized only after calendar,
   clock, denominator, and fractional-range validation;
 - malformed embedded EXIF can be downgraded to a warning at the container

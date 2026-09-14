@@ -8,6 +8,10 @@ Initial read-first foundation with narrow validated rewrites:
   embedded TTW TIFF metadata, with exact raw-value retention, checked
   metadata-region/segment budgets, generic RAW dispatch, and CLI JSON coverage;
   MRW image payloads remain untouched and MRW writes remain unsupported;
+- added bounded Sigma/Foveon X3F decoding for the FOVb header, final SECd
+  directory, UTF-16 PROP properties, and IMAG/IMA2 descriptors, with checked
+  section ranges, generic RAW dispatch, and CLI JSON coverage; X3F image
+  payloads remain untouched and X3F writes remain unsupported;
 - added bounded RAF header and Fuji-directory decoding with firmware, preview
   and directory offsets, selected raw-image/zoom fields, raw-value retention,
   range/entry/resource-limit checks, truncated-structure warnings, generic

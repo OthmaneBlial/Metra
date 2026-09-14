@@ -101,8 +101,10 @@ header or path family, delegates DNG/CR2/NEF/ARW/ORF/RW2/PEF EXIF parsing to the
 TIFF reader, delegates CR3 to ISO-BMFF, and decodes the bounded RAF fixed header
 and Fuji directory without touching pixel payloads. MRW metadata segments are
 walked under checked boundaries; PRD, WBG, and RIF fields are exposed as typed
-values, while TTW delegates to the bounded TIFF reader. Legacy Canon CRW and
-Sigma X3F remain identified as partially decoded containers. RAW identity tags
+values, while TTW delegates to the bounded TIFF reader. X3F walks its FOVb
+header and final SECd directory, decodes bounded Unicode PROP properties, and
+exposes image-section descriptors without loading image bytes. Legacy Canon CRW
+remains identified as a partially decoded container. RAW identity tags
 keep the container family explicit without claiming proprietary sensor-payload
 support. DNG-specific IFD identifiers are catalogued in the `DNG` namespace
 while their bounded raw values remain attached to the parsed tags.
