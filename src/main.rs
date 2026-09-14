@@ -179,6 +179,40 @@ struct Arguments {
     )]
     create_pdf: Vec<String>,
 
+    /// Create a new minimal 1x1 AVI seed with one or more INFO fields.
+    #[arg(
+        long = "create-avi",
+        value_name = "KEY=VALUE",
+        action = clap::ArgAction::Append,
+        conflicts_with_all = [
+            "set",
+            "delete",
+            "copy",
+            "create_tiff",
+            "create_jpeg",
+            "create_pdf",
+            "create_png",
+            "create_xmp",
+            "create_wav",
+            "create_flac",
+            "create_gif",
+            "create_icc",
+            "create_mp3",
+            "create_ogg",
+            "create_svg",
+            "create_webp_xmp",
+            "json",
+            "jsonl",
+            "csv",
+            "toml",
+            "yaml",
+            "tag",
+            "validate",
+            "compare"
+        ]
+    )]
+    create_avi: Vec<String>,
+
     /// Create a new minimal PNG with one or more tEXt metadata fields.
     #[arg(
         long = "create-png",
@@ -558,6 +592,29 @@ fn main() -> ExitCode {
             }
         };
         return match metra::create_pdf_path(&arguments.files[0], &options, limits) {
+            Ok(()) => {
+                println!("created: {}", arguments.files[0].display());
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", arguments.files[0].display());
+                ExitCode::from(1)
+            }
+        };
+    }
+    if !arguments.create_avi.is_empty() {
+        if arguments.files.len() != 1 {
+            eprintln!("metra: --create-avi requires exactly one destination path");
+            return ExitCode::from(2);
+        }
+        let options = match parse_avi_create(&arguments.create_avi) {
+            Ok(options) => options,
+            Err(message) => {
+                eprintln!("metra: {message}");
+                return ExitCode::from(2);
+            }
+        };
+        return match metra::create_avi_path(&arguments.files[0], &options, limits) {
             Ok(()) => {
                 println!("created: {}", arguments.files[0].display());
                 ExitCode::SUCCESS
@@ -1079,6 +1136,21 @@ fn parse_icc_create(entries: &[String]) -> Result<metra::IccCreateOptions, Strin
             return Err("--create-icc requires a non-empty KEY".to_owned());
         }
         options.push_text(key, value);
+    }
+    Ok(options)
+}
+
+fn parse_avi_create(entries: &[String]) -> Result<metra::AviCreateOptions, String> {
+    let mut options = metra::AviCreateOptions::new();
+    for assignment in entries {
+        let (key, value) = assignment
+            .split_once('=')
+            .ok_or_else(|| "--create-avi expects KEY=VALUE".to_owned())?;
+        let key = key.strip_prefix("AVI:").unwrap_or(key);
+        if key.is_empty() {
+            return Err("--create-avi requires a non-empty KEY".to_owned());
+        }
+        options.push_info(key, value);
     }
     Ok(options)
 }

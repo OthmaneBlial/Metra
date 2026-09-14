@@ -1211,6 +1211,50 @@ fn cli_can_create_standalone_icc_without_overwrite() {
 }
 
 #[test]
+fn cli_can_create_minimal_avi_seed_without_overwrite() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.path.join("created.avi");
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--create-avi",
+            "AVI:Title=Metra",
+            "--create-avi",
+            "Software=Metra",
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let metadata = metra::read(&path).expect("created AVI should remain readable");
+    assert_eq!(metadata.file_info.format, metra::FileFormat::Avi);
+    assert_eq!(metadata.find("AVI:Title").unwrap().display_value(), "Metra");
+    assert_eq!(
+        metadata.find("AVI:Software").unwrap().display_value(),
+        "Metra"
+    );
+    assert_eq!(
+        metadata.find("AVI:ImageWidth").unwrap().display_value(),
+        "1"
+    );
+    assert_eq!(
+        metadata.find("AVI:ImageHeight").unwrap().display_value(),
+        "1"
+    );
+
+    let second = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--create-avi",
+            "Title=Other",
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(!second.status.success());
+    assert!(String::from_utf8_lossy(&second.stderr).contains("refusing to overwrite"));
+}
+
+#[test]
 fn cli_can_create_minimal_mp3_id3_seed_without_overwrite() {
     let directory = TemporaryDirectory::new();
     let path = directory.path.join("created.mp3");
