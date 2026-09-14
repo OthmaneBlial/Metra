@@ -13,6 +13,8 @@ Initial read-first foundation with narrow validated rewrites:
 - added structured minimal PDF creation with Catalog/Pages/Info objects,
   calculated xref offsets, bounded Unicode Info fields, output revalidation,
   no-overwrite atomic path creation, and CLI `--create-pdf KEY=VALUE` coverage;
+- added the public `CreateRequest` creation registry with `create_to_vec` and
+  `create_path` dispatch over the currently validated format-specific creators;
 - added an isolated legacy-query normalizer for bounded `-json`/`-jsonl` and
   common single-dash tag aliases, translating them to canonical Metra selectors
   while retaining the versioned Metra output schema;
