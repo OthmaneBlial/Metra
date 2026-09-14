@@ -3,19 +3,21 @@ use std::path::Path;
 use metra_core::{ParseLimits, Result};
 
 use crate::{
-    FlacCreateOptions, GifCreateOptions, IccCreateOptions, JpegCreateOptions, Mp3CreateOptions,
-    OggCreateOptions, PdfCreateOptions, PngCreateOptions, SvgCreateOptions, TiffCreateOptions,
-    WavCreateOptions, WebpCreateOptions, create_flac_path, create_flac_to_vec, create_gif_path,
-    create_gif_to_vec, create_icc_path, create_icc_to_vec, create_jpeg_path, create_jpeg_to_vec,
-    create_mp3_path, create_mp3_to_vec, create_ogg_path, create_ogg_to_vec, create_pdf_path,
-    create_pdf_to_vec, create_png_path, create_png_to_vec, create_svg_path, create_svg_to_vec,
-    create_tiff_path, create_tiff_to_vec, create_wav_path, create_wav_to_vec, create_webp_path,
-    create_webp_to_vec, create_xmp_path, create_xmp_to_vec,
+    AviCreateOptions, FlacCreateOptions, GifCreateOptions, IccCreateOptions, JpegCreateOptions,
+    Mp3CreateOptions, OggCreateOptions, PdfCreateOptions, PngCreateOptions, SvgCreateOptions,
+    TiffCreateOptions, WavCreateOptions, WebpCreateOptions, create_avi_path, create_avi_to_vec,
+    create_flac_path, create_flac_to_vec, create_gif_path, create_gif_to_vec, create_icc_path,
+    create_icc_to_vec, create_jpeg_path, create_jpeg_to_vec, create_mp3_path, create_mp3_to_vec,
+    create_ogg_path, create_ogg_to_vec, create_pdf_path, create_pdf_to_vec, create_png_path,
+    create_png_to_vec, create_svg_path, create_svg_to_vec, create_tiff_path, create_tiff_to_vec,
+    create_wav_path, create_wav_to_vec, create_webp_path, create_webp_to_vec, create_xmp_path,
+    create_xmp_to_vec,
 };
 
 /// Typed creation request dispatching to a format-specific validated creator.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CreateRequest {
+    Avi(AviCreateOptions),
     Jpeg(JpegCreateOptions),
     Tiff(TiffCreateOptions),
     Png(PngCreateOptions),
@@ -34,6 +36,7 @@ pub enum CreateRequest {
 /// Create bytes through the selected format-specific validated seam.
 pub fn create_to_vec(request: &CreateRequest, limits: ParseLimits) -> Result<Vec<u8>> {
     match request {
+        CreateRequest::Avi(options) => create_avi_to_vec(options, limits),
         CreateRequest::Jpeg(options) => create_jpeg_to_vec(options, limits),
         CreateRequest::Tiff(options) => create_tiff_to_vec(options, limits),
         CreateRequest::Png(options) => create_png_to_vec(options, limits),
@@ -57,6 +60,7 @@ pub fn create_path(
     limits: ParseLimits,
 ) -> Result<()> {
     match request {
+        CreateRequest::Avi(options) => create_avi_path(path, options, limits),
         CreateRequest::Jpeg(options) => create_jpeg_path(path, options, limits),
         CreateRequest::Tiff(options) => create_tiff_path(path, options, limits),
         CreateRequest::Png(options) => create_png_path(path, options, limits),
@@ -97,6 +101,13 @@ mod tests {
     }
 
     #[test]
+    fn generic_dispatch_creates_avi_seed() {
+        let request = CreateRequest::Avi(AviCreateOptions::new().with_info("Title", "Metra"));
+        let bytes = create_to_vec(&request, ParseLimits::default()).unwrap();
+        assert!(bytes.starts_with(b"RIFF"));
+    }
+
+    #[test]
     fn generic_path_dispatch_keeps_no_overwrite_contract() {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -106,6 +117,22 @@ mod tests {
         fs::create_dir(&directory).unwrap();
         let path = directory.join("created.pdf");
         let request = CreateRequest::Pdf(PdfCreateOptions::new());
+        create_path(&path, &request, ParseLimits::default()).unwrap();
+        assert!(create_path(&path, &request, ParseLimits::default()).is_err());
+        assert_eq!(fs::read_dir(&directory).unwrap().count(), 1);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn generic_avi_path_dispatch_keeps_no_overwrite_contract() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!("metra-generic-avi-{unique}"));
+        fs::create_dir(&directory).unwrap();
+        let path = directory.join("created.avi");
+        let request = CreateRequest::Avi(AviCreateOptions::new());
         create_path(&path, &request, ParseLimits::default()).unwrap();
         assert!(create_path(&path, &request, ParseLimits::default()).is_err());
         assert_eq!(fs::read_dir(&directory).unwrap().count(), 1);
