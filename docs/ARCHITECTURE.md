@@ -264,6 +264,11 @@ SVG creation exposes `SvgCreateOptions`, `create_svg_to_vec`,
 validates it through the SVG reader, and refuses to overwrite an existing
 destination.
 
+WebP creation exposes `WebpCreateOptions`, `create_webp_to_vec`,
+`create_webp_path`, and the CLI `--create-webp-xmp PACKET`. It emits a minimal
+1x1 lossless WebP seed with an optional bounded XMP chunk, validates it through
+the WebP reader, and refuses to overwrite an existing destination.
+
 Legacy read queries are handled by a thin argument normalizer: selected
 single-dash aliases such as `-Make` and `-GPSLatitude` become `--tag` selectors,
 while `-json` and `-jsonl` become the corresponding Metra output flags. The
@@ -283,7 +288,8 @@ that require layout changes remain intentionally outside this API. Creation
 seams are intentionally format-specific: `TiffCreateOptions` can build a
 minimal classic 1x1 TIFF with bounded EXIF ASCII seed fields, while
 `Mp3CreateOptions` and `OggCreateOptions` can build minimal audio metadata
-seeds, and `SvgCreateOptions` can build a minimal XML metadata seed; all four
+seeds, `SvgCreateOptions` can build a minimal XML metadata seed, and
+`WebpCreateOptions` can build a minimal lossless image metadata seed; all
 validate their output by reading it back and create a new path without
 overwriting an existing file.
 
