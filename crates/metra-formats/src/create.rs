@@ -7,20 +7,21 @@ use crate::{
     IsobmffCreateOptions, JpegCreateOptions, MatroskaCreateOptions, Mp3CreateOptions,
     OggCreateOptions, PdfCreateOptions, PngCreateOptions, PsdCreateOptions, SvgCreateOptions,
     TiffCreateOptions, WavCreateOptions, WebpCreateOptions, create_avi_path, create_avi_to_vec,
-    create_dng_path, create_dng_to_vec, create_flac_path, create_flac_to_vec, create_gif_path,
-    create_gif_to_vec, create_icc_path, create_icc_to_vec, create_isobmff_path,
-    create_isobmff_to_vec, create_jpeg_path, create_jpeg_to_vec, create_matroska_path,
-    create_matroska_to_vec, create_mp3_path, create_mp3_to_vec, create_ogg_path, create_ogg_to_vec,
-    create_pdf_path, create_pdf_to_vec, create_png_path, create_png_to_vec, create_psd_path,
-    create_psd_to_vec, create_svg_path, create_svg_to_vec, create_tiff_path, create_tiff_to_vec,
-    create_wav_path, create_wav_to_vec, create_webp_path, create_webp_to_vec, create_xmp_path,
-    create_xmp_to_vec,
+    create_bigtiff_path, create_bigtiff_to_vec, create_dng_path, create_dng_to_vec,
+    create_flac_path, create_flac_to_vec, create_gif_path, create_gif_to_vec, create_icc_path,
+    create_icc_to_vec, create_isobmff_path, create_isobmff_to_vec, create_jpeg_path,
+    create_jpeg_to_vec, create_matroska_path, create_matroska_to_vec, create_mp3_path,
+    create_mp3_to_vec, create_ogg_path, create_ogg_to_vec, create_pdf_path, create_pdf_to_vec,
+    create_png_path, create_png_to_vec, create_psd_path, create_psd_to_vec, create_svg_path,
+    create_svg_to_vec, create_tiff_path, create_tiff_to_vec, create_wav_path, create_wav_to_vec,
+    create_webp_path, create_webp_to_vec, create_xmp_path, create_xmp_to_vec,
 };
 
 /// Typed creation request dispatching to a format-specific validated creator.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CreateRequest {
     Avi(AviCreateOptions),
+    BigTiff(TiffCreateOptions),
     Dng(DngCreateOptions),
     Isobmff(IsobmffCreateOptions),
     Matroska(MatroskaCreateOptions),
@@ -44,6 +45,7 @@ pub enum CreateRequest {
 pub fn create_to_vec(request: &CreateRequest, limits: ParseLimits) -> Result<Vec<u8>> {
     match request {
         CreateRequest::Avi(options) => create_avi_to_vec(options, limits),
+        CreateRequest::BigTiff(options) => create_bigtiff_to_vec(options, limits),
         CreateRequest::Dng(options) => create_dng_to_vec(options, limits),
         CreateRequest::Isobmff(options) => create_isobmff_to_vec(options, limits),
         CreateRequest::Matroska(options) => create_matroska_to_vec(options, limits),
@@ -72,6 +74,7 @@ pub fn create_path(
 ) -> Result<()> {
     match request {
         CreateRequest::Avi(options) => create_avi_path(path, options, limits),
+        CreateRequest::BigTiff(options) => create_bigtiff_path(path, options, limits),
         CreateRequest::Dng(options) => create_dng_path(path, options, limits),
         CreateRequest::Isobmff(options) => create_isobmff_path(path, options, limits),
         CreateRequest::Matroska(options) => create_matroska_path(path, options, limits),
@@ -189,6 +192,29 @@ mod tests {
         assert_eq!(
             crate::detect_format(&bytes).unwrap().format,
             metra_core::FileFormat::Psd
+        );
+    }
+
+    #[test]
+    fn generic_dispatch_creates_bigtiff_seed() {
+        let request = CreateRequest::BigTiff(TiffCreateOptions::new().with_ascii("Make", "Metra"));
+        let bytes = create_to_vec(&request, ParseLimits::default()).unwrap();
+        assert_eq!(&bytes[..4], b"II+\0");
+        assert_eq!(
+            crate::read_tiff(
+                &mut std::io::Cursor::new(bytes.clone()),
+                metra_core::FileInfo::new(
+                    "created.bigtiff".into(),
+                    bytes.len() as u64,
+                    metra_core::FileFormat::Tiff,
+                ),
+                ParseLimits::default(),
+            )
+            .unwrap()
+            .find("EXIF:Make")
+            .unwrap()
+            .display_value(),
+            "Metra"
         );
     }
 }

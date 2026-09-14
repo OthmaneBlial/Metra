@@ -249,7 +249,7 @@ fn validate_created_tiff(bytes: &[u8], limits: ParseLimits) -> Result<()> {
     Ok(())
 }
 
-fn ascii_tag_id(key: &str) -> Option<u16> {
+pub(crate) fn ascii_tag_id(key: &str) -> Option<u16> {
     let key = key
         .strip_prefix("TIFF:")
         .or_else(|| key.strip_prefix("EXIF:"))
