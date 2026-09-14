@@ -3,16 +3,20 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use metra_core::{FileFormat, FileInfo, MetraError, ParseLimits, Result};
+use metra_core::{FileFormat, FileInfo, MetraError, ParseLimits, Result, TagValue};
 
 use crate::atomic::atomic_replace;
 use crate::wav::read_wav;
 
-/// Lossless WAV metadata edits for the uncompressed `LIST/INFO` string fields.
+/// Lossless WAV metadata edits for bounded `LIST/INFO` and Broadcast Wave
+/// `bext` fields. BWF edits only touch existing chunks and fixed fields (with
+/// `CodingHistory` rebuilt inside its existing chunk).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WavEdit {
     SetInfo { name: String, value: String },
     DeleteInfo { name: String },
+    SetBext { name: String, value: String },
+    DeleteBext { name: String },
 }
 
 pub fn rewrite_wav<R: Read + Seek, W: Write + Seek>(
@@ -125,6 +129,12 @@ enum InfoAction {
     Delete { kind: [u8; 4] },
 }
 
+#[derive(Debug)]
+enum BextAction {
+    Set { name: String, value: Vec<u8> },
+    Delete { name: String },
+}
+
 fn rewrite_wav_stream<R: Read, W: Write + Seek>(
     reader: &mut R,
     writer: &mut W,
@@ -134,6 +144,7 @@ fn rewrite_wav_stream<R: Read, W: Write + Seek>(
     edits: &[WavEdit],
 ) -> Result<()> {
     let action = info_action(edits, limits)?;
+    let bext_actions = bext_actions(edits, limits)?;
     let mut header = [0_u8; 12];
     read_exact(reader, &mut header, path)?;
     if &header[..4] != b"RIFF" || &header[8..12] != b"WAVE" {
@@ -162,6 +173,7 @@ fn rewrite_wav_stream<R: Read, W: Write + Seek>(
     let mut input_offset = 12_u64;
     let mut chunk_count = 0_usize;
     let mut inserted = false;
+    let mut bext_found = false;
     while input_offset < declared_end {
         if chunk_count >= limits.max_jpeg_segments {
             return Err(MetraError::ResourceLimitExceeded {
@@ -222,6 +234,27 @@ fn rewrite_wav_stream<R: Read, W: Write + Seek>(
             let (rewritten, found) = rewrite_list_info(&data, action.as_ref(), limits)?;
             inserted |= found;
             write_chunk(writer, &kind, &rewritten)?;
+        } else if &kind == b"bext" && !bext_actions.is_empty() {
+            let length =
+                usize::try_from(length).map_err(|_| MetraError::ResourceLimitExceeded {
+                    resource: "WAV bext chunk during rewrite".to_owned(),
+                    limit: limits.max_metadata_bytes,
+                })?;
+            if length > limits.max_metadata_bytes {
+                return Err(MetraError::ResourceLimitExceeded {
+                    resource: "WAV bext chunk during rewrite".to_owned(),
+                    limit: limits.max_metadata_bytes,
+                });
+            }
+            let mut data = vec![0_u8; length];
+            read_exact(reader, &mut data, path)?;
+            if length % 2 == 1 {
+                let mut padding = [0_u8; 1];
+                read_exact(reader, &mut padding, path)?;
+            }
+            let rewritten = rewrite_bext(&data, &bext_actions, limits)?;
+            bext_found = true;
+            write_chunk(writer, &kind, &rewritten)?;
         } else {
             write_all(writer, &chunk_header)?;
             copy_exact(reader, writer, length, path)?;
@@ -236,6 +269,11 @@ fn rewrite_wav_stream<R: Read, W: Write + Seek>(
     {
         let data = info_list_with_entry(kind, value)?;
         write_chunk(writer, b"LIST", &data)?;
+    }
+    if !bext_actions.is_empty() && !bext_found {
+        return Err(MetraError::WriteFailure {
+            message: "WAV bext edits require an existing bext chunk".to_owned(),
+        });
     }
 
     let riff_output_end = writer
@@ -287,9 +325,245 @@ fn info_action(edits: &[WavEdit], limits: ParseLimits) -> Result<Option<InfoActi
                 })?;
                 action = Some(InfoAction::Delete { kind });
             }
+            WavEdit::SetBext { .. } | WavEdit::DeleteBext { .. } => {}
         }
     }
     Ok(action)
+}
+
+fn bext_actions(edits: &[WavEdit], limits: ParseLimits) -> Result<Vec<BextAction>> {
+    edits
+        .iter()
+        .filter_map(|edit| match edit {
+            WavEdit::SetBext { name, value } => Some(encode_bext_value(name, value, limits).map(
+                |value| BextAction::Set {
+                    name: name.clone(),
+                    value,
+                },
+            )),
+            WavEdit::DeleteBext { name } => {
+                Some(validate_bext_name(name).map(|()| BextAction::Delete { name: name.clone() }))
+            }
+            WavEdit::SetInfo { .. } | WavEdit::DeleteInfo { .. } => None,
+        })
+        .collect()
+}
+
+fn encode_bext_value(name: &str, value: &str, limits: ParseLimits) -> Result<Vec<u8>> {
+    match name {
+        "Description" => encode_bext_text(name, value, 256),
+        "Originator" => encode_bext_text(name, value, 32),
+        "OriginatorReference" => encode_bext_text(name, value, 32),
+        "DateTimeOriginal" => encode_bext_datetime(value),
+        "TimeReference" => value
+            .trim()
+            .parse::<u64>()
+            .map(|value| value.to_le_bytes().to_vec())
+            .map_err(|_| invalid_bext_value(name, "expected an unsigned 64-bit sample count")),
+        "BWFVersion" => value
+            .trim()
+            .parse::<u16>()
+            .map(|value| value.to_le_bytes().to_vec())
+            .map_err(|_| invalid_bext_value(name, "expected an unsigned 16-bit version")),
+        "BWF_UMID" => decode_bext_hex(name, value),
+        "CodingHistory" => {
+            if value.contains('\0') || !value.is_ascii() {
+                return Err(invalid_bext_value(
+                    name,
+                    "value must be ASCII and cannot contain NUL",
+                ));
+            }
+            let length = value
+                .len()
+                .checked_add(1)
+                .ok_or_else(|| invalid_bext_value(name, "value length overflows"))?;
+            if length > limits.max_value_bytes {
+                return Err(MetraError::ResourceLimitExceeded {
+                    resource: format!("WAV bext {name} value"),
+                    limit: limits.max_value_bytes,
+                });
+            }
+            let mut bytes = value.as_bytes().to_vec();
+            bytes.push(0);
+            Ok(bytes)
+        }
+        _ => Err(invalid_bext_value(name, "unsupported Broadcast Wave field")),
+    }
+}
+
+fn encode_bext_text(name: &str, value: &str, width: usize) -> Result<Vec<u8>> {
+    if value.contains('\0') || !value.is_ascii() {
+        return Err(invalid_bext_value(
+            name,
+            "value must be ASCII and cannot contain NUL",
+        ));
+    }
+    if value.len() > width {
+        return Err(invalid_bext_value(
+            name,
+            "value exceeds the fixed field width",
+        ));
+    }
+    let mut encoded = vec![0_u8; width];
+    encoded[..value.len()].copy_from_slice(value.as_bytes());
+    Ok(encoded)
+}
+
+fn encode_bext_datetime(value: &str) -> Result<Vec<u8>> {
+    let parsed = crate::wav::parse_bwf_datetime(value).ok_or_else(|| {
+        invalid_bext_value(
+            "DateTimeOriginal",
+            "expected a valid YYYY:MM:DD HH:MM:SS date-time",
+        )
+    })?;
+    let TagValue::DateTime {
+        year,
+        month,
+        day,
+        hour,
+        minute,
+        second,
+        ..
+    } = parsed
+    else {
+        return Err(invalid_bext_value(
+            "DateTimeOriginal",
+            "expected a valid date-time",
+        ));
+    };
+    Ok(format!("{year:04}-{month:02}-{day:02}{hour:02}:{minute:02}:{second:02}").into_bytes())
+}
+
+fn decode_bext_hex(name: &str, value: &str) -> Result<Vec<u8>> {
+    let value = value.trim();
+    if value.len() > 128 || !value.len().is_multiple_of(2) {
+        return Err(invalid_bext_value(
+            name,
+            "expected at most 64 bytes written as an even-length hexadecimal value",
+        ));
+    }
+    if !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(invalid_bext_value(name, "expected hexadecimal digits"));
+    }
+    let mut encoded = vec![0_u8; 64];
+    for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
+        encoded[index] = (hex_nibble(pair[0]) << 4) | hex_nibble(pair[1]);
+    }
+    Ok(encoded)
+}
+
+fn hex_nibble(byte: u8) -> u8 {
+    match byte {
+        b'0'..=b'9' => byte - b'0',
+        b'a'..=b'f' => byte - b'a' + 10,
+        b'A'..=b'F' => byte - b'A' + 10,
+        _ => unreachable!("hexadecimal input is validated before conversion"),
+    }
+}
+
+fn validate_bext_name(name: &str) -> Result<()> {
+    if matches!(
+        name,
+        "Description"
+            | "Originator"
+            | "OriginatorReference"
+            | "DateTimeOriginal"
+            | "TimeReference"
+            | "BWFVersion"
+            | "BWF_UMID"
+            | "CodingHistory"
+    ) {
+        Ok(())
+    } else {
+        Err(invalid_bext_value(name, "unsupported Broadcast Wave field"))
+    }
+}
+
+fn invalid_bext_value(name: &str, message: &str) -> MetraError {
+    MetraError::WriteFailure {
+        message: format!("invalid WAV bext {name}: {message}"),
+    }
+}
+
+fn bext_fixed_field(name: &str) -> Option<(usize, usize)> {
+    Some(match name {
+        "Description" => (0, 256),
+        "Originator" => (256, 32),
+        "OriginatorReference" => (288, 32),
+        "DateTimeOriginal" => (320, 18),
+        "TimeReference" => (338, 8),
+        "BWFVersion" => (346, 2),
+        "BWF_UMID" => (348, 64),
+        _ => return None,
+    })
+}
+
+fn rewrite_bext(data: &[u8], actions: &[BextAction], limits: ParseLimits) -> Result<Vec<u8>> {
+    let mut result = data.to_vec();
+    for action in actions {
+        match action {
+            BextAction::Set { name, value } => {
+                if name == "CodingHistory" {
+                    if result.len() < 602 {
+                        return Err(MetraError::UnexpectedEof {
+                            context: "WAV bext CodingHistory base".to_owned(),
+                        });
+                    }
+                    result.truncate(602);
+                    result.extend_from_slice(value);
+                } else {
+                    let (start, width) = bext_fixed_field(name).ok_or_else(|| {
+                        invalid_bext_value(name, "unsupported Broadcast Wave field")
+                    })?;
+                    let end = start
+                        .checked_add(width)
+                        .ok_or_else(|| invalid_bext_value(name, "fixed field range overflows"))?;
+                    if result.len() < end {
+                        return Err(MetraError::UnexpectedEof {
+                            context: format!("WAV bext {name} field"),
+                        });
+                    }
+                    if value.len() != width {
+                        return Err(invalid_bext_value(
+                            name,
+                            "encoded value has the wrong width",
+                        ));
+                    }
+                    result[start..end].copy_from_slice(value);
+                }
+            }
+            BextAction::Delete { name } => {
+                if name == "CodingHistory" {
+                    if result.len() < 602 {
+                        return Err(MetraError::UnexpectedEof {
+                            context: "WAV bext CodingHistory base".to_owned(),
+                        });
+                    }
+                    result.truncate(602);
+                } else {
+                    let (start, width) = bext_fixed_field(name).ok_or_else(|| {
+                        invalid_bext_value(name, "unsupported Broadcast Wave field")
+                    })?;
+                    let end = start
+                        .checked_add(width)
+                        .ok_or_else(|| invalid_bext_value(name, "fixed field range overflows"))?;
+                    if result.len() < end {
+                        return Err(MetraError::UnexpectedEof {
+                            context: format!("WAV bext {name} field"),
+                        });
+                    }
+                    result[start..end].fill(0);
+                }
+            }
+        }
+        if result.len() > limits.max_metadata_bytes {
+            return Err(MetraError::ResourceLimitExceeded {
+                resource: "WAV bext metadata".to_owned(),
+                limit: limits.max_metadata_bytes,
+            });
+        }
+    }
+    Ok(result)
 }
 
 fn rewrite_list_info(
@@ -540,6 +814,34 @@ mod tests {
         bytes
     }
 
+    fn wav_with_bext() -> Vec<u8> {
+        let mut fmt = Vec::new();
+        fmt.extend_from_slice(&1_u16.to_le_bytes());
+        fmt.extend_from_slice(&1_u16.to_le_bytes());
+        fmt.extend_from_slice(&48_000_u32.to_le_bytes());
+        fmt.extend_from_slice(&48_000_u32.to_le_bytes());
+        fmt.extend_from_slice(&1_u16.to_le_bytes());
+        fmt.extend_from_slice(&8_u16.to_le_bytes());
+
+        let mut bext = vec![0_u8; 602];
+        bext[..13].copy_from_slice(b"Original take");
+        bext[256..266].copy_from_slice(b"Metra crew");
+        bext[320..330].copy_from_slice(b"2026-09-14");
+        bext[330..338].copy_from_slice(b"12:34:56");
+        bext[338..346].copy_from_slice(&17_u64.to_le_bytes());
+        bext[346..348].copy_from_slice(&1_u16.to_le_bytes());
+        bext.extend_from_slice(b"A=PCM,F=48000,W=8,M=mono\0");
+
+        let mut body = chunk(b"fmt ", &fmt);
+        body.extend(chunk(b"bext", &bext));
+        body.extend(chunk(b"data", &[9, 8, 7, 6]));
+        let mut bytes = b"RIFF".to_vec();
+        bytes.extend_from_slice(&((4 + body.len()) as u32).to_le_bytes());
+        bytes.extend_from_slice(b"WAVE");
+        bytes.extend(body);
+        bytes
+    }
+
     #[test]
     fn replaces_info_and_preserves_audio_chunks() {
         let bytes = wav_with_info("before");
@@ -610,6 +912,130 @@ mod tests {
                 .display_value(),
             "Metra"
         );
+    }
+
+    #[test]
+    fn rewrites_existing_bext_fields_without_touching_audio() {
+        let bytes = wav_with_bext();
+        let output = rewrite_wav_to_vec(
+            &bytes,
+            info(bytes.len()),
+            ParseLimits::default(),
+            &[
+                WavEdit::SetBext {
+                    name: "Description".to_owned(),
+                    value: "Edited take".to_owned(),
+                },
+                WavEdit::SetBext {
+                    name: "DateTimeOriginal".to_owned(),
+                    value: "2026:09:15 01:02:03".to_owned(),
+                },
+                WavEdit::SetBext {
+                    name: "TimeReference".to_owned(),
+                    value: "8589934595".to_owned(),
+                },
+                WavEdit::SetBext {
+                    name: "BWFVersion".to_owned(),
+                    value: "2".to_owned(),
+                },
+                WavEdit::SetBext {
+                    name: "BWF_UMID".to_owned(),
+                    value: "CD".repeat(32),
+                },
+                WavEdit::SetBext {
+                    name: "CodingHistory".to_owned(),
+                    value: "A=PCM,F=96000,W=24,M=stereo".to_owned(),
+                },
+            ],
+        )
+        .unwrap();
+        let parsed = read_wav(
+            &mut Cursor::new(output.clone()),
+            info(output.len()),
+            ParseLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            parsed.find("WAV:Description").unwrap().display_value(),
+            "Edited take"
+        );
+        assert_eq!(
+            parsed.find("WAV:DateTimeOriginal").unwrap().display_value(),
+            "2026:09:15 01:02:03"
+        );
+        assert_eq!(
+            parsed.find("WAV:TimeReference").unwrap().display_value(),
+            "8589934595"
+        );
+        assert_eq!(parsed.find("WAV:BWFVersion").unwrap().display_value(), "2");
+        assert_eq!(
+            parsed.find("WAV:BWF_UMID").unwrap().display_value(),
+            "CD".repeat(32)
+        );
+        assert_eq!(
+            parsed.find("WAV:CodingHistory").unwrap().display_value(),
+            "A=PCM,F=96000,W=24,M=stereo"
+        );
+        assert!(
+            output
+                .windows(12)
+                .any(|window| window == [b'd', b'a', b't', b'a', 4, 0, 0, 0, 9, 8, 7, 6])
+        );
+    }
+
+    #[test]
+    fn deletes_bext_fields_and_rejects_invalid_values() {
+        let bytes = wav_with_bext();
+        let deleted = rewrite_wav_to_vec(
+            &bytes,
+            info(bytes.len()),
+            ParseLimits::default(),
+            &[
+                WavEdit::DeleteBext {
+                    name: "Description".to_owned(),
+                },
+                WavEdit::DeleteBext {
+                    name: "DateTimeOriginal".to_owned(),
+                },
+                WavEdit::DeleteBext {
+                    name: "CodingHistory".to_owned(),
+                },
+            ],
+        )
+        .unwrap();
+        let parsed = read_wav(
+            &mut Cursor::new(deleted.clone()),
+            info(deleted.len()),
+            ParseLimits::default(),
+        )
+        .unwrap();
+        assert!(parsed.find("WAV:Description").is_none());
+        assert!(parsed.find("WAV:DateTimeOriginal").is_none());
+        assert!(parsed.find("WAV:CodingHistory").is_none());
+
+        let invalid = rewrite_wav_to_vec(
+            &bytes,
+            info(bytes.len()),
+            ParseLimits::default(),
+            &[WavEdit::SetBext {
+                name: "TimeReference".to_owned(),
+                value: "not-a-number".to_owned(),
+            }],
+        )
+        .unwrap_err();
+        assert!(invalid.to_string().contains("TimeReference"));
+
+        let missing = rewrite_wav_to_vec(
+            &wav_with_info("before"),
+            info(wav_with_info("before").len()),
+            ParseLimits::default(),
+            &[WavEdit::SetBext {
+                name: "Description".to_owned(),
+                value: "new".to_owned(),
+            }],
+        )
+        .unwrap_err();
+        assert!(missing.to_string().contains("existing bext"));
     }
 
     #[test]
