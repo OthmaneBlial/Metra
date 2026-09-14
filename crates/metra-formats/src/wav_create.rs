@@ -6,6 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use metra_core::{FileFormat, FileInfo, MetraError, ParseLimits, Result};
 
 use crate::atomic::atomic_replace;
+use crate::id3_create::Mp3CreateOptions;
 use crate::wav::read_wav;
 use crate::wav_writer::{bext_fixed_field, encode_bext_value, info_kind};
 
@@ -61,6 +62,8 @@ pub struct WavCreateOptions {
     pub kind: WavCreateKind,
     pub info: Vec<WavCreateEntry>,
     pub bext: Vec<WavBextCreateEntry>,
+    /// Optional bounded ID3v2 metadata seed stored in an `id3 ` chunk.
+    pub id3: Option<Mp3CreateOptions>,
 }
 
 impl WavCreateOptions {
@@ -105,6 +108,42 @@ impl WavCreateOptions {
     pub fn with_bext(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
         self.push_bext(name, value);
         self
+    }
+
+    /// Set the optional ID3v2 metadata seed stored in an `id3 ` chunk.
+    pub fn with_id3(mut self, options: Mp3CreateOptions) -> Self {
+        self.id3 = Some(options);
+        self
+    }
+
+    /// Add one ID3v2 text field to the optional embedded seed.
+    pub fn with_id3_text(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        self.id3
+            .get_or_insert_with(Mp3CreateOptions::new)
+            .push_text(name, value);
+        self
+    }
+
+    /// Add one ID3v2 text field to the optional embedded seed in place.
+    pub fn push_id3_text(&mut self, name: impl Into<String>, value: impl Into<String>) {
+        self.id3
+            .get_or_insert_with(Mp3CreateOptions::new)
+            .push_text(name, value);
+    }
+
+    /// Set the English ID3v2 comment in the optional embedded seed.
+    pub fn with_id3_comment(mut self, value: impl Into<String>) -> Self {
+        self.id3
+            .get_or_insert_with(Mp3CreateOptions::new)
+            .set_comment(value);
+        self
+    }
+
+    /// Set the English ID3v2 comment in the optional embedded seed in place.
+    pub fn set_id3_comment(&mut self, value: impl Into<String>) {
+        self.id3
+            .get_or_insert_with(Mp3CreateOptions::new)
+            .set_comment(value);
     }
 }
 
@@ -183,6 +222,21 @@ pub fn create_wav_to_vec(options: &WavCreateOptions, limits: ParseLimits) -> Res
         bext = Some(data);
     }
 
+    let id3 = options
+        .id3
+        .as_ref()
+        .map(|options| crate::id3_create::create_mp3_to_vec(options, limits))
+        .transpose()?;
+    if id3
+        .as_ref()
+        .is_some_and(|data| data.len() > limits.max_metadata_bytes)
+    {
+        return Err(MetraError::ResourceLimitExceeded {
+            resource: "WAV embedded ID3 creation metadata".to_owned(),
+            limit: limits.max_metadata_bytes,
+        });
+    }
+
     let mut info = b"INFO".to_vec();
     for (kind, _, value) in &info_entries {
         let length =
@@ -226,6 +280,9 @@ pub fn create_wav_to_vec(options: &WavCreateOptions, limits: ParseLimits) -> Res
     write_chunk(&mut body, b"fmt ", &fmt)?;
     if let Some(bext) = bext {
         write_chunk(&mut body, b"bext", &bext)?;
+    }
+    if let Some(id3) = id3 {
+        write_chunk(&mut body, b"id3 ", &id3)?;
     }
     write_chunk(&mut body, b"LIST", &info)?;
     if matches!(options.kind, WavCreateKind::Riff) {
@@ -437,6 +494,39 @@ mod tests {
             metadata.find("WAV:CodingHistory").unwrap().display_value(),
             "A=PCM,F=48000,W=8,M=mono"
         );
+    }
+
+    #[test]
+    fn creates_readable_wav_with_embedded_id3_seed() {
+        let options = WavCreateOptions::new()
+            .with_info("Title", "WAV title")
+            .with_id3_text("Title", "ID3 title")
+            .with_id3_comment("reviewed");
+        let bytes = create_wav_to_vec(&options, ParseLimits::default())
+            .expect("embedded ID3 WAV creation should succeed");
+        let metadata = read_wav(
+            &mut std::io::Cursor::new(bytes.clone()),
+            FileInfo::new(
+                "created-id3.wav".into(),
+                bytes.len() as u64,
+                FileFormat::Wav,
+            ),
+            ParseLimits::default(),
+        )
+        .expect("embedded ID3 WAV seed should remain readable");
+        assert_eq!(
+            metadata.find("WAV:Title").unwrap().display_value(),
+            "WAV title"
+        );
+        assert_eq!(
+            metadata.find("ID3:Title").unwrap().display_value(),
+            "ID3 title"
+        );
+        assert_eq!(
+            metadata.find("ID3:Comment").unwrap().display_value(),
+            "reviewed"
+        );
+        assert!(bytes.windows(4).any(|window| window == b"id3 "));
     }
 
     #[test]

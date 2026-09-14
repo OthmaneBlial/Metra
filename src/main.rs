@@ -1908,6 +1908,18 @@ fn parse_wav_create(entries: &[String]) -> Result<metra::WavCreateOptions, Strin
                 return Err("--create-wav BWF fields require a non-empty name".to_owned());
             }
             options.push_bext(name, value);
+        } else if let Some(name) = key.strip_prefix("ID3:") {
+            if name.is_empty() {
+                return Err("--create-wav ID3 fields require a non-empty name".to_owned());
+            }
+            if name == "Comment" {
+                if options.id3.as_ref().is_some_and(|id3| id3.comment.is_some()) {
+                    return Err("--create-wav accepts only one ID3 Comment field".to_owned());
+                }
+                options.set_id3_comment(value);
+            } else {
+                options.push_id3_text(name, value);
+            }
         } else {
             options.push_info(key, value);
         }

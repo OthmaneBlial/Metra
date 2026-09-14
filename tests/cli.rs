@@ -1786,6 +1786,10 @@ fn cli_can_create_minimal_wav_seed_without_overwrite() {
             "BWF:DateTimeOriginal=2026:09:14 12:34:56",
             "--create-wav",
             "BWF:CodingHistory=A=PCM,F=48000,W=8,M=mono",
+            "--create-wav",
+            "ID3:Title=Embedded title",
+            "--create-wav",
+            "ID3:Comment=reviewed",
             path.to_str().expect("UTF-8 test path"),
         ])
         .output()
@@ -1813,6 +1817,14 @@ fn cli_can_create_minimal_wav_seed_without_overwrite() {
     assert_eq!(
         metadata.find("WAV:CodingHistory").unwrap().display_value(),
         "A=PCM,F=48000,W=8,M=mono"
+    );
+    assert_eq!(
+        metadata.find("ID3:Title").unwrap().display_value(),
+        "Embedded title"
+    );
+    assert_eq!(
+        metadata.find("ID3:Comment").unwrap().display_value(),
+        "reviewed"
     );
 
     let second = Command::new(env!("CARGO_BIN_EXE_metra"))
@@ -1881,6 +1893,29 @@ fn cli_rejects_duplicate_wav_container_fields() {
     assert!(
         String::from_utf8_lossy(&output.stderr)
             .contains("--create-wav accepts only one Container field")
+    );
+    assert!(!path.exists());
+}
+
+#[test]
+fn cli_rejects_duplicate_embedded_wav_id3_comments() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.path.join("duplicate-id3-comment.wav");
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--create-wav",
+            "ID3:Comment=one",
+            "--create-wav",
+            "ID3:Comment=two",
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("--create-wav accepts only one ID3 Comment field")
     );
     assert!(!path.exists());
 }

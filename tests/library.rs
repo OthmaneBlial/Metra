@@ -1736,6 +1736,32 @@ fn public_wav_creation_api_supports_broadcast_wave_seed() {
 }
 
 #[test]
+fn public_wav_creation_api_supports_embedded_id3_seed() {
+    let options = metra::WavCreateOptions::new()
+        .with_id3_text("Title", "Embedded title")
+        .with_id3_comment("reviewed");
+    let bytes = metra::create_wav_to_vec(&options, metra::ParseLimits::default())
+        .expect("public embedded ID3 WAV creation API should emit a seed");
+    let metadata = metra::read_from(
+        &mut Cursor::new(bytes.clone()),
+        metra::FileInfo::new(
+            "embedded-id3.wav".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Wav,
+        ),
+    )
+    .expect("public embedded ID3 WAV seed should remain readable");
+    assert_eq!(
+        metadata.find("ID3:Title").unwrap().display_value(),
+        "Embedded title"
+    );
+    assert_eq!(
+        metadata.find("ID3:Comment").unwrap().display_value(),
+        "reviewed"
+    );
+}
+
+#[test]
 fn public_wav_creation_api_supports_rf64_and_bw64_seeds() {
     for kind in [metra::WavCreateKind::Rf64, metra::WavCreateKind::Bw64] {
         let options = metra::WavCreateOptions::new()
