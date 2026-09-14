@@ -4,6 +4,9 @@
 
 Initial read-first foundation with narrow validated rewrites:
 
+- strengthened the opt-in corpus differential harness with structured JSON
+  summaries, separate key/value miss counters, panic/read-failure accounting,
+  and an optional strict oracle mode;
 - added bounded TIFF GPS latitude/longitude decimal rewrites, reference-field
   updates, zero-fill deletion tombstones, generic API aliases, CLI set/delete/
   copy support, and round-trip coverage for positive and negative coordinates;

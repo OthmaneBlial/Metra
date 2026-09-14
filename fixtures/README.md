@@ -16,10 +16,22 @@ private or reviewed corpus is never copied into the repository:
 METRA_CORPUS_DIR=/path/to/corpus cargo test --test corpus -- --ignored --nocapture
 METRA_CORPUS_DIR=/path/to/corpus METRA_ORACLE=/path/to/exiftool \
   cargo test --test corpus corpus_supported_tags_can_be_compared_with_oracle -- --ignored --nocapture
+
+# Optional aggregate reports; create the output directory first.
+mkdir -p artifacts
+METRA_CORPUS_DIR=/path/to/corpus \
+  METRA_CORPUS_INSPECTION_REPORT=artifacts/corpus-inspection.json \
+  cargo test --test corpus corpus_inspection_does_not_panic -- --ignored --nocapture
+METRA_CORPUS_DIR=/path/to/corpus METRA_ORACLE=/path/to/exiftool \
+  METRA_CORPUS_DIFFERENTIAL_REPORT=artifacts/corpus-differential.json \
+  cargo test --test corpus corpus_supported_tags_can_be_compared_with_oracle -- --ignored --nocapture
 ```
 
 The first check reports recognized files, parser failures, warnings, and
 panics. The optional differential check invokes the oracle with JSON output,
-verifies that it returns valid documents, and reports stable-key matches for
-the subset Metra currently exposes. A key-match count is evidence for follow-up
-analysis, not a complete compatibility claim.
+verifies that it returns valid documents, and reports stable-key and typed-value
+matches, misses, read failures, and panics for the subset Metra currently
+exposes. Reports are written only when their corresponding environment variable
+is explicitly set. Add `METRA_ORACLE_STRICT=1` to the differential command when
+any missing key, panic, or value mismatch should fail the run. A match count is
+evidence for follow-up analysis, not a complete compatibility claim.

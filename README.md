@@ -426,11 +426,16 @@ compatibility tests are separate follow-up gates; passing these local tests does
 not claim complete ExifTool compatibility.
 
 The opt-in corpus checks live in [`tests/corpus.rs`](tests/corpus.rs) and require
-an explicit local corpus and oracle; no corpus is bundled in the repository. A
-local 194-file run completed without panics: 89 files were recognized, with
-3,303 Metra tags compared to the oracle, 1,857 stable-key matches, and 1,435
-typed-value matches. The corpus axis remains conservative because 105 files
-were outside the current format surface and the differential test is opt-in.
+an explicit local corpus and oracle; no corpus is bundled in the repository. The
+differential check reports compared files, Metra read failures and panics,
+stable-key matches and misses, and typed-value matches and mismatches. Set
+`METRA_CORPUS_INSPECTION_REPORT` or `METRA_CORPUS_DIFFERENTIAL_REPORT` to write
+an aggregate JSON report, and `METRA_ORACLE_STRICT=1` to fail on missing keys,
+panics, or mismatched values. A local 194-file run completed without panics: 89
+files were recognized, with 3,303 Metra tags compared to the oracle, 1,857
+stable-key matches, and 1,435 typed-value matches. The corpus axis remains
+conservative because 105 files were outside the current format surface and the
+differential test is opt-in.
 
 For batch output, human-readable, JSON Lines, and CSV modes render as results
 arrive while preserving deterministic input-path order. The parallel streaming
