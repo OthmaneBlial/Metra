@@ -30,6 +30,9 @@ Initial read-first foundation with narrow validated rewrites:
 - added minimal MP3 metadata-seed creation with bounded ID3v2.4 text/comment
   frames, a fixed zeroed MPEG Layer III seed frame, no-overwrite atomic path
   creation, and CLI `--create-mp3 KEY=VALUE` coverage;
+- added minimal Ogg Opus metadata-seed creation with bounded `OpusHead` and
+  `OpusTags` packets, page CRC/segmentation validation, no-overwrite atomic path
+  creation, and CLI `--create-ogg KEY=VALUE` coverage;
 - added bounded CR3 ISO-BMFF text rewrites and zero-fill deletion through
   RAW-variant validation, including generic API, registry, atomic path, and CLI
   `--set`/`--delete`/`--copy`
