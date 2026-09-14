@@ -87,6 +87,9 @@ the exact existing byte length. The writer validates the replacement packet,
 preserves the UUID and box layout, and zero-fills the packet on deletion.
 Existing JPEG EXIF ASCII fields can be rewritten or copied when the target field
 has enough storage; the JPEG segment size and image bytes remain unchanged.
+Typed EXIF date/time values backed by ASCII TIFF slots, including
+`EXIF:DateTimeOriginal`, retain their typed read representation after a fixed-size
+rewrite.
 Repeated IPTC datasets remain typed arrays when read; `--copy` accepts only a
 single-valued source dataset, while `--set` replaces all target occurrences
 with one bounded dataset.

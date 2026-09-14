@@ -81,6 +81,9 @@ validate the dataset allowlist, NUL-free values, resource sizes, and APP13
 segment limits; unrelated Photoshop resources are preserved. SVG replacement
 values are XML-escaped, and comment writes reject `--` and a trailing `-` so
 the resulting document remains valid XML.
+TIFF and JPEG EXIF date/time rewrites remain limited to existing type-2 ASCII
+entries and their original allocations; the parser revalidates the typed value
+after the fixed-span write.
 JPEG EXIF ASCII writes validate the existing TIFF entry, type, count, offset,
 capacity, and patch range; they never create a missing field or resize the APP1
 segment, and the result is re-read before atomic replacement.

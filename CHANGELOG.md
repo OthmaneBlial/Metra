@@ -10,6 +10,9 @@ Initial read-first foundation with narrow validated rewrites:
   direct/UUID regression coverage;
 - added CR3 adapter regression coverage for fixed-span embedded ISO-BMFF XMP
   rewrites, preserving the RAW identity and container layout;
+- fixed TIFF and JPEG EXIF rewrites for date/time values that are decoded into
+  typed values but stored in existing ASCII entries, with DateTimeOriginal
+  round-trip regression coverage;
 - added bounded ISO-BMFF `uuid` handling for the standard Adobe XMP user type
   and identifiable direct TIFF/`Exif\0\0` payloads, with shared XMP/EXIF
   delegation, absolute source offsets, unknown-UUID warnings, and payload-limit

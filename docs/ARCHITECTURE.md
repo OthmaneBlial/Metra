@@ -182,6 +182,9 @@ slot when the target field has enough storage. JPEG EXIF ASCII rewrites use the
 existing TIFF entry type/count/offset, require a replacement that fits the
 original slot, and preserve the APP1 segment size. The WebP and
 PNG writers validate replacement packets with the bounded XMP parser. The
+TIFF and JPEG EXIF writers also permit typed date/time values when their original
+entry remains TIFF ASCII, so a `DateTimeOriginal` round-trip preserves the typed
+read representation without changing the entry or value allocation. The
 JPEG IPTC writer validates dataset names and lengths, rewrites only the target
 dataset in the `0x0404` resource, preserves unrelated Photoshop resources, and
 creates a bounded APP13 resource when needed.
