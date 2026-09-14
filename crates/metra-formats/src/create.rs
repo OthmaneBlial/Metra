@@ -143,6 +143,23 @@ mod tests {
     }
 
     #[test]
+    fn generic_matroska_path_dispatch_keeps_no_overwrite_contract() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!("metra-generic-mkv-{unique}"));
+        fs::create_dir(&directory).unwrap();
+        let path = directory.join("created.mkv");
+        let request =
+            CreateRequest::Matroska(MatroskaCreateOptions::default().with_info("Title", "Metra"));
+        create_path(&path, &request, ParseLimits::default()).unwrap();
+        assert!(create_path(&path, &request, ParseLimits::default()).is_err());
+        assert_eq!(fs::read_dir(&directory).unwrap().count(), 1);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
     fn generic_dispatch_creates_matroska_seed() {
         let request =
             CreateRequest::Matroska(MatroskaCreateOptions::default().with_info("Title", "Metra"));
