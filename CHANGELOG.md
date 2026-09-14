@@ -7,6 +7,9 @@ Initial read-first foundation with narrow validated rewrites:
 - added standalone XMP packet creation with bounded XML validation, atomic
   no-overwrite path creation, resource-limit checks, and CLI
   `--create-xmp PACKET` coverage;
+- added a minimal JPEG metadata-container seed API with bounded Comment/XMP
+  segments, output revalidation, no-overwrite atomic path creation, and CLI
+  `--create-jpeg KEY=VALUE` coverage; this seam does not encode image pixels;
 - added an isolated legacy-query normalizer for bounded `-json`/`-jsonl` and
   common single-dash tag aliases, translating them to canonical Metra selectors
   while retaining the versioned Metra output schema;
