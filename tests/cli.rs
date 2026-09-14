@@ -3813,6 +3813,56 @@ fn cli_can_edit_broadcast_wave_bext_fields() {
 }
 
 #[test]
+fn cli_can_copy_broadcast_wave_bext_fields() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.file("source.wav", &minimal_wav_with_bext());
+    let target = directory.file("target.wav", &minimal_wav_with_bext());
+
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            &format!(
+                "WAV:DateTimeOriginal={}",
+                source.to_str().expect("UTF-8 test path")
+            ),
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+
+    let copy_integer = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            &format!(
+                "WAV:TimeReference={}",
+                source.to_str().expect("UTF-8 test path")
+            ),
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(
+        copy_integer.status.success(),
+        "stderr: {:?}",
+        copy_integer.stderr
+    );
+
+    let metadata = metra::read(&target).expect("copied BWF should remain readable");
+    assert_eq!(
+        metadata
+            .find("WAV:DateTimeOriginal")
+            .unwrap()
+            .display_value(),
+        "2026:09:14 12:34:56"
+    );
+    assert_eq!(
+        metadata.find("WAV:TimeReference").unwrap().display_value(),
+        "17"
+    );
+}
+
+#[test]
 fn cli_can_edit_and_copy_flac_comments() {
     let directory = TemporaryDirectory::new();
     let source = directory.file("source.flac", &minimal_flac("source title"));

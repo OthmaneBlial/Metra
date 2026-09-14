@@ -189,7 +189,8 @@ pub fn rewrite_metadata_to_vec(
 
 /// Copy one supported metadata value from a source path to a target path
 /// through the same read-first and atomic rewrite pipeline. In addition to
-/// strings, bounded derived GPS scalar values are copied as decimal text.
+/// strings, bounded derived GPS scalar values and Broadcast Wave scalar
+/// fields are copied as canonical text.
 pub fn copy_metadata_path(
     source: impl AsRef<Path>,
     target: impl AsRef<Path>,
@@ -232,6 +233,26 @@ pub fn copy_metadata_path(
             if lookup_key == "GPS:GPSDateStamp" =>
         {
             format!("{year:04}:{month:02}:{day:02}")
+        }
+        (
+            metra_core::TagValue::DateTime {
+                year,
+                month,
+                day,
+                hour,
+                minute,
+                second,
+                nanosecond: 0,
+                offset_minutes: None,
+            },
+            false,
+        ) if lookup_key == "WAV:DateTimeOriginal" => {
+            format!("{year:04}:{month:02}:{day:02} {hour:02}:{minute:02}:{second:02}")
+        }
+        (metra_core::TagValue::Unsigned(value), false)
+            if matches!(lookup_key, "WAV:TimeReference" | "WAV:BWFVersion") =>
+        {
+            value.to_string()
         }
         _ => {
             return Err(MetraError::InvalidTag {

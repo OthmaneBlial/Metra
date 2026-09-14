@@ -2119,6 +2119,7 @@ enum CopyKey {
     PngText(String),
     PngXmp,
     WavInfo(String),
+    WavBext(String),
     FlacComment(String),
     OggComment(String),
     PdfInfo(String),
@@ -2588,6 +2589,8 @@ fn parse_edits(
             CopyKey::PngText(keyword.to_owned())
         } else if let Some(name) = wav_info_name(key) {
             CopyKey::WavInfo(name.to_owned())
+        } else if let Some(name) = wav_bext_name(key) {
+            CopyKey::WavBext(name.to_owned())
         } else if let Some(name) = flac_comment_name(key) {
             CopyKey::FlacComment(name.to_owned())
         } else if let Some(name) = ogg_comment_name(key) {
@@ -3999,6 +4002,26 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path, limits: ParseLimit
             let edits = [metra::WavEdit::SetInfo {
                 name,
                 value: text.clone(),
+            }];
+            apply_wav_edits(paths, &edits, limits)
+        }
+        CopyKey::WavBext(name) => {
+            if source_metadata.file_info.format != metra::FileFormat::Wav {
+                eprintln!(
+                    "metra: {}: source format {} is not WAV",
+                    source.display(),
+                    source_metadata.file_info.format
+                );
+                return ExitCode::from(1);
+            }
+            let key = format!("WAV:{name}");
+            let Some(tag) = source_metadata.find(&key) else {
+                eprintln!("metra: {}: source does not contain {key}", source.display());
+                return ExitCode::from(1);
+            };
+            let edits = [metra::WavEdit::SetBext {
+                name,
+                value: tag.display_value(),
             }];
             apply_wav_edits(paths, &edits, limits)
         }

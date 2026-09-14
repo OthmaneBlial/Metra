@@ -1372,6 +1372,48 @@ fn public_generic_edit_api_rewrites_broadcast_wave_fields() {
 }
 
 #[test]
+fn public_generic_copy_api_rewrites_broadcast_wave_typed_fields() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock should be after the Unix epoch")
+        .as_nanos();
+    let source = std::env::temp_dir().join(format!("metra-copy-source-{nonce}.wav"));
+    let target = std::env::temp_dir().join(format!("metra-copy-target-{nonce}.wav"));
+    fs::write(&source, minimal_wav_with_bext()).expect("source fixture should be writable");
+    fs::write(&target, minimal_wav_with_bext()).expect("target fixture should be writable");
+
+    metra::copy_metadata_path(
+        &source,
+        &target,
+        metra::ParseLimits::default(),
+        "WAV:DateTimeOriginal",
+    )
+    .expect("generic BWF date/time copy should rewrite the target");
+    metra::copy_metadata_path(
+        &source,
+        &target,
+        metra::ParseLimits::default(),
+        "WAV:TimeReference",
+    )
+    .expect("generic BWF integer copy should rewrite the target");
+
+    let metadata = metra::read(&target).expect("copied BWF should remain readable");
+    assert_eq!(
+        metadata
+            .find("WAV:DateTimeOriginal")
+            .unwrap()
+            .display_value(),
+        "2026:09:14 12:34:56"
+    );
+    assert_eq!(
+        metadata.find("WAV:TimeReference").unwrap().display_value(),
+        "17"
+    );
+    fs::remove_file(source).expect("source fixture should be removable");
+    fs::remove_file(target).expect("target fixture should be removable");
+}
+
+#[test]
 fn public_wav_creation_api_supports_broadcast_wave_seed() {
     let options = metra::WavCreateOptions::new()
         .with_bext("Description", "Metra take")
