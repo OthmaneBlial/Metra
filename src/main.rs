@@ -53,6 +53,7 @@ struct Arguments {
             "create_icc",
             "create_mp3",
             "create_ogg",
+            "create_svg",
             "compare"
         ]
     )]
@@ -101,6 +102,7 @@ struct Arguments {
             "create_icc",
             "create_mp3",
             "create_ogg",
+            "create_svg",
             "json",
             "jsonl",
             "csv",
@@ -129,6 +131,7 @@ struct Arguments {
             "create_icc",
             "create_mp3",
             "create_ogg",
+            "create_svg",
             "json",
             "jsonl",
             "csv",
@@ -156,6 +159,7 @@ struct Arguments {
             "create_icc",
             "create_mp3",
             "create_ogg",
+            "create_svg",
             "json",
             "jsonl",
             "csv",
@@ -185,6 +189,7 @@ struct Arguments {
             "create_icc",
             "create_mp3",
             "create_ogg",
+            "create_svg",
             "json",
             "jsonl",
             "csv",
@@ -214,6 +219,7 @@ struct Arguments {
             "create_icc",
             "create_mp3",
             "create_ogg",
+            "create_svg",
             "json",
             "jsonl",
             "csv",
@@ -243,6 +249,7 @@ struct Arguments {
             "create_icc",
             "create_mp3",
             "create_ogg",
+            "create_svg",
             "json",
             "jsonl",
             "csv",
@@ -272,6 +279,7 @@ struct Arguments {
             "create_gif",
             "create_mp3",
             "create_ogg",
+            "create_svg",
             "json",
             "jsonl",
             "csv",
@@ -301,6 +309,7 @@ struct Arguments {
             "create_gif",
             "create_icc",
             "create_ogg",
+            "create_svg",
             "json",
             "jsonl",
             "csv",
@@ -341,6 +350,36 @@ struct Arguments {
         ]
     )]
     create_ogg: Vec<String>,
+
+    /// Create a new minimal SVG document with bounded document text metadata.
+    #[arg(
+        long = "create-svg",
+        value_name = "KEY=VALUE",
+        action = clap::ArgAction::Append,
+        conflicts_with_all = [
+            "set",
+            "delete",
+            "copy",
+            "create_tiff",
+            "create_png",
+            "create_xmp",
+            "create_wav",
+            "create_flac",
+            "create_gif",
+            "create_icc",
+            "create_mp3",
+            "create_ogg",
+            "json",
+            "jsonl",
+            "csv",
+            "toml",
+            "yaml",
+            "tag",
+            "validate",
+            "compare"
+        ]
+    )]
+    create_svg: Vec<String>,
 
     /// Validate inputs and return a failure when any warning is produced.
     #[arg(long, conflicts_with_all = ["set", "delete", "copy"])]
@@ -578,6 +617,29 @@ fn main() -> ExitCode {
             }
         };
         return match metra::create_ogg_path(&arguments.files[0], &options, limits) {
+            Ok(()) => {
+                println!("created: {}", arguments.files[0].display());
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("metra: {}: {error}", arguments.files[0].display());
+                ExitCode::from(1)
+            }
+        };
+    }
+    if !arguments.create_svg.is_empty() {
+        if arguments.files.len() != 1 {
+            eprintln!("metra: --create-svg requires exactly one destination path");
+            return ExitCode::from(2);
+        }
+        let options = match parse_svg_create(&arguments.create_svg) {
+            Ok(options) => options,
+            Err(message) => {
+                eprintln!("metra: {message}");
+                return ExitCode::from(2);
+            }
+        };
+        return match metra::create_svg_path(&arguments.files[0], &options, limits) {
             Ok(()) => {
                 println!("created: {}", arguments.files[0].display());
                 ExitCode::SUCCESS
@@ -854,6 +916,36 @@ fn parse_ogg_create(entries: &[String]) -> Result<metra::OggCreateOptions, Strin
             return Err("--create-ogg requires a non-empty KEY".to_owned());
         }
         options.push_comment(key, value);
+    }
+    Ok(options)
+}
+
+fn parse_svg_create(entries: &[String]) -> Result<metra::SvgCreateOptions, String> {
+    let mut options = metra::SvgCreateOptions::new();
+    for assignment in entries {
+        let (key, value) = assignment
+            .split_once('=')
+            .ok_or_else(|| "--create-svg expects KEY=VALUE".to_owned())?;
+        let key = key.strip_prefix("SVG:").unwrap_or(key);
+        if key.is_empty() {
+            return Err("--create-svg requires a non-empty KEY".to_owned());
+        }
+        match key {
+            "Title" => {
+                if options.title.is_some() {
+                    return Err("--create-svg accepts only one Title field".to_owned());
+                }
+                options.set_title(value);
+            }
+            "Description" => {
+                if options.description.is_some() {
+                    return Err("--create-svg accepts only one Description field".to_owned());
+                }
+                options.set_description(value);
+            }
+            "Comment" => options.push_comment(value),
+            _ => return Err(format!("unsupported --create-svg field {key}")),
+        }
     }
     Ok(options)
 }
