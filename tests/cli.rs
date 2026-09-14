@@ -1787,6 +1787,8 @@ fn cli_can_create_minimal_wav_seed_without_overwrite() {
             "--create-wav",
             "BWF:CodingHistory=A=PCM,F=48000,W=8,M=mono",
             "--create-wav",
+            "iXML:Packet=<BWFXML><PROJECT>created</PROJECT></BWFXML>",
+            "--create-wav",
             "ID3:Title=Embedded title",
             "--create-wav",
             "ID3:Comment=reviewed",
@@ -1817,6 +1819,13 @@ fn cli_can_create_minimal_wav_seed_without_overwrite() {
     assert_eq!(
         metadata.find("WAV:CodingHistory").unwrap().display_value(),
         "A=PCM,F=48000,W=8,M=mono"
+    );
+    assert_eq!(
+        metadata
+            .find("WAV:iXML:BWFXML.PROJECT")
+            .unwrap()
+            .display_value(),
+        "created"
     );
     assert_eq!(
         metadata.find("ID3:Title").unwrap().display_value(),
@@ -1916,6 +1925,29 @@ fn cli_rejects_duplicate_embedded_wav_id3_comments() {
     assert!(
         String::from_utf8_lossy(&output.stderr)
             .contains("--create-wav accepts only one ID3 Comment field")
+    );
+    assert!(!path.exists());
+}
+
+#[test]
+fn cli_rejects_duplicate_wav_ixml_packets() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.path.join("duplicate-ixml.wav");
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--create-wav",
+            "iXML=<BWFXML><PROJECT>one</PROJECT></BWFXML>",
+            "--create-wav",
+            "iXML:Packet=<BWFXML><PROJECT>two</PROJECT></BWFXML>",
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("--create-wav accepts only one iXML packet")
     );
     assert!(!path.exists());
 }

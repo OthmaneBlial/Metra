@@ -1738,6 +1738,7 @@ fn public_wav_creation_api_supports_broadcast_wave_seed() {
 #[test]
 fn public_wav_creation_api_supports_embedded_id3_seed() {
     let options = metra::WavCreateOptions::new()
+        .with_ixml("<BWFXML><PROJECT>Created</PROJECT></BWFXML>")
         .with_id3_text("Title", "Embedded title")
         .with_id3_comment("reviewed");
     let bytes = metra::create_wav_to_vec(&options, metra::ParseLimits::default())
@@ -1758,6 +1759,13 @@ fn public_wav_creation_api_supports_embedded_id3_seed() {
     assert_eq!(
         metadata.find("ID3:Comment").unwrap().display_value(),
         "reviewed"
+    );
+    assert_eq!(
+        metadata
+            .find("WAV:iXML:BWFXML.PROJECT")
+            .unwrap()
+            .display_value(),
+        "Created"
     );
 }
 

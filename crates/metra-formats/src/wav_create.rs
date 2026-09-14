@@ -7,7 +7,7 @@ use metra_core::{FileFormat, FileInfo, MetraError, ParseLimits, Result};
 
 use crate::atomic::atomic_replace;
 use crate::id3_create::Mp3CreateOptions;
-use crate::wav::read_wav;
+use crate::wav::{read_wav, validate_ixml_packet};
 use crate::wav_writer::{bext_fixed_field, encode_bext_value, info_kind};
 
 /// One bounded `LIST/INFO` value for a new WAV file.
@@ -62,6 +62,8 @@ pub struct WavCreateOptions {
     pub kind: WavCreateKind,
     pub info: Vec<WavCreateEntry>,
     pub bext: Vec<WavBextCreateEntry>,
+    /// Optional bounded iXML packet stored in an `iXML` chunk.
+    pub ixml: Option<String>,
     /// Optional bounded ID3v2 metadata seed stored in an `id3 ` chunk.
     pub id3: Option<Mp3CreateOptions>,
 }
@@ -144,6 +146,17 @@ impl WavCreateOptions {
         self.id3
             .get_or_insert_with(Mp3CreateOptions::new)
             .set_comment(value);
+    }
+
+    /// Set the optional validated iXML packet stored in an `iXML` chunk.
+    pub fn with_ixml(mut self, packet: impl Into<String>) -> Self {
+        self.ixml = Some(packet.into());
+        self
+    }
+
+    /// Set the optional validated iXML packet in place.
+    pub fn set_ixml(&mut self, packet: impl Into<String>) {
+        self.ixml = Some(packet.into());
     }
 }
 
@@ -237,6 +250,16 @@ pub fn create_wav_to_vec(options: &WavCreateOptions, limits: ParseLimits) -> Res
         });
     }
 
+    let ixml = options
+        .ixml
+        .as_deref()
+        .map(|packet| {
+            let bytes = packet.as_bytes().to_vec();
+            validate_ixml_packet(&bytes, limits)?;
+            Ok::<Vec<u8>, MetraError>(bytes)
+        })
+        .transpose()?;
+
     let mut info = b"INFO".to_vec();
     for (kind, _, value) in &info_entries {
         let length =
@@ -280,6 +303,9 @@ pub fn create_wav_to_vec(options: &WavCreateOptions, limits: ParseLimits) -> Res
     write_chunk(&mut body, b"fmt ", &fmt)?;
     if let Some(bext) = bext {
         write_chunk(&mut body, b"bext", &bext)?;
+    }
+    if let Some(ixml) = ixml {
+        write_chunk(&mut body, b"iXML", &ixml)?;
     }
     if let Some(id3) = id3 {
         write_chunk(&mut body, b"id3 ", &id3)?;
@@ -530,6 +556,39 @@ mod tests {
     }
 
     #[test]
+    fn creates_readable_wav_with_ixml_seed() {
+        let options = WavCreateOptions::new()
+            .with_ixml("<BWFXML><PROJECT>Metra</PROJECT><SCENE><TAKE>07</TAKE></SCENE></BWFXML>");
+        let bytes = create_wav_to_vec(&options, ParseLimits::default())
+            .expect("iXML WAV creation should succeed");
+        let metadata = read_wav(
+            &mut std::io::Cursor::new(bytes.clone()),
+            FileInfo::new(
+                "created-ixml.wav".into(),
+                bytes.len() as u64,
+                FileFormat::Wav,
+            ),
+            ParseLimits::default(),
+        )
+        .expect("iXML WAV seed should remain readable");
+        assert_eq!(
+            metadata
+                .find("WAV:iXML:BWFXML.PROJECT")
+                .unwrap()
+                .display_value(),
+            "Metra"
+        );
+        assert_eq!(
+            metadata
+                .find("WAV:iXML:BWFXML.SCENE.TAKE")
+                .unwrap()
+                .display_value(),
+            "07"
+        );
+        assert!(bytes.windows(4).any(|window| window == b"iXML"));
+    }
+
+    #[test]
     fn creates_readable_rf64_and_bw64_seeds() {
         for kind in [WavCreateKind::Rf64, WavCreateKind::Bw64] {
             let options = WavCreateOptions::new()
@@ -616,6 +675,9 @@ mod tests {
 
         let invalid_bext = WavCreateOptions::new().with_bext("TimeReference", "not-a-number");
         assert!(create_wav_to_vec(&invalid_bext, ParseLimits::default()).is_err());
+
+        let invalid_ixml = WavCreateOptions::new().with_ixml("<BWFXML>");
+        assert!(create_wav_to_vec(&invalid_ixml, ParseLimits::default()).is_err());
     }
 
     #[test]
