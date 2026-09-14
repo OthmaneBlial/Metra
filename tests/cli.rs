@@ -363,6 +363,33 @@ fn minimal_x3f() -> Vec<u8> {
     bytes
 }
 
+fn minimal_crw() -> Vec<u8> {
+    let root_offset = 26_usize;
+    let make_model = b"Canon\0EOS-1D\0";
+    let mut dimensions = [0_u8; 28];
+    dimensions[..4].copy_from_slice(&5184_u32.to_le_bytes());
+    dimensions[4..8].copy_from_slice(&3456_u32.to_le_bytes());
+    dimensions[12..16].copy_from_slice(&90_i32.to_le_bytes());
+    let directory_offset = make_model.len() + dimensions.len();
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(b"II");
+    bytes.extend_from_slice(&(root_offset as u32).to_le_bytes());
+    bytes.extend_from_slice(b"HEAPCCDR");
+    bytes.extend_from_slice(&[2, 0, 0, 0]);
+    bytes.extend_from_slice(&[0_u8; 8]);
+    bytes.extend_from_slice(make_model);
+    bytes.extend_from_slice(&dimensions);
+    bytes.extend_from_slice(&2_u16.to_le_bytes());
+    bytes.extend_from_slice(&0x080A_u16.to_le_bytes());
+    bytes.extend_from_slice(&(make_model.len() as u32).to_le_bytes());
+    bytes.extend_from_slice(&0_u32.to_le_bytes());
+    bytes.extend_from_slice(&0x1810_u16.to_le_bytes());
+    bytes.extend_from_slice(&(dimensions.len() as u32).to_le_bytes());
+    bytes.extend_from_slice(&(make_model.len() as u32).to_le_bytes());
+    bytes.extend_from_slice(&(directory_offset as u32).to_le_bytes());
+    bytes
+}
+
 fn minimal_svg_document(title: &str, description: &str, comment: &str) -> Vec<u8> {
     format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\"><!-- {comment} --><title>{title}</title><desc>{description}</desc><rect width=\"2\" height=\"2\"/></svg>"
@@ -1083,6 +1110,37 @@ fn x3f_json_output_exposes_bounded_header_and_properties() {
     assert!(
         tags.iter()
             .any(|tag| tag["name"] == "PROP:CAMMODEL" && tag["value"]["string"] == "SD1")
+    );
+    assert!(
+        document["warnings"]
+            .as_array()
+            .expect("warnings should be an array")
+            .is_empty()
+    );
+}
+
+#[test]
+fn crw_json_output_exposes_bounded_ciff_metadata() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.file("capture.crw", &minimal_crw());
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args(["--json", path.to_str().expect("UTF-8 test path")])
+        .output()
+        .expect("Metra CLI should start");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let document: Value = serde_json::from_slice(&output.stdout).expect("JSON output should parse");
+    assert_eq!(document["file_info"]["format"], "RAW");
+    let tags = document["tags"]
+        .as_array()
+        .expect("tags should be an array");
+    assert!(
+        tags.iter()
+            .any(|tag| tag["name"] == "Make" && tag["value"]["string"] == "Canon")
+    );
+    assert!(
+        tags.iter()
+            .any(|tag| tag["name"] == "ImageWidth" && tag["value"]["unsigned"] == 5184)
     );
     assert!(
         document["warnings"]
