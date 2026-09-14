@@ -952,6 +952,47 @@ fn cli_can_create_minimal_tiff_seed_without_overwrite() {
 }
 
 #[test]
+fn cli_can_create_minimal_dng_seed_without_overwrite() {
+    let directory = TemporaryDirectory::new();
+    let path = directory.path.join("created.dng");
+    let output = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--create-dng",
+            "DNG:Make=Metra",
+            "--create-dng",
+            "Artist=Othmane",
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let metadata = metra::read(&path).expect("created DNG should remain readable");
+    assert_eq!(metadata.file_info.format, metra::FileFormat::Raw);
+    assert_eq!(metadata.find("RAW:Variant").unwrap().display_value(), "DNG");
+    assert_eq!(metadata.find("EXIF:Make").unwrap().display_value(), "Metra");
+    assert_eq!(
+        metadata.find("EXIF:Artist").unwrap().display_value(),
+        "Othmane"
+    );
+    assert_eq!(
+        metadata.find("DNG:DNGVersion").unwrap().display_value(),
+        "1, 4, 0, 0"
+    );
+
+    let second = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--create-dng",
+            "DNG:Make=Other",
+            path.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(!second.status.success());
+    assert!(String::from_utf8_lossy(&second.stderr).contains("refusing to overwrite"));
+}
+
+#[test]
 fn cli_can_create_minimal_jpeg_seed_without_overwrite() {
     let directory = TemporaryDirectory::new();
     let path = directory.path.join("created.jpg");
