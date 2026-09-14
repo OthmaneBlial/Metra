@@ -314,7 +314,9 @@ The WAV creation seam exposes `WavCreateKind`, `WavCreateOptions`,
 `WavBextCreateEntry`, `create_wav_to_vec`, `create_wav_path`, and
 `--create-wav KEY=VALUE`. It emits a fixed 1x1 PCM seed with optional bounded
 `LIST/INFO` fields and a validated 602-byte `bext` base for `BWF:Field=VALUE`
-entries. `WavCreateKind::Riff` uses classic 32-bit sizes; `Rf64` and `Bw64`
+entries. `WavCreateOptions::with_id3_text` and `with_id3_comment` add an
+optional bounded ID3v2 seed in an `id3 ` chunk; the CLI accepts the same fields
+as `ID3:Title=VALUE` and `ID3:Comment=VALUE`. `WavCreateKind::Riff` uses classic 32-bit sizes; `Rf64` and `Bw64`
 emit a first bounded `ds64` chunk and a sentinel-sized `data` chunk with its
 checked 64-bit size. Every variant is validated through the WAV reader and
 path creation refuses to overwrite an existing destination.

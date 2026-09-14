@@ -262,6 +262,10 @@ one English comment, followed by a fixed zeroed MPEG Layer III seed frame. Text
 payloads, frame counts, tag size, and the total output are checked before
 allocation; the result is re-read before an atomic no-overwrite path create.
 This seed is metadata-oriented and does not claim to encode playable audio.
+WAV creation may embed the same bounded ID3v2 seed in an `id3 ` chunk. The
+embedded packet is generated and validated by the MP3 creator, then the full
+RIFF/RF64/BW64 output is re-read before creation; INFO, BWF, ID3, and audio
+payloads stay in separately bounded chunks.
 
 Ogg creation emits only a minimal Opus stream with bounded UTF-8 `OpusTags`
 comments and fixed `OpusHead` fields. Comment keys, values, packet size, page

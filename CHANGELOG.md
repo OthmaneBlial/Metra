@@ -4,6 +4,8 @@
 
 Initial read-first foundation with narrow validated rewrites:
 
+- extended WAV seed creation with optional bounded ID3v2 text/comment metadata
+  in an `id3 ` chunk through the Rust API and `--create-wav ID3:...=...`;
 - added bounded set/delete/copy support for common ID3v2 text and comment
   frames embedded in existing WAV `id3 ` chunks, reusing the ID3 writer while
   preserving surrounding chunks and audio bytes;
