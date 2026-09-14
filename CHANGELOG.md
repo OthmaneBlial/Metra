@@ -15,6 +15,9 @@ Initial read-first foundation with narrow validated rewrites:
 - added a bounded 1x1 uncompressed-video AVI seed creator with one DIB frame,
   minimal index/header structures, `LIST/INFO` fields, output revalidation, and
   CLI `--create-avi KEY=VALUE` coverage;
+- added bounded MKV and WebM metadata-seed creation with EBML `Info` and
+  `SimpleTag` fields, output revalidation, no-overwrite atomic path creation,
+  generic registry dispatch, and CLI `--create-mkv`/`--create-webm` coverage;
 - added standalone XMP packet creation with bounded XML validation, atomic
   no-overwrite path creation, resource-limit checks, and CLI
   `--create-xmp PACKET` coverage;
