@@ -475,7 +475,11 @@ pub(crate) fn collect_pdf(
                     value: value.clone(),
                 })
                 .ok_or_else(|| unsupported_edit(format, key)),
-            MetadataEdit::Delete { key } => Err(unsupported_edit(format, key)),
+            MetadataEdit::Delete { key } => pdf_info_name(key)
+                .map(|name| crate::PdfEdit::DeleteInfo {
+                    name: name.to_owned(),
+                })
+                .ok_or_else(|| unsupported_edit(format, key)),
         })
         .collect()
 }

@@ -195,7 +195,8 @@ fn parse_info_dictionary(
         else {
             break;
         };
-        if let Some(name) = info_name(&key)
+        if value != b"null"
+            && let Some(name) = info_name(&key)
             && let Some(value) = decode_pdf_string(&value)
         {
             let raw = value.as_bytes().to_vec();

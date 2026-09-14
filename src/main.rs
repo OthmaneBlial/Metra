@@ -1431,6 +1431,13 @@ fn parse_edits(
                     },
                 ])));
             }
+            if let Some(name) = pdf_info_name(key) {
+                return Ok(Some(EditRequest::DirectPdf(vec![
+                    metra::PdfEdit::DeleteInfo {
+                        name: name.to_owned(),
+                    },
+                ])));
+            }
             if jpeg_xmp_key(key) {
                 return Ok(Some(EditRequest::DirectJpeg(vec![
                     metra::JpegEdit::DeleteXmp,

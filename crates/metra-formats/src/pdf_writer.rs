@@ -16,7 +16,18 @@ use crate::pdf::read_pdf;
 /// valid and unrelated PDF bytes are copied unchanged.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PdfEdit {
-    SetInfo { name: String, value: String },
+    SetInfo {
+        name: String,
+        value: String,
+    },
+    /// Remove an existing Info string without changing the PDF byte layout.
+    ///
+    /// The writer replaces the value token with a padded `null` object. This
+    /// keeps every object and xref offset stable while making the field absent
+    /// to the reader.
+    DeleteInfo {
+        name: String,
+    },
 }
 
 pub fn rewrite_pdf<R: Read + Seek, W: Write + Seek>(
@@ -140,15 +151,20 @@ fn collect_patches<R: Read + Seek>(
 ) -> Result<Vec<Patch>> {
     let mut patches = Vec::with_capacity(edits.len());
     for edit in edits {
-        let PdfEdit::SetInfo { name, value } = edit;
+        let (name, replacement) = match edit {
+            PdfEdit::SetInfo { name, value } => {
+                if value.contains('\0') {
+                    return Err(MetraError::WriteFailure {
+                        message: format!("PDF Info value for {name} cannot contain NUL"),
+                    });
+                }
+                (name, Some(value.as_str()))
+            }
+            PdfEdit::DeleteInfo { name } => (name, None),
+        };
         if !is_writable_info_name(name) {
             return Err(MetraError::WriteFailure {
                 message: format!("PDF Info field {name} is not writable"),
-            });
-        }
-        if value.contains('\0') {
-            return Err(MetraError::WriteFailure {
-                message: format!("PDF Info value for {name} cannot contain NUL"),
             });
         }
         let key = format!("PDF:{name}");
@@ -196,7 +212,10 @@ fn collect_patches<R: Read + Seek>(
             &file_info.path,
             "PDF Info string token",
         )?;
-        let replacement = encode_pdf_string(&token, value)?;
+        let replacement = match replacement {
+            Some(value) => encode_pdf_string(&token, value)?,
+            None => encode_pdf_null(&token)?,
+        };
         if replacement.len() != token.len() {
             return Err(MetraError::WriteFailure {
                 message: format!(
@@ -243,6 +262,18 @@ fn is_writable_info_name(name: &str) -> bool {
             | "CreationDate"
             | "ModifyDate"
     )
+}
+
+fn encode_pdf_null(token: &[u8]) -> Result<Vec<u8>> {
+    if token.len() < b"null".len() {
+        return Err(MetraError::WriteFailure {
+            message: "PDF Info field token is too short to preserve layout while deleting"
+                .to_owned(),
+        });
+    }
+    let mut replacement = vec![b' '; token.len()];
+    replacement[..b"null".len()].copy_from_slice(b"null");
+    Ok(replacement)
 }
 
 fn encode_pdf_string(token: &[u8], value: &str) -> Result<Vec<u8>> {
@@ -654,6 +685,50 @@ mod tests {
             metadata.find("PDF:Title").unwrap().display_value(),
             "After!"
         );
+    }
+
+    #[test]
+    fn deletes_pdf_info_without_changing_layout() {
+        let bytes = pdf_with_info("Before");
+        let output = rewrite_pdf_to_vec(
+            &bytes,
+            info(&bytes),
+            ParseLimits::default(),
+            &[PdfEdit::DeleteInfo {
+                name: "Title".to_owned(),
+            }],
+        )
+        .unwrap();
+        assert_eq!(output.len(), bytes.len());
+        assert!(
+            output
+                .windows(b"/Title null".len())
+                .any(|window| { window == b"/Title null" })
+        );
+        assert!(output.ends_with(b"%%EOF\n"));
+        let metadata = read_pdf(
+            &mut Cursor::new(output),
+            info(&bytes),
+            ParseLimits::default(),
+        )
+        .unwrap();
+        assert!(metadata.find("PDF:Title").is_none());
+        assert_eq!(metadata.find("PDF:Author").unwrap().display_value(), "Ot");
+    }
+
+    #[test]
+    fn rejects_delete_when_the_existing_token_cannot_fit_null() {
+        let bytes = b"%PDF-1.7\n5 0 obj\n<< /Title () >>\nendobj\ntrailer\n<< /Info 5 0 R >>\nstartxref\n9\n%%EOF\n";
+        let error = rewrite_pdf_to_vec(
+            bytes,
+            info(bytes),
+            ParseLimits::default(),
+            &[PdfEdit::DeleteInfo {
+                name: "Title".to_owned(),
+            }],
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("too short"));
     }
 
     #[test]
