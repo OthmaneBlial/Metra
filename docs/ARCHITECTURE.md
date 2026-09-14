@@ -301,10 +301,11 @@ calculates the xref offsets, validates the Info dictionary through the PDF
 reader, and refuses to overwrite an existing destination. Page content and
 graphics remain outside this creation seam.
 
-The WAV creation seam exposes `WavCreateOptions`, `create_wav_to_vec`,
-`create_wav_path`, and `--create-wav KEY=VALUE`. It emits a fixed 1x1 PCM
-RIFF/WAVE seed with optional bounded `LIST/INFO` fields, validates the output
-through the WAV reader, and refuses to overwrite an existing destination.
+The WAV creation seam exposes `WavCreateOptions`, `WavBextCreateEntry`,
+`create_wav_to_vec`, `create_wav_path`, and `--create-wav KEY=VALUE`. It emits a
+fixed 1x1 PCM RIFF/WAVE seed with optional bounded `LIST/INFO` fields and a
+validated 602-byte `bext` base for `BWF:Field=VALUE` entries, validates the
+output through the WAV reader, and refuses to overwrite an existing destination.
 
 Standalone ICC creation exposes `IccCreateOptions`, `create_icc_to_vec`,
 `create_icc_path`, and the CLI `--create-icc KEY=VALUE`. It emits a minimal

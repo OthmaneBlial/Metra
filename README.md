@@ -36,7 +36,7 @@ Implemented today:
 | FLAC | `STREAMINFO`, bounded `SEEKTABLE` seek-point and `CUESHEET` track/index structures, Vorbis comments, embedded-picture properties/data, bounded metadata-block validation, and minimal metadata-only creation with Vorbis comments |
 | Ogg/Vorbis/Opus | Bounded Ogg page walking with metadata-page CRC warnings, Vorbis and Opus stream headers, Vorbis Comments/OpusTags, Ogg-FLAC comments, typed FLAC-in-Ogg `STREAMINFO` fields, and minimal Opus seed creation with bounded comments |
 | PDF | Header/version, bounded Info dictionaries, PDF string decoding, embedded XMP packets when directly available, and minimal xref-valid document creation with Info fields |
-| WAV | RIFF/WAVE chunks, `fmt ` audio properties, `LIST/INFO`, and canonical Broadcast Wave `bext` fields (`Description`, `Originator`, `DateTimeOriginal`, `TimeReference`, `BWFVersion`, `BWF_UMID`, and `CodingHistory`) with typed date-time values and fixed-field raw preservation; bounded iXML XML leaves and packet retention, embedded ID3v2 delegation, bounded validation, and minimal 1x1 PCM creation with bounded `LIST/INFO` seeds |
+| WAV | RIFF/WAVE chunks, `fmt ` audio properties, `LIST/INFO`, and canonical Broadcast Wave `bext` fields (`Description`, `Originator`, `DateTimeOriginal`, `TimeReference`, `BWFVersion`, `BWF_UMID`, and `CodingHistory`) with typed date-time values and fixed-field raw preservation; bounded iXML XML leaves and packet retention, embedded ID3v2 delegation, bounded validation, and minimal 1x1 PCM creation with bounded `LIST/INFO` or `BWF:bext` seeds |
 | SVG | Bounded XML detection, root dimensions/version/viewBox, title, description, comments, embedded XMP extraction, nesting/text limits, safe document-text rewrites, and minimal 1x1 metadata-seed creation |
 | Standalone XMP/ICC | Signature-based standalone XMP packet and ICC profile readers reuse the bounded XML/profile engines and retain the detected file family; standalone XMP packets and existing ICC text tags can be rewritten within fixed storage, and minimal RGB ICC profiles can also be created and validated as new files |
 | PSD/PSB | Big-endian header and dimensions, bounded Photoshop image resources, XMP/IPTC/ICC/embedded EXIF delegation, resolution and common resource fields, preservation of unknown resources as bytes, and bounded replacement of existing PSD XMP resources |
@@ -225,7 +225,9 @@ cargo run -- --create-heif 'ISOBMFF:ImageWidth=1920' --create-heif 'ImageHeight=
 cargo run -- --create-avif 'ImageWidth=1920' --create-avif 'ImageHeight=1080' new.avif
 cargo run -- --create-png 'Comment=Metra' --create-png 'Author=Othmane' new.png
 cargo run -- --create-xmp '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF/></x:xmpmeta>' new.xmp
-cargo run -- --create-wav 'Title=Metra' --create-wav 'Artist=Othmane' new.wav
+cargo run -- --create-wav 'Title=Metra' --create-wav 'Artist=Othmane' \
+  --create-wav 'BWF:Description=Metra take' \
+  --create-wav 'BWF:DateTimeOriginal=2026:09:14 12:34:56' new.wav
 cargo run -- --create-icc 'Description=Metra sRGB' --create-icc 'Copyright=Othmane' new.icc
 cargo run -- --create-avi 'AVI:Title=Metra' --create-avi 'Software=Metra' new.avi
 cargo run -- --create-mkv 'Matroska:Title=Metra' --create-mkv 'Matroska:Tag:TITLE=Metra' new.mkv
