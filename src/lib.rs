@@ -17,11 +17,12 @@ pub use metra_core::{
     format_capabilities, format_capabilities_all, tag_definition, tag_definitions,
 };
 pub use metra_formats::{
-    AviEdit, DetectedFormat, FlacCreateEntry, FlacCreateOptions, FlacEdit, FormatHandler, GifEdit,
-    IccCreateEntry, IccCreateOptions, IsobmffEdit, JpegEdit, MatroskaEdit, MetadataEdit, Mp3Edit,
-    OggEdit, PdfEdit, PngCreateEntry, PngCreateOptions, PngEdit, PsdEdit, ReadSeek, SvgEdit,
-    TiffCreateEntry, TiffCreateOptions, TiffEdit, WavCreateEntry, WavCreateOptions, WavEdit,
-    WebpEdit, WriteSeek, copy_metadata_path, create_flac_path, create_flac_to_vec, create_icc_path,
+    AviEdit, DetectedFormat, FlacCreateEntry, FlacCreateOptions, FlacEdit, FormatHandler,
+    GifCreateEntry, GifCreateOptions, GifEdit, IccCreateEntry, IccCreateOptions, IsobmffEdit,
+    JpegEdit, MatroskaEdit, MetadataEdit, Mp3Edit, OggEdit, PdfEdit, PngCreateEntry,
+    PngCreateOptions, PngEdit, PsdEdit, ReadSeek, SvgEdit, TiffCreateEntry, TiffCreateOptions,
+    TiffEdit, WavCreateEntry, WavCreateOptions, WavEdit, WebpEdit, WriteSeek, copy_metadata_path,
+    create_flac_path, create_flac_to_vec, create_gif_path, create_gif_to_vec, create_icc_path,
     create_icc_to_vec, create_png_path, create_png_to_vec, create_tiff_path, create_tiff_to_vec,
     create_wav_path, create_wav_to_vec, create_xmp_path, create_xmp_to_vec, detect_format,
     format_handlers, handler_for_format, read_icc, read_ogg, read_path_with_limits, read_reader,
