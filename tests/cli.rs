@@ -677,6 +677,12 @@ fn minimal_isobmff(title: &str) -> Vec<u8> {
     [ftyp, moov].concat()
 }
 
+fn minimal_isobmff_xmp(format: &str) -> Vec<u8> {
+    let ftyp = isobmff_box(b"ftyp", b"isom\0\0\0\0mp42");
+    let xmp = isobmff_box(b"xml ", xmp_packet(format).as_bytes());
+    [ftyp, xmp].concat()
+}
+
 fn minimal_cr3(title: &str) -> Vec<u8> {
     let ftyp = isobmff_box(b"ftyp", b"crx \0\0\0\0crx ");
     let mut data = vec![0, 0, 0, 1, 0, 0, 0, 0];
@@ -2510,6 +2516,72 @@ fn cli_can_set_and_copy_existing_isobmff_text() {
     assert_eq!(
         metadata.find("ISOBMFF:Title").unwrap().display_value(),
         "Source"
+    );
+}
+
+#[test]
+fn cli_can_set_copy_and_delete_existing_isobmff_xmp() {
+    let directory = TemporaryDirectory::new();
+    let source = directory.file("source.mp4", &minimal_isobmff_xmp("source"));
+    let target = directory.file("target.mp4", &minimal_isobmff_xmp("target"));
+    let replacement = xmp_packet("edited");
+
+    let set = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--set",
+            &format!("ISOBMFF:XMP={replacement}"),
+            source.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(set.status.success(), "stderr: {:?}", set.stderr);
+    assert_eq!(
+        metra::read(&source)
+            .unwrap()
+            .find("XMP:dc:format")
+            .unwrap()
+            .display_value(),
+        "edited"
+    );
+
+    let copy_assignment = format!(
+        "ISOBMFF:UUID:XMP={}",
+        source.to_str().expect("UTF-8 test path")
+    );
+    let copy = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--copy",
+            copy_assignment.as_str(),
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(copy.status.success(), "stderr: {:?}", copy.stderr);
+    assert_eq!(
+        metra::read(&target)
+            .unwrap()
+            .find("XMP:dc:format")
+            .unwrap()
+            .display_value(),
+        "edited"
+    );
+
+    let delete = Command::new(env!("CARGO_BIN_EXE_metra"))
+        .args([
+            "--delete",
+            "ISOBMFF:XMP",
+            target.to_str().expect("UTF-8 test path"),
+        ])
+        .output()
+        .expect("Metra CLI should start");
+    assert!(delete.status.success(), "stderr: {:?}", delete.stderr);
+    let metadata = metra::read(&target).expect("deleted ISO-BMFF XMP should remain readable");
+    assert!(metadata.find("XMP:dc:format").is_none());
+    let packet = metadata
+        .find("XMP:Packet")
+        .expect("cleared packet is retained");
+    assert!(
+        matches!(&packet.value, metra::TagValue::Bytes(bytes) if bytes.iter().all(|byte| *byte == 0))
     );
 }
 

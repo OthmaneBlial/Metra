@@ -139,6 +139,22 @@ fn minimal_xmp_packet(format: &str) -> Vec<u8> {
     .into_bytes()
 }
 
+fn minimal_isobmff_xmp(format: &str) -> Vec<u8> {
+    fn box_with_kind(kind: &[u8; 4], data: &[u8]) -> Vec<u8> {
+        let size = u32::try_from(data.len() + 8).expect("test box fits");
+        let mut output = size.to_be_bytes().to_vec();
+        output.extend_from_slice(kind);
+        output.extend_from_slice(data);
+        output
+    }
+
+    [
+        box_with_kind(b"ftyp", b"isom\0\0\0\0"),
+        box_with_kind(b"xml ", &minimal_xmp_packet(format)),
+    ]
+    .concat()
+}
+
 fn minimal_dng_with_make(make: &str) -> Vec<u8> {
     let mut bytes = vec![
         b'I',
@@ -256,6 +272,37 @@ fn public_generic_edit_api_rewrites_and_revalidates_jpeg() {
     assert_eq!(
         metadata.find("JPEG:Comment").unwrap().display_value(),
         "new"
+    );
+}
+
+#[test]
+fn public_generic_edit_api_rewrites_embedded_isobmff_xmp() {
+    let bytes = minimal_isobmff_xmp("Before");
+    let replacement = String::from_utf8(minimal_xmp_packet("After!")).expect("XMP is UTF-8");
+    let output = metra::rewrite_metadata_to_vec(
+        &bytes,
+        metra::FileInfo::new(
+            "memory.heic".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::set("ISOBMFF:XMP", replacement)],
+    )
+    .expect("generic ISO-BMFF XMP edit should validate its rewritten bytes");
+
+    let metadata = metra::read_from(
+        &mut std::io::Cursor::new(output.clone()),
+        metra::FileInfo::new(
+            "memory.heic".into(),
+            output.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+    )
+    .expect("rewritten ISO-BMFF should remain readable");
+    assert_eq!(
+        metadata.find("XMP:dc:format").unwrap().display_value(),
+        "After!"
     );
 }
 

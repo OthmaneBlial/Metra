@@ -1861,6 +1861,7 @@ enum CopyKey {
     JpegIptc(String),
     TiffAscii(String),
     IsobmffText(String),
+    IsobmffXmp,
     PngText(String),
     PngXmp,
     WavInfo(String),
@@ -1959,6 +1960,13 @@ fn parse_edits(
                 return Ok(Some(EditRequest::DirectMatroska(vec![
                     metra::MatroskaEdit::SetString {
                         key: key.to_owned(),
+                        value: value.to_owned(),
+                    },
+                ])));
+            }
+            if isobmff_xmp_key(key) {
+                return Ok(Some(EditRequest::DirectIsobmff(vec![
+                    metra::IsobmffEdit::SetXmp {
                         value: value.to_owned(),
                     },
                 ])));
@@ -2141,6 +2149,11 @@ fn parse_edits(
                     },
                 ])));
             }
+            if isobmff_xmp_key(key) {
+                return Ok(Some(EditRequest::DirectIsobmff(vec![
+                    metra::IsobmffEdit::DeleteXmp,
+                ])));
+            }
             if isobmff_text_key(key) {
                 return Ok(Some(EditRequest::DirectIsobmff(vec![
                     metra::IsobmffEdit::DeleteText {
@@ -2217,6 +2230,8 @@ fn parse_edits(
             CopyKey::MatroskaTag(name.to_owned())
         } else if matroska_info_key(key) {
             CopyKey::MatroskaString(key.to_owned())
+        } else if isobmff_xmp_key(key) {
+            CopyKey::IsobmffXmp
         } else if isobmff_text_key(key) {
             CopyKey::IsobmffText(key.to_owned())
         } else if jpeg_xmp_key(key) {
@@ -2343,6 +2358,10 @@ fn isobmff_text_key(key: &str) -> bool {
             | "ISOBMFF:PurchaseDate"
             | "ISOBMFF:Encoder"
     )
+}
+
+fn isobmff_xmp_key(key: &str) -> bool {
+    matches!(key, "ISOBMFF:XMP" | "ISOBMFF:UUID:XMP")
 }
 
 fn is_isobmff_format(format: metra::FileFormat) -> bool {
@@ -3295,6 +3314,37 @@ fn apply_copy(paths: &[PathBuf], key: CopyKey, source: &Path, limits: ParseLimit
                 key,
                 value: value.clone(),
             }];
+            apply_isobmff_edits(paths, &edits, limits)
+        }
+        CopyKey::IsobmffXmp => {
+            if !(is_isobmff_format(source_metadata.file_info.format)
+                || source_metadata.file_info.format == metra::FileFormat::Xmp
+                || (source_metadata.file_info.format == metra::FileFormat::Raw
+                    && is_cr3_metadata(&source_metadata)))
+            {
+                eprintln!(
+                    "metra: {}: source format {} is not ISO-BMFF, CR3, or standalone XMP",
+                    source.display(),
+                    source_metadata.file_info.format
+                );
+                return ExitCode::from(1);
+            }
+            let Some(packet) = source_metadata.find("XMP:Packet") else {
+                eprintln!(
+                    "metra: {}: source does not contain an XMP packet",
+                    source.display()
+                );
+                return ExitCode::from(1);
+            };
+            let metra::TagValue::Bytes(packet) = &packet.value else {
+                eprintln!("metra: {}: XMP:Packet is not raw bytes", source.display());
+                return ExitCode::from(1);
+            };
+            let Ok(packet) = String::from_utf8(packet.clone()) else {
+                eprintln!("metra: {}: XMP:Packet is not valid UTF-8", source.display());
+                return ExitCode::from(1);
+            };
+            let edits = [metra::IsobmffEdit::SetXmp { value: packet }];
             apply_isobmff_edits(paths, &edits, limits)
         }
         CopyKey::PngText(keyword) => {

@@ -15,8 +15,19 @@ use crate::isobmff::read_isobmff;
 /// original value and is NUL-padded; it may not require a box resize.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IsobmffEdit {
-    SetText { key: String, value: String },
-    DeleteText { key: String },
+    SetText {
+        key: String,
+        value: String,
+    },
+    DeleteText {
+        key: String,
+    },
+    /// Replace the first embedded XMP packet without changing its box size.
+    SetXmp {
+        value: String,
+    },
+    /// Clear the first embedded XMP packet while retaining its box layout.
+    DeleteXmp,
 }
 
 pub fn rewrite_isobmff<R: Read + Seek, W: Write + Seek>(
@@ -166,9 +177,16 @@ fn collect_patches(
 ) -> Result<Vec<Patch>> {
     let mut patches = Vec::with_capacity(edits.len());
     for edit in edits {
+        if matches!(edit, IsobmffEdit::SetXmp { .. } | IsobmffEdit::DeleteXmp) {
+            patches.push(collect_xmp_patch(metadata, file_length, limits, edit)?);
+            continue;
+        }
         let (key, value) = match edit {
             IsobmffEdit::SetText { key, value } => (key, value.as_str()),
             IsobmffEdit::DeleteText { key } => (key, ""),
+            IsobmffEdit::SetXmp { .. } | IsobmffEdit::DeleteXmp => {
+                unreachable!("XMP edits are handled before text edits")
+            }
         };
         if !is_writable_text_key(key) {
             return Err(MetraError::WriteFailure {
@@ -275,6 +293,117 @@ fn collect_patches(
         });
     }
     Ok(patches)
+}
+
+fn collect_xmp_patch(
+    metadata: &Metadata,
+    file_length: u64,
+    limits: ParseLimits,
+    edit: &IsobmffEdit,
+) -> Result<Patch> {
+    let matches = metadata
+        .find_all("XMP:Packet")
+        .into_iter()
+        .filter(|tag| {
+            matches!(
+                tag.source.container.as_str(),
+                "ISO-BMFF/xml" | "ISO-BMFF/uuid-XMP"
+            )
+        })
+        .collect::<Vec<_>>();
+    let tag = match matches.as_slice() {
+        [tag] => *tag,
+        [] => {
+            return Err(MetraError::WriteFailure {
+                message: "ISO-BMFF XMP packet does not exist".to_owned(),
+            });
+        }
+        _ => {
+            return Err(MetraError::WriteFailure {
+                message:
+                    "ISO-BMFF contains repeated XMP packets; an unambiguous target is required"
+                        .to_owned(),
+            });
+        }
+    };
+    if !matches!(tag.value, TagValue::Bytes(_)) {
+        return Err(MetraError::WriteFailure {
+            message: "ISO-BMFF XMP packet is not a byte payload".to_owned(),
+        });
+    }
+    let offset = tag.source.offset.ok_or_else(|| MetraError::WriteFailure {
+        message: "ISO-BMFF XMP packet has no source offset".to_owned(),
+    })?;
+    let span = tag.source.length.ok_or_else(|| MetraError::WriteFailure {
+        message: "ISO-BMFF XMP packet has no source length".to_owned(),
+    })?;
+    if span > u64::try_from(limits.max_value_bytes).unwrap_or(u64::MAX) {
+        return Err(MetraError::ResourceLimitExceeded {
+            resource: "ISO-BMFF XMP packet".to_owned(),
+            limit: limits.max_value_bytes,
+        });
+    }
+    let end = offset.checked_add(span).ok_or(MetraError::InvalidOffset {
+        context: "ISO-BMFF XMP packet".to_owned(),
+        offset,
+    })?;
+    if end > file_length {
+        return Err(MetraError::UnexpectedEof {
+            context: "ISO-BMFF XMP packet".to_owned(),
+        });
+    }
+    let span_usize = usize::try_from(span).map_err(|_| MetraError::ResourceLimitExceeded {
+        resource: "ISO-BMFF XMP packet".to_owned(),
+        limit: limits.max_value_bytes,
+    })?;
+    let bytes = match edit {
+        IsobmffEdit::SetXmp { value } => {
+            if value.contains('\0') {
+                return Err(MetraError::WriteFailure {
+                    message: "ISO-BMFF XMP value cannot contain NUL".to_owned(),
+                });
+            }
+            if value.len() != span_usize {
+                return Err(MetraError::WriteFailure {
+                    message: format!(
+                        "ISO-BMFF XMP replacement requires exactly {span} bytes, got {}",
+                        value.len()
+                    ),
+                });
+            }
+            if !crate::xmp::is_xmp_signature(value.as_bytes()) {
+                return Err(MetraError::WriteFailure {
+                    message: "invalid ISO-BMFF XMP replacement: missing xmpmeta or RDF root"
+                        .to_owned(),
+                });
+            }
+            let mut validation = Metadata::new(FileInfo::new(
+                "<memory>".into(),
+                value.len() as u64,
+                FileFormat::Xmp,
+            ));
+            crate::xmp::parse_xmp(
+                value.as_bytes(),
+                0,
+                "ISO-BMFF/XMP-rewrite",
+                &mut validation,
+                limits,
+            )
+            .map_err(|error| MetraError::WriteFailure {
+                message: format!("invalid ISO-BMFF XMP replacement: {error}"),
+            })?;
+            value.as_bytes().to_vec()
+        }
+        IsobmffEdit::DeleteXmp => vec![0; span_usize],
+        IsobmffEdit::SetText { .. } | IsobmffEdit::DeleteText { .. } => {
+            unreachable!("text edits are handled by the text collector")
+        }
+    };
+    Ok(Patch {
+        offset,
+        span,
+        bytes,
+    })
 }
 
 fn rewrite_stream<R: Read + Seek, W: Write + Seek>(
@@ -402,6 +531,31 @@ mod tests {
         [ftyp, moov].concat()
     }
 
+    fn xmp_packet(format: &str) -> Vec<u8> {
+        format!(
+            "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF><rdf:Description xmlns:dc=\"urn:dc\" dc:format=\"{format}\"/></rdf:RDF></x:xmpmeta>"
+        )
+        .into_bytes()
+    }
+
+    fn direct_xmp_fixture(format: &str) -> Vec<u8> {
+        let ftyp = box_with_kind(b"ftyp", b"isom\0\0\0\0");
+        let xmp = box_with_kind(b"xml ", &xmp_packet(format));
+        [ftyp, xmp].concat()
+    }
+
+    fn uuid_xmp_fixture(format: &str) -> Vec<u8> {
+        const ADOBE_XMP_UUID: [u8; 16] = [
+            0xBE, 0x7A, 0xCF, 0xCB, 0x97, 0xA9, 0x42, 0xE8, 0x9C, 0x71, 0x99, 0x94, 0x91, 0xE3,
+            0xAF, 0xAC,
+        ];
+        let ftyp = box_with_kind(b"ftyp", b"isom\0\0\0\0");
+        let mut payload = ADOBE_XMP_UUID.to_vec();
+        payload.extend_from_slice(&xmp_packet(format));
+        let uuid = box_with_kind(b"uuid", &payload);
+        [ftyp, uuid].concat()
+    }
+
     #[test]
     fn replaces_existing_text_without_changing_box_sizes() {
         let bytes = quicktime_fixture();
@@ -457,5 +611,106 @@ mod tests {
         let metadata = read_isobmff(&mut Cursor::new(output), info, ParseLimits::default())
             .expect("edited ISO-BMFF should remain readable");
         assert!(metadata.find("ISOBMFF:Title").is_none());
+    }
+
+    #[test]
+    fn replaces_embedded_xmp_without_changing_direct_box_sizes() {
+        let bytes = direct_xmp_fixture("old");
+        let replacement = String::from_utf8(xmp_packet("new")).expect("XMP is UTF-8");
+        let info = FileInfo::new("image.heic".into(), bytes.len() as u64, FileFormat::Heif);
+        let output = rewrite_isobmff_to_vec(
+            &bytes,
+            info.clone(),
+            ParseLimits::default(),
+            &[IsobmffEdit::SetXmp { value: replacement }],
+        )
+        .expect("embedded XMP edit should succeed");
+        assert_eq!(output.len(), bytes.len());
+        assert_eq!(&output[..12], &bytes[..12]);
+        let metadata = read_isobmff(&mut Cursor::new(output), info, ParseLimits::default())
+            .expect("edited XMP container should remain readable");
+        assert_eq!(
+            metadata.find("XMP:dc:format").unwrap().display_value(),
+            "new"
+        );
+    }
+
+    #[test]
+    fn replaces_embedded_xmp_inside_adobe_uuid_boxes() {
+        let bytes = uuid_xmp_fixture("old");
+        let replacement = String::from_utf8(xmp_packet("new")).expect("XMP is UTF-8");
+        let info = FileInfo::new("image.avif".into(), bytes.len() as u64, FileFormat::Avif);
+        let output = rewrite_isobmff_to_vec(
+            &bytes,
+            info.clone(),
+            ParseLimits::default(),
+            &[IsobmffEdit::SetXmp { value: replacement }],
+        )
+        .expect("UUID XMP edit should succeed");
+        assert_eq!(output.len(), bytes.len());
+        let metadata = read_isobmff(&mut Cursor::new(output), info, ParseLimits::default())
+            .expect("edited UUID XMP container should remain readable");
+        assert_eq!(
+            metadata.find("ISOBMFF:UUIDKind").unwrap().display_value(),
+            "XMP"
+        );
+        assert_eq!(
+            metadata.find("XMP:dc:format").unwrap().display_value(),
+            "new"
+        );
+    }
+
+    #[test]
+    fn deletes_embedded_xmp_by_zeroing_only_its_payload() {
+        let bytes = direct_xmp_fixture("old");
+        let info = FileInfo::new("image.heic".into(), bytes.len() as u64, FileFormat::Heif);
+        let output = rewrite_isobmff_to_vec(
+            &bytes,
+            info.clone(),
+            ParseLimits::default(),
+            &[IsobmffEdit::DeleteXmp],
+        )
+        .expect("embedded XMP deletion should succeed");
+        assert_eq!(output.len(), bytes.len());
+        assert_eq!(&output[..12], &bytes[..12]);
+        let metadata = read_isobmff(&mut Cursor::new(output), info, ParseLimits::default())
+            .expect("deleted XMP container should remain readable");
+        let packet = metadata
+            .find("XMP:Packet")
+            .expect("cleared packet is retained");
+        assert!(
+            matches!(&packet.value, TagValue::Bytes(bytes) if bytes.iter().all(|byte| *byte == 0))
+        );
+        assert!(metadata.find("XMP:dc:format").is_none());
+    }
+
+    #[test]
+    fn rejects_invalid_or_resized_embedded_xmp_replacements() {
+        let bytes = direct_xmp_fixture("old");
+        let info = FileInfo::new("image.heic".into(), bytes.len() as u64, FileFormat::Heif);
+        let packet_length = xmp_packet("old").len();
+        let invalid = String::from_utf8(vec![b'x'; packet_length]).expect("ASCII is UTF-8");
+        let invalid_result = rewrite_isobmff_to_vec(
+            &bytes,
+            info.clone(),
+            ParseLimits::default(),
+            &[IsobmffEdit::SetXmp { value: invalid }],
+        );
+        assert!(matches!(
+            invalid_result,
+            Err(MetraError::WriteFailure { .. })
+        ));
+
+        let resized = String::from_utf8(xmp_packet("old")).expect("XMP is UTF-8") + "x";
+        let resized_result = rewrite_isobmff_to_vec(
+            &bytes,
+            info,
+            ParseLimits::default(),
+            &[IsobmffEdit::SetXmp { value: resized }],
+        );
+        assert!(matches!(
+            resized_result,
+            Err(MetraError::WriteFailure { .. })
+        ));
     }
 }

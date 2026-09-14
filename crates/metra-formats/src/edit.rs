@@ -371,6 +371,14 @@ pub(crate) fn collect_isobmff(
     edits
         .iter()
         .map(|edit| match edit {
+            MetadataEdit::Set { key, value } if isobmff_xmp_key(key) => {
+                Ok(crate::IsobmffEdit::SetXmp {
+                    value: value.clone(),
+                })
+            }
+            MetadataEdit::Delete { key } if isobmff_xmp_key(key) => {
+                Ok(crate::IsobmffEdit::DeleteXmp)
+            }
             MetadataEdit::Set { key, value } if isobmff_text_key(key) => {
                 Ok(crate::IsobmffEdit::SetText {
                     key: key.clone(),
@@ -762,6 +770,10 @@ fn isobmff_text_key(key: &str) -> bool {
     )
 }
 
+fn isobmff_xmp_key(key: &str) -> bool {
+    matches!(key, "ISOBMFF:XMP" | "ISOBMFF:UUID:XMP")
+}
+
 fn iptc_name(key: &str) -> Option<&str> {
     let name = key.strip_prefix("IPTC:")?;
     matches!(
@@ -953,6 +965,28 @@ mod tests {
             vec![crate::IsobmffEdit::DeleteText {
                 key: "ISOBMFF:Title".to_owned(),
             }]
+        );
+    }
+
+    #[test]
+    fn isobmff_collector_accepts_embedded_xmp_aliases() {
+        assert_eq!(
+            collect_isobmff(
+                &[MetadataEdit::set("ISOBMFF:XMP", "<x:xmpmeta/>")],
+                FileFormat::Heif,
+            )
+            .unwrap(),
+            vec![crate::IsobmffEdit::SetXmp {
+                value: "<x:xmpmeta/>".to_owned(),
+            }]
+        );
+        assert_eq!(
+            collect_isobmff(
+                &[MetadataEdit::delete("ISOBMFF:UUID:XMP")],
+                FileFormat::Avif,
+            )
+            .unwrap(),
+            vec![crate::IsobmffEdit::DeleteXmp]
         );
     }
 
