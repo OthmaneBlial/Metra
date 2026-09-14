@@ -95,6 +95,10 @@ updates its existing BYTE reference; direction is bounded to 0–360 degrees; sp
 accepts finite non-negative m/s and converts through a validated existing K/M/N
 reference. Rational numerators and denominators are bounded to u32, and deletion
 zero-fills only existing scalar/reference payloads.
+GPS time writes are limited to existing three-rational `GPSTimeStamp` fields;
+seconds since midnight must be finite, non-negative, and strictly below 86,400,
+then are rounded to a bounded microsecond denominator. Deletion zero-fills only
+the existing timestamp payload.
 JPEG EXIF ASCII writes validate the existing TIFF entry, type, count, offset,
 capacity, and patch range; they never create a missing field or resize the APP1
 segment, and the result is re-read before atomic replacement.

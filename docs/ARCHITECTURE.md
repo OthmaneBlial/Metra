@@ -193,7 +193,9 @@ same writer accepts existing GPS altitude, image-direction, and speed type-5
 scalar slots through decimal aliases. Altitude uses signed meters and updates
 its BYTE reference, speed converts m/s into the existing K/M/N unit, direction
 is bounded to 0–360 degrees, and deletion zero-fills only existing scalar and
-reference payloads. The
+reference payloads. Existing GPS time-of-day slots accept bounded seconds since
+midnight, encode H/M/S rationals, and zero-fill the fixed timestamp payload on
+deletion. The
 JPEG IPTC writer validates dataset names and lengths, rewrites only the target
 dataset in the `0x0404` resource, preserves unrelated Photoshop resources, and
 creates a bounded APP13 resource when needed.

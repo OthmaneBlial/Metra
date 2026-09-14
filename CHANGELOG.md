@@ -10,6 +10,9 @@ Initial read-first foundation with narrow validated rewrites:
 - added bounded GPS altitude, image-direction, and speed rational rewrites with
   signed altitude references, K/M/N speed conversion, zero-fill deletion, generic
   API aliases, CLI set/delete/copy support, and round-trip coverage;
+- added bounded GPS time-of-day rewrites from seconds since midnight into existing
+  H/M/S rational slots, typed read-back, zero-fill deletion, generic API aliases,
+  CLI set/delete/copy support, and one-day range validation;
 - added fixed-span ISO-BMFF XMP replacement, deletion, and source-to-source
   copying for direct `xml ` packets and the standard Adobe XMP `uuid` user type,
   with root validation, generic API, CLI alias, atomic output validation, and

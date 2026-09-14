@@ -101,6 +101,10 @@ and `GPS:SpeedMetersPerSecond`; altitude updates `GPSAltitudeRef`, direction is
 limited to 0–360 degrees, and speed is converted from m/s into the existing K/M/N
 GPS unit. These scalar slots are copied or zero-filled without changing the TIFF
 layout.
+Existing `GPS:GPSTimeStamp` slots accept seconds since midnight through
+`GPS:TimeOfDaySeconds`; the writer emits bounded H/M/S rationals and rejects
+values outside one day. Deletion zero-fills the timestamp payload and the typed
+time and derived seconds are omitted on the next read.
 Repeated IPTC datasets remain typed arrays when read; `--copy` accepts only a
 single-valued source dataset, while `--set` replaces all target occurrences
 with one bounded dataset.
