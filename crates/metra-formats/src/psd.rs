@@ -379,6 +379,9 @@ fn parse_resource(
             }
         }
         0x0424 => {
+            if resource.iter().all(|byte| *byte == 0) {
+                return;
+            }
             if let Err(error) =
                 crate::xmp::parse_xmp(resource, data_offset, "PSD/XMP", metadata, limits)
             {

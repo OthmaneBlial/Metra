@@ -494,6 +494,7 @@ pub(crate) fn collect_psd(
             MetadataEdit::Set { key, value } if psd_xmp_key(key) => {
                 Ok(crate::PsdEdit::SetXmp(value.clone()))
             }
+            MetadataEdit::Delete { key } if psd_xmp_key(key) => Ok(crate::PsdEdit::DeleteXmp),
             _ => Err(unsupported_edit(format, edit.key())),
         })
         .collect()
@@ -918,6 +919,14 @@ mod tests {
             vec![crate::PdfEdit::DeleteInfo {
                 name: "Title".to_owned(),
             }]
+        );
+    }
+
+    #[test]
+    fn psd_collector_accepts_canonical_xmp_deletion() {
+        assert_eq!(
+            collect_psd(&[MetadataEdit::delete("PSD:XMP")], FileFormat::Psd).unwrap(),
+            vec![crate::PsdEdit::DeleteXmp]
         );
     }
 }

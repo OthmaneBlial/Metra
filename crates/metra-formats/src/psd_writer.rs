@@ -17,6 +17,8 @@ use crate::xmp::parse_xmp;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PsdEdit {
     SetXmp(String),
+    /// Remove the existing XMP resource while preserving its allocated span.
+    DeleteXmp,
 }
 
 pub fn rewrite_psd<R: Read + Seek, W: Write + Seek>(
@@ -140,15 +142,20 @@ fn collect_patches<R: Read + Seek>(
 ) -> Result<Vec<Patch>> {
     let mut patches = Vec::with_capacity(edits.len());
     for edit in edits {
-        let PsdEdit::SetXmp(value) = edit;
-        let replacement = value.as_bytes().to_vec();
-        if replacement.len() > limits.max_value_bytes {
-            return Err(MetraError::ResourceLimitExceeded {
-                resource: "PSD XMP packet".to_owned(),
-                limit: limits.max_value_bytes,
-            });
-        }
-        validate_xmp(&replacement, limits)?;
+        let replacement = match edit {
+            PsdEdit::SetXmp(value) => {
+                let replacement = value.as_bytes().to_vec();
+                if replacement.len() > limits.max_value_bytes {
+                    return Err(MetraError::ResourceLimitExceeded {
+                        resource: "PSD XMP packet".to_owned(),
+                        limit: limits.max_value_bytes,
+                    });
+                }
+                validate_xmp(&replacement, limits)?;
+                Some(replacement)
+            }
+            PsdEdit::DeleteXmp => None,
+        };
         let tag = match metadata.find_all("XMP:Packet").as_slice() {
             [tag] => *tag,
             [] => {
@@ -198,6 +205,7 @@ fn collect_patches<R: Read + Seek>(
             &file_info.path,
             "PSD XMP packet",
         )?;
+        let replacement = replacement.unwrap_or_else(|| vec![0_u8; original.len()]);
         if replacement.len() != original.len() {
             return Err(MetraError::WriteFailure {
                 message: format!(
@@ -452,5 +460,31 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.to_string().contains("fixed length"));
+    }
+
+    #[test]
+    fn deletes_existing_xmp_resource_without_changing_psd_layout() {
+        let bytes = psd(&resource(0x0424, &packet("old")));
+        let output = rewrite_psd_to_vec(
+            &bytes,
+            info(&bytes),
+            ParseLimits::default(),
+            &[PsdEdit::DeleteXmp],
+        )
+        .unwrap();
+        assert_eq!(output.len(), bytes.len());
+        assert!(
+            output
+                .windows(packet("old").len())
+                .any(|window| { window.iter().all(|byte| *byte == 0) })
+        );
+        let metadata = read_psd(
+            &mut Cursor::new(output),
+            info(&bytes),
+            ParseLimits::default(),
+        )
+        .unwrap();
+        assert!(metadata.find("XMP:Packet").is_none());
+        assert!(metadata.warnings.is_empty());
     }
 }

@@ -343,6 +343,35 @@ fn public_generic_edit_api_rewrites_and_revalidates_psd_xmp() {
 }
 
 #[test]
+fn public_generic_edit_api_deletes_and_revalidates_psd_xmp() {
+    let bytes = minimal_psd_with_xmp("old");
+    let output = metra::rewrite_metadata_to_vec(
+        &bytes,
+        metra::FileInfo::new(
+            "memory.psd".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+        metra::ParseLimits::default(),
+        &[metra::MetadataEdit::delete("PSD:XMP")],
+    )
+    .expect("generic PSD deletion should validate its rewritten bytes");
+
+    assert_eq!(output.len(), bytes.len());
+    let metadata = metra::read_from(
+        &mut std::io::Cursor::new(output),
+        metra::FileInfo::new(
+            "memory.psd".into(),
+            bytes.len() as u64,
+            metra::FileFormat::Unknown,
+        ),
+    )
+    .expect("deleted PSD should remain readable");
+    assert!(metadata.find("XMP:Packet").is_none());
+    assert!(metadata.warnings.is_empty());
+}
+
+#[test]
 fn public_generic_edit_api_rewrites_and_revalidates_avi_info() {
     let bytes = minimal_avi_with_title("old");
     let output = metra::rewrite_metadata_to_vec(

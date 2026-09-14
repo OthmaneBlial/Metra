@@ -1438,6 +1438,11 @@ fn parse_edits(
                     },
                 ])));
             }
+            if psd_xmp_key(key) {
+                return Ok(Some(EditRequest::DirectPsd(vec![
+                    metra::PsdEdit::DeleteXmp,
+                ])));
+            }
             if jpeg_xmp_key(key) {
                 return Ok(Some(EditRequest::DirectJpeg(vec![
                     metra::JpegEdit::DeleteXmp,
