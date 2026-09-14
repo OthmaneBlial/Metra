@@ -1,16 +1,17 @@
 use std::path::Path;
 
-use metra_core::{FileFormat, FileInfo, MetraError, ParseLimits, Result};
+use metra_core::{FileFormat, FileInfo, MetraError, ParseLimits, Result, TagValue};
 
 /// A format-independent edit for the currently supported narrow rewrite
 /// surface.
 ///
 /// Keys use the same stable namespace form emitted by [`metra_core::Tag`],
-/// for example `JPEG:Comment`, `PNG:Text:Comment`, or `ID3:Title`. The
-/// operation is deliberately string-based until a typed write IR can cover
-/// numeric, rational, array, and binary metadata safely. The bounded
-/// `GPS:*` deletion is the one supported namespace wildcard.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// for example `JPEG:Comment`, `PNG:Text:Comment`, or `ID3:Title`. String
+/// writes remain the broadest operation; [`MetadataEdit::set_value`] adds a
+/// bounded typed constructor for values that have an unambiguous text encoding
+/// in the current writers. The bounded `GPS:*` deletion is the one supported
+/// namespace wildcard.
+#[derive(Debug, Clone, PartialEq)]
 pub enum MetadataEdit {
     Set { key: String, value: String },
     Delete { key: String },
@@ -25,6 +26,16 @@ impl MetadataEdit {
         }
     }
 
+    /// Construct a bounded typed replacement. Only values with a validated
+    /// canonical text representation for the selected writer are accepted.
+    pub fn set_value(key: impl Into<String>, value: TagValue) -> Result<Self> {
+        let key = key.into();
+        Ok(Self::Set {
+            value: typed_value_text(&key, &value)?,
+            key,
+        })
+    }
+
     /// Construct a deletion operation for a supported writable key.
     pub fn delete(key: impl Into<String>) -> Self {
         Self::Delete { key: key.into() }
@@ -34,6 +45,55 @@ impl MetadataEdit {
         match self {
             Self::Set { key, .. } | Self::Delete { key } => key,
         }
+    }
+}
+
+fn typed_value_text(key: &str, value: &TagValue) -> Result<String> {
+    let invalid = || MetraError::InvalidTag {
+        context: "metadata edit".to_owned(),
+        message: format!("typed value is not supported for {key}"),
+    };
+    match value {
+        TagValue::String(value) => Ok(value.clone()),
+        TagValue::Unsigned(value) => Ok(value.to_string()),
+        TagValue::Signed(value) => Ok(value.to_string()),
+        TagValue::Float(value) if value.is_finite() => Ok(value.to_string()),
+        TagValue::Date { year, month, day } if gps_date_key(key).is_some() => {
+            Ok(format!("{year:04}:{month:02}:{day:02}"))
+        }
+        TagValue::Time {
+            hour,
+            minute,
+            second,
+            nanosecond,
+        } if gps_time_key(key).is_some()
+            && *hour < 24
+            && *minute < 60
+            && *second < 60
+            && *nanosecond < 1_000_000_000 =>
+        {
+            let seconds = f64::from(*hour) * 3_600.0
+                + f64::from(*minute) * 60.0
+                + f64::from(*second)
+                + f64::from(*nanosecond) / 1_000_000_000.0;
+            Ok(seconds.to_string())
+        }
+        TagValue::DateTime {
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+            nanosecond: 0,
+            offset_minutes: None,
+        } if key == "WAV:DateTimeOriginal" => Ok(format!(
+            "{year:04}:{month:02}:{day:02} {hour:02}:{minute:02}:{second:02}"
+        )),
+        TagValue::Bytes(value) if key == "XMP:Packet" => {
+            String::from_utf8(value.clone()).map_err(|_| invalid())
+        }
+        _ => Err(invalid()),
     }
 }
 
@@ -1212,6 +1272,87 @@ mod tests {
                 value: "45296.125".to_owned(),
             }]
         );
+    }
+
+    #[test]
+    fn typed_values_use_writer_specific_canonical_text() {
+        assert_eq!(
+            collect_tiff(
+                &[MetadataEdit::set_value(
+                    "GPS:Date",
+                    TagValue::Date {
+                        year: 2026,
+                        month: 9,
+                        day: 14,
+                    },
+                )
+                .unwrap()],
+                FileFormat::Tiff,
+            )
+            .unwrap(),
+            vec![crate::TiffEdit::SetAscii {
+                key: "GPS:GPSDateStamp".to_owned(),
+                value: "2026:09:14".to_owned(),
+            }]
+        );
+        assert_eq!(
+            collect_tiff(
+                &[MetadataEdit::set_value(
+                    "GPS:TimeOfDaySeconds",
+                    TagValue::Time {
+                        hour: 12,
+                        minute: 34,
+                        second: 56,
+                        nanosecond: 125_000_000,
+                    },
+                )
+                .unwrap()],
+                FileFormat::Tiff,
+            )
+            .unwrap(),
+            vec![crate::TiffEdit::SetGpsTime {
+                key: "GPS:GPSTimeStamp".to_owned(),
+                value: "45296.125".to_owned(),
+            }]
+        );
+        assert_eq!(
+            collect_wav(
+                &[MetadataEdit::set_value(
+                    "WAV:DateTimeOriginal",
+                    TagValue::DateTime {
+                        year: 2026,
+                        month: 9,
+                        day: 14,
+                        hour: 1,
+                        minute: 2,
+                        second: 3,
+                        nanosecond: 0,
+                        offset_minutes: None,
+                    },
+                )
+                .unwrap()],
+                FileFormat::Wav,
+            )
+            .unwrap(),
+            vec![crate::WavEdit::SetBext {
+                name: "DateTimeOriginal".to_owned(),
+                value: "2026:09:14 01:02:03".to_owned(),
+            }]
+        );
+    }
+
+    #[test]
+    fn typed_values_reject_ambiguous_structures_and_non_finite_floats() {
+        let error = MetadataEdit::set_value(
+            "PNG:Text:Author",
+            TagValue::Array(vec![TagValue::String("not a scalar".to_owned())]),
+        )
+        .expect_err("structured PNG text must be rejected");
+        assert!(error.to_string().contains("typed value is not supported"));
+
+        let error = MetadataEdit::set_value("GPS:Latitude", TagValue::Float(f64::NAN))
+            .expect_err("non-finite typed GPS values must be rejected");
+        assert!(error.to_string().contains("typed value is not supported"));
     }
 
     #[test]

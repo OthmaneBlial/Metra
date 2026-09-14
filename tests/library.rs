@@ -1477,6 +1477,39 @@ fn public_wav_creation_api_supports_rf64_and_bw64_seeds() {
 }
 
 #[test]
+fn public_generic_edit_api_accepts_bounded_typed_values() {
+    let source = metra::create_tiff_to_vec(
+        &metra::TiffCreateOptions::new().with_ascii("Make", "Before"),
+        metra::ParseLimits::default(),
+    )
+    .expect("typed edit fixture should be created");
+    let output = metra::rewrite_metadata_to_vec(
+        &source,
+        metra::FileInfo::new(
+            "typed-edit.tif".into(),
+            source.len() as u64,
+            metra::FileFormat::Tiff,
+        ),
+        metra::ParseLimits::default(),
+        &[
+            metra::MetadataEdit::set_value("TIFF:EXIF:Make", metra::TagValue::Unsigned(42))
+                .expect("typed edit constructor should accept unsigned values"),
+        ],
+    )
+    .expect("typed edit should use the bounded ASCII writer seam");
+    let metadata = metra::read_from(
+        &mut Cursor::new(output.clone()),
+        metra::FileInfo::new(
+            "typed-edit.tif".into(),
+            output.len() as u64,
+            metra::FileFormat::Tiff,
+        ),
+    )
+    .expect("typed edit output should remain readable");
+    assert_eq!(metadata.find("EXIF:Make").unwrap().display_value(), "42");
+}
+
+#[test]
 fn public_batch_api_keeps_input_order_and_supports_streaming() {
     let paths = vec![
         std::env::temp_dir().join("metra-batch-z-does-not-exist"),
