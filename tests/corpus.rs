@@ -346,6 +346,7 @@ fn oracle_key_candidates(tag: &metra::Tag) -> Vec<String> {
         "JPEG" if tag.group == "COM" => vec![format!("File:{name}")],
         "JFIF" => vec![format!("JFIF:{name}")],
         "ISOBMFF" => vec![format!("QuickTime:{name}"), format!("{name}")],
+        "AVI" | "WAV" => vec![format!("RIFF:{name}"), format!("{}:{name}", tag.namespace)],
         _ => vec![format!("{}:{name}", tag.namespace)],
     }
 }
@@ -420,6 +421,26 @@ mod tests {
             writable: false,
         };
         assert_eq!(oracle_key_candidates(&tag), ["IFD1:ImageDescription"]);
+    }
+
+    #[test]
+    fn oracle_candidates_include_riff_alias_for_avi_and_wav_tags() {
+        let tag = metra::Tag {
+            namespace: "WAV".into(),
+            group: "bext".into(),
+            id: None,
+            name: "DateTimeOriginal".into(),
+            description: None,
+            value: metra::TagValue::String("2026:09:14 12:34:56".into()),
+            raw_value: None,
+            value_type: metra::ValueType::String,
+            source: metra::Source::default(),
+            writable: false,
+        };
+        assert_eq!(
+            oracle_key_candidates(&tag),
+            ["RIFF:DateTimeOriginal", "WAV:DateTimeOriginal"]
+        );
     }
 
     #[test]
