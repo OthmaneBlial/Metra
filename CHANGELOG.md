@@ -4,6 +4,9 @@
 
 Initial read-first foundation with narrow validated rewrites:
 
+- expanded Broadcast Wave `bext` inspection with ExifTool-compatible canonical
+  names, validated typed `DateTimeOriginal`, bounded UMID/coding-history values,
+  fixed-field raw-byte retention, truncation warnings, and RIFF oracle aliases;
 - extended the opt-in differential JSON report with symmetric oracle-side key
   totals and oracle-only coverage, plus an opt-in strict gate for requiring all
   oracle keys to be matched;

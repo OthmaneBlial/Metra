@@ -129,7 +129,9 @@ OpusHead, OpusTags, Ogg-FLAC mapping headers, and Ogg-FLAC Vorbis Comments
 without touching coded audio frames.
 The PDF reader scans bounded head/tail windows for Info dictionaries and direct
 XMP packets; the WAV reader walks RIFF chunks and decodes `fmt `, `LIST/INFO`,
-and Broadcast Wave `bext` fields without loading audio data. The SVG reader
+and Broadcast Wave `bext` fields without loading audio data. BWF date/time is
+represented as a validated typed value, while fixed-width text and UMID fields
+retain their bounded raw bytes for future lossless writers. The SVG reader
 parses a bounded XML document without rendering it, decodes only safe XML
 character references, extracts embedded `xmpmeta` packets through the shared
 bounded XMP reader, exposes root dimensions, `viewBox`, version, title,
