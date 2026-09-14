@@ -231,6 +231,12 @@ Standalone ICC creation exposes `IccCreateOptions`, `create_icc_to_vec`,
 RGB monitor profile with bounded ASCII text tags, validates it through the ICC
 reader, and refuses to overwrite an existing destination.
 
+FLAC creation exposes `FlacCreateOptions`, `create_flac_to_vec`,
+`create_flac_path`, and the CLI `--create-flac KEY=VALUE`. It emits a
+metadata-only stream with fixed `STREAMINFO` and bounded UTF-8 Vorbis comments,
+validates it through the FLAC reader, and refuses to overwrite an existing
+destination.
+
 Legacy read queries are handled by a thin argument normalizer: selected
 single-dash aliases such as `-Make` and `-GPSLatitude` become `--tag` selectors,
 while `-json` and `-jsonl` become the corresponding Metra output flags. The

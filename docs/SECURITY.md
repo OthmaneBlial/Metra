@@ -128,5 +128,10 @@ values are non-empty printable ASCII without NUL bytes, duplicate tags and
 resource-limit violations are rejected, and path creation uses a
 same-directory temporary file with no-overwrite and cleanup guarantees.
 
+FLAC creation emits only a metadata-only stream with fixed `STREAMINFO` and a
+bounded Vorbis Comment block. Keys are printable ASCII without `=` or NUL,
+values are bounded UTF-8 without NUL, duplicate keys and oversized blocks are
+rejected, and the output is re-read before an atomic no-overwrite path create.
+
 Security reports should include the smallest reproducible input and the exact
 Metra version. Do not include private media or secrets in an issue.
