@@ -29,6 +29,9 @@ Initial read-first foundation with narrow validated rewrites:
 - added structured minimal PDF creation with Catalog/Pages/Info objects,
   calculated xref offsets, bounded Unicode Info fields, output revalidation,
   no-overwrite atomic path creation, and CLI `--create-pdf KEY=VALUE` coverage;
+- added a bounded 1x1 RGB PSD seed creator with optional validated XMP image
+  resources, output revalidation, no-overwrite atomic path creation, generic
+  registry dispatch, and CLI `--create-psd PSD:XMP=PACKET` coverage;
 - added the public `CreateRequest` creation registry with `create_to_vec` and
   `create_path` dispatch over the currently validated format-specific creators;
 - added an isolated legacy-query normalizer for bounded `-json`/`-jsonl` and
