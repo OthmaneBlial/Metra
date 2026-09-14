@@ -10,6 +10,8 @@ Initial read-first foundation with narrow validated rewrites:
 - added bounded standalone ICC text replacement and deletion for existing
   `desc`/`text` payloads, with generic and registry API dispatch, atomic
   replacement, and CLI `--set`/`--delete`/`--copy` coverage;
+- extended standalone ICC text replacement to the first localized `mluc`
+  record with bounded UTF-16 encoding and fixed profile layout;
 - added standalone XMP packet creation with bounded XML validation, atomic
   no-overwrite path creation, resource-limit checks, and CLI
   `--create-xmp PACKET` coverage;

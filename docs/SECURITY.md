@@ -82,10 +82,10 @@ entity-safe XML reader and require the same byte length as the existing packet.
 They do not create XML structure or resize the file; the temporary output is
 re-read before atomic replacement.
 Standalone ICC rewrites accept only the allowlisted text tags and existing
-`desc`/`text` payloads. Replacements are printable ASCII, bounded by the
-existing allocation, and zero-filled deletion never changes the tag table or
-profile size; `mluc` replacement is rejected. The temporary profile is
-re-read before atomic replacement.
+`desc`/`text`/`mluc` payloads. `desc` and `text` replacements are printable
+ASCII and bounded by the existing allocation; `mluc` updates only the first
+locale as bounded UTF-16. Zero-filled deletion never changes the tag table or
+profile size. The temporary profile is re-read before atomic replacement.
 AVI INFO writes are limited to existing known text chunks and bounded payloads;
 the replacement is zero-padded within the original chunk, and deletion clears
 the same payload, so RIFF sizes and media bytes remain unchanged before the

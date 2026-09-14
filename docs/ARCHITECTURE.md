@@ -190,9 +190,9 @@ requires an exactly equal byte length, so the packet file is not resized or
 restructured.
 The standalone ICC writer accepts existing `Description`, `Copyright`,
 `ManufacturerDescription`, and `ModelDescription` tags when their payload uses
-`desc` or `text` storage. Replacements fit the existing payload and deletion
-zero-fills it; `mluc` replacement and profile tag-table restructuring remain
-deferred.
+`desc`, `text`, or `mluc` storage. Replacements fit the existing payload;
+`mluc` updates only the first locale record, and deletion zero-fills the whole
+payload. Profile tag-table restructuring remains deferred.
 The AVI writer accepts existing known `LIST/INFO` string chunks, writes only
 within their allocated payloads, preserves a NUL terminator when space exists,
 and never changes RIFF chunk sizes or media data. Delete operations zero-fill
