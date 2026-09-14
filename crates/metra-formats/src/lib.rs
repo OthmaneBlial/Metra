@@ -230,8 +230,8 @@ pub fn detect_format(bytes: &[u8]) -> Option<DetectedFormat> {
             format,
             signature: "EBML/Matroska header",
         })
-    } else if bytes.len() >= 12 && &bytes[..4] == b"RIFF" {
-        if &bytes[8..12] == b"WEBP" {
+    } else if bytes.len() >= 12 && matches!(&bytes[..4], b"RIFF" | b"RF64" | b"BW64") {
+        if &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
             Some(DetectedFormat {
                 format: FileFormat::Webp,
                 signature: "RIFF/WEBP",
@@ -239,9 +239,14 @@ pub fn detect_format(bytes: &[u8]) -> Option<DetectedFormat> {
         } else if &bytes[8..12] == b"WAVE" {
             Some(DetectedFormat {
                 format: FileFormat::Wav,
-                signature: "RIFF/WAVE",
+                signature: match &bytes[..4] {
+                    b"RIFF" => "RIFF/WAVE",
+                    b"RF64" => "RF64/WAVE",
+                    b"BW64" => "BW64/WAVE",
+                    _ => unreachable!("WAV container signature was matched above"),
+                },
             })
-        } else if &bytes[8..12] == b"AVI " {
+        } else if &bytes[..4] == b"RIFF" && &bytes[8..12] == b"AVI " {
             Some(DetectedFormat {
                 format: FileFormat::Avi,
                 signature: "RIFF/AVI",
@@ -516,6 +521,14 @@ mod tests {
         assert_eq!(
             detect_format(b"RIFF\0\0\0\0AVI ").unwrap().format,
             FileFormat::Avi
+        );
+        assert_eq!(
+            detect_format(b"RF64\0\0\0\0WAVE").unwrap().format,
+            FileFormat::Wav
+        );
+        assert_eq!(
+            detect_format(b"BW64\0\0\0\0WAVE").unwrap().format,
+            FileFormat::Wav
         );
         assert_eq!(
             detect_format(b"II*\0\0\0\0\0CR\x02\0").unwrap().format,

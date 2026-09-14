@@ -8,6 +8,29 @@ use metra_core::{
 use quick_xml::Reader;
 use quick_xml::events::Event;
 
+const RF64_SENTINEL: u32 = u32::MAX;
+
+#[derive(Debug)]
+struct Rf64Info {
+    riff_size: u64,
+    data_size: u64,
+    sample_count: u64,
+    chunk_sizes: Vec<([u8; 4], u64)>,
+}
+
+impl Rf64Info {
+    fn chunk_size(&self, kind: &[u8; 4]) -> Option<u64> {
+        if kind == b"data" {
+            Some(self.data_size)
+        } else {
+            self.chunk_sizes
+                .iter()
+                .find(|(entry_kind, _)| entry_kind == kind)
+                .map(|(_, size)| *size)
+        }
+    }
+}
+
 pub fn read_wav<R: Read + Seek>(
     reader: &mut R,
     file_info: FileInfo,
@@ -23,15 +46,52 @@ pub fn read_wav<R: Read + Seek>(
         });
     }
     let header = read_at(reader, 0, 12, &path, "WAV header")?;
-    if &header[..4] != b"RIFF" || &header[8..12] != b"WAVE" {
+    let container_kind = &header[..4];
+    let is_rf64 = matches!(container_kind, b"RF64" | b"BW64");
+    if (!is_rf64 && container_kind != b"RIFF") || &header[8..12] != b"WAVE" {
         return Err(MetraError::InvalidHeader {
             context: "WAV".to_owned(),
-            message: "expected RIFF/WAVE signature".to_owned(),
+            message: "expected RIFF, RF64, or BW64 WAVE signature".to_owned(),
         });
     }
-    let declared_size = u64::from(u32::from_le_bytes(
-        header[4..8].try_into().expect("RIFF size"),
-    ));
+    let stored_size = u32::from_le_bytes(header[4..8].try_into().expect("RIFF size"));
+    let rf64_info = if is_rf64 {
+        parse_rf64_info(reader, file_length, &path, limits, &mut metadata)?
+    } else {
+        None
+    };
+    let declared_size = rf64_info
+        .as_ref()
+        .map_or(u64::from(stored_size), |info| info.riff_size);
+    if let Some(info) = rf64_info.as_ref() {
+        add_tag(
+            &mut metadata,
+            "RIFFSize64",
+            TagValue::Unsigned(info.riff_size),
+            ValueType::UnsignedInteger,
+            "ds64",
+            20,
+            8,
+        );
+        add_tag(
+            &mut metadata,
+            "DataSize64",
+            TagValue::Unsigned(info.data_size),
+            ValueType::UnsignedInteger,
+            "ds64",
+            28,
+            8,
+        );
+        add_tag(
+            &mut metadata,
+            "NumberOfSamples64",
+            TagValue::Unsigned(info.sample_count),
+            ValueType::UnsignedInteger,
+            "ds64",
+            36,
+            8,
+        );
+    }
     let declared_end = 8_u64.saturating_add(declared_size);
     let parse_end = declared_end.min(file_length);
     if declared_end > file_length {
@@ -69,9 +129,26 @@ pub fn read_wav<R: Read + Seek>(
         }
         let chunk_header = read_at(reader, offset, 8, &path, "WAV chunk header")?;
         let kind: [u8; 4] = chunk_header[..4].try_into().expect("WAV chunk id");
-        let length = u64::from(u32::from_le_bytes(
-            chunk_header[4..8].try_into().expect("WAV chunk size"),
-        ));
+        let stored_length =
+            u32::from_le_bytes(chunk_header[4..8].try_into().expect("WAV chunk size"));
+        let length = if is_rf64 && stored_length == RF64_SENTINEL {
+            let Some(length) = rf64_info.as_ref().and_then(|info| info.chunk_size(&kind)) else {
+                metadata.add_warning(
+                    Warning::new(
+                        "invalid-rf64-size",
+                        format!(
+                            "RF64 {} chunk uses the 64-bit sentinel without a ds64 entry",
+                            fourcc(&kind)
+                        ),
+                    )
+                    .at(offset + 4),
+                );
+                break;
+            };
+            length
+        } else {
+            u64::from(stored_length)
+        };
         let data_offset = offset + 8;
         let data_end = data_offset
             .checked_add(length)
@@ -258,6 +335,130 @@ pub fn read_wav<R: Read + Seek>(
     }
     metadata.sort_tags();
     Ok(metadata)
+}
+
+fn parse_rf64_info<R: Read + Seek>(
+    reader: &mut R,
+    file_length: u64,
+    path: &Path,
+    limits: ParseLimits,
+    metadata: &mut Metadata,
+) -> Result<Option<Rf64Info>> {
+    if file_length.saturating_sub(12) < 8 {
+        metadata.add_warning(
+            Warning::new("missing-rf64-ds64", "RF64/BW64 has no complete ds64 chunk").at(12),
+        );
+        return Ok(None);
+    }
+    let chunk_header = read_at(reader, 12, 8, path, "RF64 ds64 chunk header")?;
+    if &chunk_header[..4] != b"ds64" {
+        metadata.add_warning(
+            Warning::new(
+                "missing-rf64-ds64",
+                "RF64/BW64 must start with a ds64 chunk",
+            )
+            .at(12),
+        );
+        return Ok(None);
+    }
+    let length = u64::from(u32::from_le_bytes(
+        chunk_header[4..8].try_into().expect("RF64 ds64 chunk size"),
+    ));
+    if length < 28 {
+        metadata.add_warning(
+            Warning::new(
+                "invalid-rf64-ds64",
+                "RF64 ds64 chunk is shorter than 28 bytes",
+            )
+            .at(20),
+        );
+        return Ok(None);
+    }
+    let data_end = 20_u64
+        .checked_add(length)
+        .ok_or(MetraError::InvalidOffset {
+            context: "RF64 ds64 chunk".to_owned(),
+            offset: 20,
+        })?;
+    if data_end > file_length {
+        metadata.add_warning(
+            Warning::new(
+                "truncated-rf64-ds64",
+                "RF64 ds64 chunk extends beyond the file",
+            )
+            .at(20),
+        );
+        return Ok(None);
+    }
+
+    let fixed = read_at(reader, 20, 28, path, "RF64 ds64 fields")?;
+    let table_count = usize::try_from(u32::from_le_bytes(
+        fixed[24..28].try_into().expect("RF64 ds64 table length"),
+    ))
+    .map_err(|_| MetraError::ResourceLimitExceeded {
+        resource: "RF64 ds64 table".to_owned(),
+        limit: limits.max_jpeg_segments,
+    })?;
+    if table_count > limits.max_jpeg_segments {
+        metadata.add_warning(
+            Warning::new(
+                "rf64-table-limit",
+                format!(
+                    "RF64 ds64 table exceeds the {}-entry limit",
+                    limits.max_jpeg_segments
+                ),
+            )
+            .at(44),
+        );
+        return Ok(None);
+    }
+    let table_bytes = table_count
+        .checked_mul(12)
+        .and_then(|size| 28_usize.checked_add(size))
+        .ok_or(MetraError::InvalidOffset {
+            context: "RF64 ds64 table".to_owned(),
+            offset: 44,
+        })?;
+    if u64::try_from(table_bytes).expect("RF64 ds64 table length fits u64") > length {
+        metadata
+            .add_warning(Warning::new("invalid-rf64-ds64", "RF64 ds64 table is truncated").at(44));
+        return Ok(None);
+    }
+    if table_bytes > limits.max_value_bytes {
+        metadata.add_warning(
+            Warning::new(
+                "rf64-table-limit",
+                "RF64 ds64 table exceeds the value budget",
+            )
+            .at(44),
+        );
+        return Ok(None);
+    }
+
+    let data = read_at(reader, 20, table_bytes, path, "RF64 ds64 table")?;
+    let riff_size = u64::from_le_bytes(data[0..8].try_into().expect("RF64 riff size"));
+    let data_size = u64::from_le_bytes(data[8..16].try_into().expect("RF64 data size"));
+    let sample_count = u64::from_le_bytes(data[16..24].try_into().expect("RF64 number of samples"));
+    let mut chunk_sizes = Vec::with_capacity(table_count);
+    let mut cursor = 28_usize;
+    for _ in 0..table_count {
+        let kind: [u8; 4] = data[cursor..cursor + 4]
+            .try_into()
+            .expect("RF64 ds64 table id");
+        let size = u64::from_le_bytes(
+            data[cursor + 4..cursor + 12]
+                .try_into()
+                .expect("RF64 ds64 table size"),
+        );
+        chunk_sizes.push((kind, size));
+        cursor += 12;
+    }
+    Ok(Some(Rf64Info {
+        riff_size,
+        data_size,
+        sample_count,
+        chunk_sizes,
+    }))
 }
 
 fn parse_fmt(data: &[u8], offset: u64, metadata: &mut Metadata) {
@@ -1032,6 +1233,108 @@ mod tests {
             *b"Metra take"
         );
         assert_eq!(description.raw_value.as_deref().unwrap().len(), 256);
+    }
+
+    #[test]
+    fn reads_rf64_ds64_sizes_and_broadcast_wave_metadata() {
+        let mut fmt = Vec::new();
+        fmt.extend_from_slice(&1_u16.to_le_bytes());
+        fmt.extend_from_slice(&1_u16.to_le_bytes());
+        fmt.extend_from_slice(&48_000_u32.to_le_bytes());
+        fmt.extend_from_slice(&48_000_u32.to_le_bytes());
+        fmt.extend_from_slice(&1_u16.to_le_bytes());
+        fmt.extend_from_slice(&8_u16.to_le_bytes());
+
+        let mut bext = vec![0_u8; 602];
+        bext[..9].copy_from_slice(b"RF64 take");
+        bext[320..330].copy_from_slice(b"2026-09-14");
+        bext[330..338].copy_from_slice(b"12:34:56");
+        bext[338..346].copy_from_slice(&17_u64.to_le_bytes());
+        bext[346..348].copy_from_slice(&1_u16.to_le_bytes());
+
+        let audio = [9_u8, 8, 7, 6];
+        let mut ds64 = vec![0_u8; 28];
+        ds64[8..16].copy_from_slice(&(audio.len() as u64).to_le_bytes());
+        ds64[16..24].copy_from_slice(&4_u64.to_le_bytes());
+        let mut body = chunk(b"ds64", &ds64);
+        body.extend(chunk(b"fmt ", &fmt));
+        body.extend(chunk(b"bext", &bext));
+        body.extend_from_slice(b"data");
+        body.extend_from_slice(&RF64_SENTINEL.to_le_bytes());
+        body.extend_from_slice(&audio);
+        if audio.len() % 2 == 1 {
+            body.push(0);
+        }
+        let riff_size = 4_u64 + body.len() as u64;
+        ds64[..8].copy_from_slice(&riff_size.to_le_bytes());
+        body[8..36].copy_from_slice(&ds64);
+
+        let mut bytes = b"RF64".to_vec();
+        bytes.extend_from_slice(&RF64_SENTINEL.to_le_bytes());
+        bytes.extend_from_slice(b"WAVE");
+        bytes.extend_from_slice(&body);
+        let info = FileInfo::new("rf64-bwf.wav".into(), bytes.len() as u64, FileFormat::Wav);
+        let metadata = read_wav(&mut Cursor::new(bytes), info, ParseLimits::default()).unwrap();
+
+        assert_eq!(
+            metadata.find("WAV:ContainerSize").unwrap().display_value(),
+            riff_size.to_string()
+        );
+        assert_eq!(
+            metadata.find("WAV:RIFFSize64").unwrap().display_value(),
+            riff_size.to_string()
+        );
+        assert_eq!(
+            metadata.find("WAV:DataSize64").unwrap().display_value(),
+            audio.len().to_string()
+        );
+        assert_eq!(
+            metadata
+                .find("WAV:NumberOfSamples64")
+                .unwrap()
+                .display_value(),
+            "4"
+        );
+        assert_eq!(
+            metadata.find("WAV:Description").unwrap().display_value(),
+            "RF64 take"
+        );
+        assert_eq!(
+            metadata
+                .find("WAV:DateTimeOriginal")
+                .unwrap()
+                .display_value(),
+            "2026:09:14 12:34:56"
+        );
+        assert!(metadata.warnings().is_empty());
+    }
+
+    #[test]
+    fn warns_when_rf64_data_uses_a_missing_ds64_size() {
+        let mut body = chunk(b"data", &[]);
+        body[4..8].copy_from_slice(&RF64_SENTINEL.to_le_bytes());
+        let mut bytes = b"RF64".to_vec();
+        bytes.extend_from_slice(&RF64_SENTINEL.to_le_bytes());
+        bytes.extend_from_slice(b"WAVE");
+        bytes.extend_from_slice(&body);
+        let info = FileInfo::new(
+            "invalid-rf64.wav".into(),
+            bytes.len() as u64,
+            FileFormat::Wav,
+        );
+        let metadata = read_wav(&mut Cursor::new(bytes), info, ParseLimits::default()).unwrap();
+        assert!(
+            metadata
+                .warnings()
+                .iter()
+                .any(|warning| warning.code == "missing-rf64-ds64")
+        );
+        assert!(
+            metadata
+                .warnings()
+                .iter()
+                .any(|warning| warning.code == "invalid-rf64-size")
+        );
     }
 
     #[test]
