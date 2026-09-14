@@ -32,6 +32,10 @@ Initial read-first foundation with narrow validated rewrites:
 - added a bounded 1x1 RGB PSD seed creator with optional validated XMP image
   resources, output revalidation, no-overwrite atomic path creation, generic
   registry dispatch, and CLI `--create-psd PSD:XMP=PACKET` coverage;
+- added metadata-only MP4, MOV, and M4A seed creation with bounded
+  `ftyp`/`moov`/`mvhd` and QuickTime text items, output revalidation,
+  no-overwrite atomic path creation, generic registry dispatch, and CLI
+  `--create-mp4`/`--create-mov`/`--create-m4a` coverage;
 - added the public `CreateRequest` creation registry with `create_to_vec` and
   `create_path` dispatch over the currently validated format-specific creators;
 - added an isolated legacy-query normalizer for bounded `-json`/`-jsonl` and

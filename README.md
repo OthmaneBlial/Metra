@@ -104,6 +104,10 @@ creating page content.
 `PsdCreateOptions` and `create_psd_to_vec`/`create_psd_path` provide a minimal
 1x1 RGB PSD seed with an optional bounded XMP image resource; PSB and full
 layer/pixel authoring remain outside this seam.
+`IsobmffCreateKind`, `IsobmffCreateOptions` and
+`create_isobmff_to_vec`/`create_isobmff_path` provide metadata-only MP4, MOV,
+and M4A seeds with bounded QuickTime text items; tracks, samples, and media
+encoding remain outside this seam.
 `XmpEdit` and `rewrite_xmp`/`rewrite_xmp_path` provide bounded replacement or
 property clearing for an existing standalone XMP packet, requiring an equal
 byte length and re-reading the result before replacement. Clearing retains the
@@ -161,6 +165,9 @@ cargo run -- --create-tiff 'EXIF:Make=Metra' --create-tiff 'EXIF:Artist=Othmane'
 cargo run -- --create-jpeg 'Comment=Metra' --create-jpeg 'XMP=<x:xmpmeta><rdf:RDF/></x:xmpmeta>' new.jpg
 cargo run -- --create-pdf 'Title=Metra' --create-pdf 'Author=Othmane' new.pdf
 cargo run -- --create-psd 'PSD:XMP=<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF/></x:xmpmeta>' new.psd
+cargo run -- --create-mp4 'ISOBMFF:Title=Metra' --create-mp4 'Artist=Othmane' new.mp4
+cargo run -- --create-mov 'Title=Metra' new.mov
+cargo run -- --create-m4a 'Album=Metra' new.m4a
 cargo run -- --create-png 'Comment=Metra' --create-png 'Author=Othmane' new.png
 cargo run -- --create-xmp '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF/></x:xmpmeta>' new.xmp
 cargo run -- --create-wav 'Title=Metra' --create-wav 'Artist=Othmane' new.wav
@@ -239,6 +246,9 @@ equal packet length so Photoshop section boundaries remain unchanged.
 the reader treats that explicit tombstone as absent without touching image data.
 PSD creation emits a minimal 1x1 RGB document with an optional XMP resource;
 it does not author PSB files, layers, or general pixel content.
+ISO-BMFF creation emits a metadata-only `ftyp`/`moov` seed with an `mvhd`
+clock and optional QuickTime-style text items. It deliberately contains no
+tracks, samples, or encoded media and is intended as a validated metadata seed.
 AVI INFO edits target an existing text chunk and preserve the RIFF layout;
 the replacement must fit its existing payload. `--delete` zero-fills the
 selected payload without changing the chunk size.
@@ -420,12 +430,13 @@ et les tests présents ; il ne représente pas un pourcentage de compatibilité 
 3. **99 %** — Approfondir HEIF/AVIF et les conteneurs média, puis couvrir les lecteurs restants ; les lecteurs ISO-BMFF exposent maintenant les timings `mvhd` et les identifiants/dimensions de pistes `tkhd` en plus des propriétés image bornées courantes, WebP lit les dimensions des bitstreams VP8X, VP8 et VP8L sans décoder les pixels, les lecteurs XMP/ICC autonomes et Ogg/Vorbis/Opus sont disponibles avec détection de signature bornée, FLAC et Ogg-FLAC exposent maintenant `STREAMINFO`, `SEEKTABLE` et `CUESHEET` sous forme structurée, WAV décode maintenant les feuilles iXML et délègue les chunks ID3v2 au parseur borné sans activer les entités externes, AVI expose maintenant les descripteurs `strh` et `strf` bornés sans décoder les frames, les conteneurs Matroska/WebM exposent maintenant chapitres, cues et descripteurs de pièces jointes sans charger leurs payloads, les conteneurs RAW hérités CRW/MRW/X3F sont identifiés explicitement, tandis que les lecteurs PSD/PSB et RAW couvrent leurs en-têtes et métadonnées courantes sans décoder les pixels ou les flux vidéo.
 4. **99 %** — Étendre XMP/IPTC/ICC/ID3 et isoler les espaces MakerNote ; XMP est maintenant réécrit de façon bornée pour JPEG APP1, WebP, PNG et les paquets autonomes `XMP:Packet`, les tags texte ICC autonomes existants (`Description`, `Copyright`, `ManufacturerDescription`, `ModelDescription`) sont réécrits dans leur stockage `desc`/`text`/`mluc` avec mise à jour bornée de la première locale `mluc`, les datasets IPTC-IIM connus peuvent être réécrits dans les ressources Photoshop APP13, les profils ICC fragmentés JPEG, PNG `iCCP` et WebP `ICCP` sont inspectés sous limites avec descriptions texte et valeurs XYZ courantes, les références XML sûres sont décodées sans entités personnalisées, les textes PNG compressés sont déployés sous budget, les champs texte/commentaires ID3v2 courants restent sous limites explicites, SVG extrait les paquets XMP embarqués avec le même parseur borné, et les conteneurs MakerNote courants sont identifiés ; des IFD Nikon Type 1/2, Canon, Fujifilm, Panasonic, Olympus, legacy Sony, Apple et Pentax bornés exposent maintenant leurs champs connus, Apple structure son runtime binary plist, Samsung STMN expose ses champs d’en-tête/preview et conserve son payload sous budget, DJI expose ses champs IFD connus avec sélection d’endianness bornée, et GoPro expose maintenant ses champs APP6 `DEVC`/`STRM` sous limites, tandis que son MakerNote propriétaire reste detection-only.
 5. **89 %** — Concevoir l’écriture read-modify-write avec validation et remplacement atomique ; dix-huit writers bornés couvrent maintenant JPEG, TIFF/BigTIFF, PNG, GIF, WebP, SVG, WAV, FLAC, Ogg Vorbis/Opus/Ogg-FLAC, ID3v2, les champs texte ISO-BMFF existants (y compris CR3 après validation de sa variante RAW), les chaînes Info PDF existantes avec suppression par `null` paddé, les ressources XMP PSD existantes, les paquets XMP autonomes existants, les tags texte ICC autonomes `desc`/`text`/`mluc`, les chaînes AVI `LIST/INFO`, les chaînes `Info` et `SimpleTag` Matroska/WebM et les slots TIFF ASCII des RAW TIFF-like, avec effacement borné de slots TIFF/RAW et réécriture JPEG EXIF ASCII dans des slots existants ; des créations TIFF, PNG, XMP, WAV, ICC, FLAC, GIF, MP3/ID3v2.4, Ogg Opus, SVG, WebP lossless, JPEG metadata-container et PDF xref-valid minimales permettent maintenant d’amorcer des fichiers avec des métadonnées bornées ; les writers PDF, PSD et XMP autonome conservent les offsets ou la taille du paquet en exigeant une substitution de longueur encodée identique, tandis que les writers AVI, ICC, Matroska/WebM, RAW TIFF-like et CR3 conservent les tailles de chunks/éléments/slots ou la taille des payloads ; le registre `FormatHandler::write_metadata` expose ce dispatch sur flux seekable en réutilisant les mêmes validations ; les budgets metadata/valeur sont configurables depuis le CLI. La création générique et la restructuration des autres conteneurs restent planifiées.
-Les créateurs AVI, PSD et Matroska/WebM ajoutent désormais des seeds bornés avec
-validation de sortie et refus d’écrasement : AVI émet une frame DIB 1x1, PSD un
-document RGB 1x1 avec ressource XMP optionnelle, et Matroska/WebM un `Segment`
-EBML metadata-only avec `Info`/`SimpleTag` ; l’encodage vidéo général, les
-tracks/clusters, les calques/PSB et la création arbitraire de chunks restent
-planifiés.
+Les créateurs AVI, PSD, ISO-BMFF et Matroska/WebM ajoutent désormais des seeds
+bornés avec validation de sortie et refus d’écrasement : AVI émet une frame DIB
+1x1, PSD un document RGB 1x1 avec ressource XMP optionnelle, ISO-BMFF un
+`ftyp`/`moov` metadata-only pour MP4/MOV/M4A, et Matroska/WebM un `Segment` EBML
+metadata-only avec `Info`/`SimpleTag` ; l’encodage vidéo général, les
+tracks/samples/clusters, les calques/PSB et la création arbitraire de chunks
+restent planifiés.
 6. **99 %** — Ajouter `set`/`delete`/`copy` et comparer après les tests round-trip ; les opérations couvrent maintenant JPEG `Comment`/EXIF ASCII existant/`XMP` et datasets IPTC-IIM connus, PNG `tEXt`/`XMP`, GIF `Comment`, WebP `XMP`, paquets XMP autonomes `XMP:Packet` avec effacement borné de leurs propriétés, tags texte ICC autonomes, SVG `Title`/`Description`/`Comment`, WAV `LIST/INFO`, FLAC et Ogg Vorbis/Opus/Ogg-FLAC Comments, ID3v2 texte/commentaire, les champs texte ISO-BMFF existants y compris CR3 avec effacement borné, les champs Info PDF existants avec suppression de tokens Info existants, les ressources XMP PSD existantes, les chaînes AVI `LIST/INFO` avec effacement borné, les chaînes `Info` et `SimpleTag` Matroska/WebM avec effacement borné, les slots TIFF ASCII des RAW TIFF-like avec effacement borné et la copie de champs ASCII TIFF existants via API et CLI, avec comparaison déterministe des valeurs ; l’API publique ajoute aussi des opérations canoniques `MetadataEdit` qui dispatchent vers ces writers validés.
 7. **82 %** — Ajouter le traitement parallèle contrôlé et le rendu en flux borné ; le scheduler est partagé par l’API Rust et le CLI, conserve l’ordre déterministe, borne les workers et la fenêtre de résultats hors ordre, applique une contre-pression au flux parallèle et gère l’annulation coopérative Ctrl+C avec le code 130. Le benchmark réel du corpus mesure environ 20,6 MiB/s en séquentiel, 106 MiB/s avec quatre workers et 89 MiB/s en streaming borné sur cette machine ; les baselines multi-plateformes et le profiling restent à faire.
 8. **100 %** — Étendre les sorties structurées avec CSV, TOML et YAML versionnés.
