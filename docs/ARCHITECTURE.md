@@ -258,6 +258,12 @@ bounded `OpusHead`/`OpusTags` packets, valid page segmentation and CRCs,
 validates it through the Ogg reader, and refuses to overwrite an existing
 destination.
 
+SVG creation exposes `SvgCreateOptions`, `create_svg_to_vec`,
+`create_svg_path`, and the CLI `--create-svg KEY=VALUE`. It emits a bounded
+1x1 XML document with optional title, description, and comments, escapes text,
+validates it through the SVG reader, and refuses to overwrite an existing
+destination.
+
 Legacy read queries are handled by a thin argument normalizer: selected
 single-dash aliases such as `-Make` and `-GPSLatitude` become `--tag` selectors,
 while `-json` and `-jsonl` become the corresponding Metra output flags. The
@@ -277,8 +283,9 @@ that require layout changes remain intentionally outside this API. Creation
 seams are intentionally format-specific: `TiffCreateOptions` can build a
 minimal classic 1x1 TIFF with bounded EXIF ASCII seed fields, while
 `Mp3CreateOptions` and `OggCreateOptions` can build minimal audio metadata
-seeds; all three validate their output by reading it back and create a new path
-without overwriting an existing file.
+seeds, and `SvgCreateOptions` can build a minimal XML metadata seed; all four
+validate their output by reading it back and create a new path without
+overwriting an existing file.
 
 ## Output contract
 
