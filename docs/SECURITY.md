@@ -29,6 +29,9 @@ before allocating or traversing metadata.
   warnings, while pages outside the metadata budget are skipped;
 - derived GPS coordinates, altitude, direction, speed, and time values reject
   non-finite rationals and out-of-range references or units before conversion;
+- RAF header offsets, lengths, entry counts, and proprietary directory values
+  are range-checked and budgeted before inspection; RAF pixel payloads are never
+  loaded by the metadata reader;
 - typed EXIF/GPS date and time values are materialized only after calendar,
   clock, denominator, and fractional-range validation;
 - malformed embedded EXIF can be downgraded to a warning at the container

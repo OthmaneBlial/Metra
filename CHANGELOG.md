@@ -4,6 +4,11 @@
 
 Initial read-first foundation with narrow validated rewrites:
 
+- added bounded RAF header and Fuji-directory decoding with firmware, preview
+  and directory offsets, selected raw-image/zoom fields, raw-value retention,
+  range/entry/resource-limit checks, truncated-structure warnings, generic
+  library dispatch, and CLI JSON coverage; RAF pixel payloads remain untouched
+  and RAF writes remain unsupported;
 - added bounded classic TIFF and BigTIFF 1x1 seed creation with EXIF ASCII
   fields, BigTIFF inline/offset value handling, output revalidation,
   no-overwrite atomic path creation, generic registry dispatch, and CLI
