@@ -86,6 +86,8 @@ writer enum. They dispatch only to the validated writers available for the
 detected format; typed numeric/binary mutation and creation for other formats
 remain deferred. `TiffCreateOptions` and `create_tiff_to_vec`/
 `create_tiff_path` provide the first bounded metadata-seed creation API;
+the public `CreateRequest` enum with `create_to_vec`/`create_path` provides a
+typed generic dispatch over all currently available creation seams;
 `JpegCreateOptions` and `create_jpeg_to_vec`/`create_jpeg_path` provide a
 minimal SOI/metadata/EOI JPEG container seed with bounded Comment and XMP.
 `PdfCreateEntry`/`PdfCreateOptions` and `create_pdf_to_vec`/`create_pdf_path`
