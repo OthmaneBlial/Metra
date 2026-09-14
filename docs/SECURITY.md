@@ -150,5 +150,11 @@ segmentation, page counts, CRCs, and total output are bounded before creation;
 the result is re-read before an atomic no-overwrite path create. The seed does
 not encode an Opus audio payload.
 
+SVG creation emits only a fixed 1x1 XML document with optional bounded title,
+description, and comment nodes. Text is checked against XML 1.0 characters and
+escaped before insertion; comment delimiters, XML node limits, document size,
+and the final reader validation are enforced before an atomic no-overwrite path
+create.
+
 Security reports should include the smallest reproducible input and the exact
 Metra version. Do not include private media or secrets in an issue.
